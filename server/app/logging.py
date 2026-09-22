@@ -19,7 +19,8 @@ class SafeJSONFormatter(logging.Formatter):
         value = re.sub(r"(?i)(bearer\s+)[^\s,;]+", r"\1[REDACTED]", value)
         value = re.sub(
             r"(?i)((?:password|secret|token|authorization|cookie)\s*[:=]\s*)[^\s,;]+",
-            r"\1[REDACTED]", value,
+            r"\1[REDACTED]",
+            value,
         )
         return value[:2048]
 
@@ -45,6 +46,20 @@ def configure_logging(level: str, secrets: list[str]) -> None:
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(level)
+    # Uvicorn installs independent handlers before loading the app factory.
+    # Its error logger sees exceptions re-raised by Starlette after a safe 500.
+    for name in ("uvicorn", "uvicorn.error"):
+        logger = logging.getLogger(name)
+        logger.handlers = []
+        logger.setLevel(logging.NOTSET)
+        logger.propagate = True
+        logger.disabled = False
+    # Default access records contain complete query strings, including OAuth
+    # codes and state. Only explicitly safe application request logs are used.
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.handlers = []
+    access_logger.propagate = False
+    access_logger.disabled = True
     # Never emit SQL values or request URLs through library debug output.
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)

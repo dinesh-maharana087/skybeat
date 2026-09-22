@@ -9,6 +9,7 @@ from typing import Any
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from alembic.util.exc import CommandError
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -41,9 +42,16 @@ class Database:
         def initialize_session(connection: Any, record: Any) -> None:
             with connection.cursor() as cursor:
                 cursor.execute("SET time_zone = '+00:00'")
-                cursor.execute("SET SESSION innodb_lock_wait_timeout = %s", (settings.db_lock_timeout_seconds,))
-                cursor.execute("SET SESSION max_execution_time = %s", (settings.db_select_timeout_ms,))
-                cursor.execute("SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'")
+                cursor.execute(
+                    "SET SESSION innodb_lock_wait_timeout = %s", (settings.db_lock_timeout_seconds,)
+                )
+                cursor.execute(
+                    "SET SESSION max_execution_time = %s", (settings.db_select_timeout_ms,)
+                )
+                cursor.execute(
+                    "SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,"
+                    "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"
+                )
 
         self.sessions = sessionmaker(self.engine, expire_on_commit=False)
 
@@ -59,9 +67,12 @@ class Database:
             if not expected_heads:
                 return False
             with self.engine.connect() as connection:
-                version, timezone, engine, charset = connection.execute(text(
-                    "SELECT VERSION(), @@session.time_zone, @@default_storage_engine, @@character_set_connection"
-                )).one()
+                version, timezone, engine, charset = connection.execute(
+                    text(
+                        "SELECT VERSION(), @@session.time_zone, @@default_storage_engine, "
+                        "@@character_set_connection"
+                    )
+                ).one()
                 if (
                     not str(version).startswith("8.")
                     or "mariadb" in str(version).lower()
@@ -70,10 +81,14 @@ class Database:
                     or charset != "utf8mb4"
                 ):
                     return False
-                heads = set(connection.execute(text("SELECT version_num FROM alembic_version")).scalars())
+                heads = set(
+                    connection.execute(text("SELECT version_num FROM alembic_version")).scalars()
+                )
                 return heads == expected_heads
-        except (SQLAlchemyError, OSError, ValueError):
-            logger.warning("Database readiness check failed", extra={"error_category": "database_unavailable"})
+        except (SQLAlchemyError, OSError, ValueError, CommandError):
+            logger.warning(
+                "Database readiness check failed", extra={"error_category": "database_unavailable"}
+            )
             return False
 
     def dispose(self) -> None:

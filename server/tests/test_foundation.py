@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 
+from alembic.util.exc import CommandError
 from fastapi.testclient import TestClient
 
 from app.config import Settings
@@ -49,3 +50,14 @@ def test_unexpected_error_is_safe_and_has_server_generated_request_id():
         assert "should-never-leak" not in response.text
         assert response.json()["error"]["code"] == "internal_error"
         assert response.json()["error"]["request_id"] != "untrusted-id"
+
+
+def test_readiness_handles_missing_migration_assets(monkeypatch):
+    monkeypatch.setattr(
+        "app.db.ScriptDirectory.from_config", Mock(side_effect=CommandError("missing"))
+    )
+    database = Database(config())
+    try:
+        assert database.ready() is False
+    finally:
+        database.dispose()

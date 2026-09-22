@@ -32,7 +32,9 @@ class ParsedCredential:
 def generate_credential() -> GeneratedCredential:
     credential_id = str(uuid4())
     token = f"sb1.{credential_id}.{secrets.token_urlsafe(32)}"
-    return GeneratedCredential(credential_id, SecretStr(token), hashlib.sha256(token.encode()).digest())
+    return GeneratedCredential(
+        credential_id, SecretStr(token), hashlib.sha256(token.encode()).digest()
+    )
 
 
 def parse_credential(token: str) -> ParsedCredential:

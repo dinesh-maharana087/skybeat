@@ -44,7 +44,9 @@ def create_app(settings: Settings | None = None, *, database: Database | None = 
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.allowed_hosts)
 
     @app.middleware("http")
-    async def request_context(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def request_context(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         request.state.request_id = str(uuid4())
         response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
@@ -54,9 +56,18 @@ def create_app(settings: Settings | None = None, *, database: Database | None = 
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, error: Exception) -> JSONResponse:
         request_id = getattr(request.state, "request_id", str(uuid4()))
-        logger.error("Request failed", extra={"request_id": request_id, "error_category": type(error).__name__})
+        logger.error(
+            "Request failed",
+            extra={"request_id": request_id, "error_category": type(error).__name__},
+        )
         return JSONResponse(
-            {"error": {"code": "internal_error", "message": "Request could not be completed.", "request_id": request_id}},
+            {
+                "error": {
+                    "code": "internal_error",
+                    "message": "Request could not be completed.",
+                    "request_id": request_id,
+                }
+            },
             status_code=500,
             headers={"Cache-Control": "no-store", "X-Request-ID": request_id},
         )

@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     def validate_database_url(cls, value: SecretStr) -> SecretStr:
         try:
             url = make_url(value.get_secret_value())
-        except ArgumentError:
+        except (ArgumentError, ValueError):
             raise ValueError("A valid MySQL database URL is required.") from None
         if (
             url.drivername != "mysql+pymysql"

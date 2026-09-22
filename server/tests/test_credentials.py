@@ -4,7 +4,12 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.devices.credentials import InvalidCredential, generate_credential, parse_credential, verify_token
+from app.devices.credentials import (
+    InvalidCredential,
+    generate_credential,
+    parse_credential,
+    verify_token,
+)
 
 
 def test_credential_has_independent_identifier_and_256_bit_secret():
@@ -28,11 +33,19 @@ def test_verification_compares_complete_canonical_token():
     assert not verify_token(token, secrets.token_bytes(32))
 
 
-@pytest.mark.parametrize("token", [
-    "", "Bearer sb1.bad.secret", "sb2.id.secret", "sb1.bad.secret",
-    f"sb1.{uuid4()}.short", f"sb1.{uuid4()}.{'a' * 44}",
-    f"sb1.{uuid4()}.{'!' * 43}", "sb1." + "a" * 2000,
-])
+@pytest.mark.parametrize(
+    "token",
+    [
+        "",
+        "Bearer sb1.bad.secret",
+        "sb2.id.secret",
+        "sb1.bad.secret",
+        f"sb1.{uuid4()}.short",
+        f"sb1.{uuid4()}.{'a' * 44}",
+        f"sb1.{uuid4()}.{'!' * 43}",
+        "sb1." + "a" * 2000,
+    ],
+)
 def test_bad_credentials_fail_without_echo(token):
     with pytest.raises(InvalidCredential) as error:
         parse_credential(token)
