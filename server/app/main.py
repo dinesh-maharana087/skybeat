@@ -11,6 +11,8 @@ from sqlalchemy.engine import make_url
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.health import router as health_router
+from app.api.heartbeats import PerDeviceRateLimiter
+from app.api.heartbeats import router as heartbeats_router
 from app.config import Settings
 from app.db import Database
 from app.logging import configure_logging
@@ -41,6 +43,7 @@ def create_app(settings: Settings | None = None, *, database: Database | None = 
         openapi_url="/openapi.json" if config.enable_api_docs else None,
     )
     app.state.database = db
+    app.state.heartbeat_limiter = PerDeviceRateLimiter()
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.allowed_hosts)
 
     @app.middleware("http")
@@ -73,4 +76,5 @@ def create_app(settings: Settings | None = None, *, database: Database | None = 
         )
 
     app.include_router(health_router)
+    app.include_router(heartbeats_router)
     return app

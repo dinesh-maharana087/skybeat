@@ -33,7 +33,7 @@ def test_ready_response_is_minimal_when_checks_pass():
         assert client.get("/readyz").json() == {"status": "ok"}
         assert client.get("/docs").status_code == 404
         assert client.get("/openapi.json").status_code == 404
-        assert client.post("/api/v1/heartbeats").status_code == 404
+        assert client.post("/api/v1/heartbeats").status_code == 415
         assert client.get("/livez", headers={"host": "attacker.invalid"}).status_code == 400
 
 

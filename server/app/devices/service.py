@@ -374,3 +374,41 @@ class IdentityService:
         ):
             raise AuthenticationFailed()
         return device
+
+    def authenticate_token(self, session: Session, token: str) -> Device:
+        """Authenticate the credential binding before the caller compares external identity."""
+        try:
+            parsed = parse_credential(token)
+        except InvalidCredential:
+            raise AuthenticationFailed() from None
+        credential = session.scalar(
+            select(DeviceCredential).where(DeviceCredential.credential_id == parsed.credential_id)
+        )
+        if credential is None:
+            raise AuthenticationFailed()
+        device = session.scalar(
+            select(Device)
+            .where(Device.id == credential.device_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if device is None:
+            raise AuthenticationFailed()
+        credential = session.scalar(
+            select(DeviceCredential)
+            .where(
+                DeviceCredential.credential_id == parsed.credential_id,
+                DeviceCredential.device_id == device.id,
+            )
+            .execution_options(populate_existing=True)
+        )
+        now = database_utc(session)
+        if (
+            credential is None
+            or not device.monitoring_enabled
+            or credential.revoked_at is not None
+            or (credential.expires_at is not None and credential.expires_at <= now)
+            or not verify_token(token, credential.token_digest)
+        ):
+            raise AuthenticationFailed()
+        return device

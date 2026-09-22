@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, MetaData, String
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, LargeBinary, MetaData, String
 from sqlalchemy.dialects.mysql import BIGINT, BINARY, CHAR, DATETIME, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -113,3 +113,61 @@ class AuditEvent(Base):
     )
     occurred_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), index=True)
     details: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class HeartbeatReceipt(Base):
+    __tablename__ = "heartbeat_receipts"
+    __table_args__ = (
+        Index("ix_heartbeat_receipts_expires_at", "expires_at"),
+        TABLE_OPTIONS,
+    )
+
+    device_id: Mapped[int] = mapped_column(
+        ForeignKey("devices.id", ondelete="RESTRICT"), primary_key=True
+    )
+    heartbeat_id: Mapped[str] = mapped_column(
+        CHAR(36, charset="ascii", collation="ascii_bin"), primary_key=True
+    )
+    payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32))
+    received_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    expires_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    response_payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class HeartbeatSample(Base):
+    __tablename__ = "heartbeat_samples"
+    __table_args__ = (
+        Index("ix_heartbeat_samples_device_received", "device_id", "received_at"),
+        Index("ix_heartbeat_samples_received_at", "received_at"),
+        TABLE_OPTIONS,
+    )
+
+    id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="RESTRICT"))
+    heartbeat_id: Mapped[str] = mapped_column(CHAR(36, charset="ascii", collation="ascii_bin"))
+    received_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    collected_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    schema_version: Mapped[int] = mapped_column(BIGINT(unsigned=True))
+    agent_version: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class DeviceLatest(Base):
+    __tablename__ = "device_latest"
+    __table_args__ = (TABLE_OPTIONS,)
+
+    device_id: Mapped[int] = mapped_column(
+        ForeignKey("devices.id", ondelete="RESTRICT"), primary_key=True
+    )
+    heartbeat_id: Mapped[str] = mapped_column(CHAR(36, charset="ascii", collation="ascii_bin"))
+    received_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    collected_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    schema_version: Mapped[int] = mapped_column(BIGINT(unsigned=True))
+    agent_version: Mapped[str] = mapped_column(String(64))
+    hostname: Mapped[str] = mapped_column(String(253))
+    primary_ip: Mapped[str | None] = mapped_column(String(45))
+    cpu_percent: Mapped[float | None] = mapped_column()
+    memory_percent: Mapped[float | None] = mapped_column()
+    disk_summary: Mapped[dict[str, Any]] = mapped_column(JSON)
+    gpu_summary: Mapped[dict[str, Any]] = mapped_column(JSON)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
