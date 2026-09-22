@@ -154,10 +154,7 @@ class Disk(WireModel):
     @field_validator("total_bytes", "used_bytes", "free_bytes")
     @classmethod
     def disk_bytes(cls, value: int | None) -> int | None:
-        value = _bytes(value)
-        if value is not None and value > 100 * 1024**3:
-            raise ValueError("disk metric exceeds schema bound")
-        return value
+        return _bytes(value)
 
     _percent = field_validator("utilization_percent")(_percent)
 
@@ -203,10 +200,7 @@ class GPU(WireModel):
     @field_validator("memory_total_bytes", "memory_used_bytes")
     @classmethod
     def gpu_bytes(cls, value: int | None) -> int | None:
-        value = _bytes(value)
-        if value is not None and value > 24 * 1024**3:
-            raise ValueError("gpu metric exceeds schema bound")
-        return value
+        return _bytes(value)
 
     @field_validator("index")
     @classmethod

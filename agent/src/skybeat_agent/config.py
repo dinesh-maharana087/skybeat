@@ -93,7 +93,7 @@ class Config:
             device_id=device_id,
             token=token,
             interval=_integer(env, "SKYBEAT_HEARTBEAT_INTERVAL_SECONDS", 30, 1, 3600),
-            request_timeout=_integer(env, "SKYBEAT_REQUEST_TIMEOUT_SECONDS", 10, 1, 30),
+            request_timeout=_integer(env, "SKYBEAT_REQUEST_TIMEOUT_SECONDS", 10, 1, 10),
             connect_timeout=_integer(env, "SKYBEAT_CONNECT_TIMEOUT_SECONDS", 3, 1, 10),
             max_attempts=_integer(env, "SKYBEAT_MAX_SEND_ATTEMPTS", 3, 1, 3),
             gpu_collection_enabled=_boolean(env, "SKYBEAT_GPU_COLLECTION_ENABLED", True),

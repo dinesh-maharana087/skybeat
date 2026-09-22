@@ -11,6 +11,11 @@ QUERY = (
     "memory.total,memory.used,driver_version"
 )
 FORMAT = "--format=csv,noheader,nounits"
+MAX_MIB = (2**53 - 1) // (1024 * 1024)
+_DRIVER_FAILURES = {
+    b"Failed to initialize NVML: Driver/library version mismatch",
+    b"NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver.",
+}
 
 
 def failed(reason: str, *, state: str = "NVIDIA_SMI_FAILED") -> dict[str, Any]:
@@ -56,8 +61,8 @@ def parse_gpu_output(output: bytes) -> dict[str, Any]:
                 raise ValueError
             utilization = _metric(row[3], 100)
             temperature = _metric(row[4], 250)
-            total_mib = _metric(row[5], 24576)
-            used_mib = _metric(row[6], 24576)
+            total_mib = _metric(row[5], MAX_MIB)
+            used_mib = _metric(row[6], MAX_MIB)
             if total_mib is not None and used_mib is not None and used_mib > total_mib:
                 raise ValueError
             gpus.append(
@@ -123,6 +128,11 @@ class GPUCollector:
                 "gpus": [],
             }
         result = await self.process.run([self.path, QUERY, FORMAT], self.timeout)
+        if result.reason == "nonzero_exit" and result.error.strip() in _DRIVER_FAILURES:
+            return failed("driver_unavailable", state="DRIVER_ERROR")
         if result.reason:
             return failed(result.reason)
         return parse_gpu_output(result.output)
+
+    async def close(self) -> None:
+        await self.process.close()

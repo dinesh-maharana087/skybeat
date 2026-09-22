@@ -98,6 +98,16 @@ def test_maximum_body_is_accepted_and_one_extra_byte_is_rejected():
     assert result.value.code == "payload_too_large"
 
 
+def test_approved_json_safe_byte_limit_is_not_restricted_by_hardware_assumptions():
+    payload = heartbeat_payload()
+    maximum = 2**53 - 1
+    payload["disks"][0].update(total_bytes=maximum, used_bytes=maximum, free_bytes=maximum)
+    payload["gpus"][0].update(memory_total_bytes=maximum, memory_used_bytes=maximum)
+    heartbeat = parse_heartbeat(encode(payload))
+    assert heartbeat.disks[0].total_bytes == maximum
+    assert heartbeat.gpus[0].memory_total_bytes == maximum
+
+
 @pytest.mark.parametrize("path", ["", "os", "cpu", "memory", "disks.0", "gpus.0", "gpu_health"])
 def test_unknown_fields_are_rejected_without_echoing_the_unknown_key(path):
     payload = heartbeat_payload()
@@ -158,8 +168,8 @@ def test_unknown_fields_are_rejected_without_echoing_the_unknown_key(path):
         ("disks.0.device", "x" * 4097),
         ("disks.0.filesystem", "x" * 65),
         ("disks.0.mountpoint", "/" + "x" * 4096),
-        ("disks.0.used_bytes", 107374182401),
-        ("disks.0.free_bytes", 107374182401),
+        ("disks.0.used_bytes", 2**53),
+        ("disks.0.free_bytes", 2**53),
         ("gpus.0.index", -1),
         ("gpus.0.index", 1024),
         ("gpus.0.index", True),
@@ -169,7 +179,7 @@ def test_unknown_fields_are_rejected_without_echoing_the_unknown_key(path):
         ("gpus.0.driver_version", "x" * 129),
         ("gpus.0.temperature_celsius", -100.1),
         ("gpus.0.temperature_celsius", 250.1),
-        ("gpus.0.memory_used_bytes", 25769803777),
+        ("gpus.0.memory_used_bytes", 2**53),
         ("gpus.0.health", "healthy"),
         ("gpus.0.reason_code", "unexpected command output"),
         ("gpu_health.inventory_reliable", 1),

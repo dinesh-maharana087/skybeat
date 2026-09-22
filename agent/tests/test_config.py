@@ -40,6 +40,7 @@ def test_config_defaults_are_safe_and_secrets_are_hidden():
         ("SKYBEAT_DEVICE_TOKEN", "secret\nheader"),
         ("SKYBEAT_HEARTBEAT_INTERVAL_SECONDS", "0"),
         ("SKYBEAT_REQUEST_TIMEOUT_SECONDS", "nan"),
+        ("SKYBEAT_REQUEST_TIMEOUT_SECONDS", "11"),
         ("SKYBEAT_REQUEST_TIMEOUT_SECONDS", "31"),
         ("SKYBEAT_CONNECT_TIMEOUT_SECONDS", "0"),
         ("SKYBEAT_MAX_SEND_ATTEMPTS", "4"),

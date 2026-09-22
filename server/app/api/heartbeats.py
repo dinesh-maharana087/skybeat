@@ -1,5 +1,6 @@
 """Device-only heartbeat endpoint with strict transport and secret-safe errors."""
 
+import asyncio
 from collections import defaultdict, deque
 from threading import Lock
 from time import monotonic
@@ -19,6 +20,20 @@ from app.heartbeats.service import (
 from app.schemas.heartbeat import MAX_BODY_BYTES, HeartbeatValidationError, parse_heartbeat
 
 router = APIRouter()
+
+
+class RequestBodyTooLarge(ValueError):
+    """Raised before more than the approved heartbeat body limit is retained."""
+
+
+async def read_heartbeat_body(request: Request) -> bytes:
+    """Read an ASGI request body while enforcing the cap for chunked transfers."""
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > MAX_BODY_BYTES:
+            raise RequestBodyTooLarge
+        body.extend(chunk)
+    return bytes(body)
 
 
 class PerDeviceRateLimiter:
@@ -87,7 +102,10 @@ async def receive_heartbeat(request: Request) -> JSONResponse:
         parse_credential(token)
     except InvalidCredential:
         return error(request, 401, "authentication_failed", "Device authentication failed.")
-    raw = await request.body()
+    try:
+        raw = await read_heartbeat_body(request)
+    except RequestBodyTooLarge:
+        return error(request, 413, "payload_too_large", "Heartbeat payload is too large.")
     try:
         heartbeat = parse_heartbeat(raw)
     except HeartbeatValidationError as exc:
@@ -98,7 +116,7 @@ async def receive_heartbeat(request: Request) -> JSONResponse:
         request.app.state.database, allowed=request.app.state.heartbeat_limiter.allow
     )
     try:
-        accepted = service.accept(heartbeat, token)
+        accepted = await asyncio.to_thread(service.accept, heartbeat, token)
     except AuthenticationFailed:
         return error(request, 401, "authentication_failed", "Device authentication failed.")
     except HeartbeatIdentityMismatch:
