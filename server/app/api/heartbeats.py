@@ -121,6 +121,8 @@ async def receive_heartbeat(request: Request) -> JSONResponse:
             if request.app.state.settings.sms_enabled
             else ()
         ),
+        suspect_after_seconds=request.app.state.settings.suspect_after_seconds,
+        offline_after_seconds=request.app.state.settings.offline_after_seconds,
     )
     try:
         accepted = await asyncio.to_thread(service.accept, heartbeat, token)

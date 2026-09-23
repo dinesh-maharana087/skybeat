@@ -1,7 +1,10 @@
 """Independent Stage 03 health and notification worker entry point."""
 
 import logging
-from time import sleep
+import signal
+from collections.abc import Callable
+from threading import Event
+from time import monotonic
 
 from app.config import Settings
 from app.db import Database
@@ -46,19 +49,65 @@ def run_once(
     provider: NotificationProvider | dict[str, NotificationProvider] | None,
 ) -> None:
     """Perform one bounded sweep and then attempt a bounded notification batch."""
+    _sweep(settings, database)
+    _deliver(settings, database, provider)
+
+
+def _sweep(settings: Settings, database: Database) -> None:
     AvailabilityService(
         database,
         email_recipients=settings.alert_email_recipients,
         sms_recipients=settings.alert_sms_recipients if settings.sms_enabled else (),
+        suspect_after_seconds=settings.suspect_after_seconds,
+        offline_after_seconds=settings.offline_after_seconds,
     ).sweep()
+
+
+def _deliver(
+    settings: Settings,
+    database: Database,
+    provider: NotificationProvider | dict[str, NotificationProvider] | None,
+) -> None:
     if provider is not None:
         NotificationService(database).process_due(provider, limit=settings.notification_concurrency)
+
+
+def run_loop(
+    settings: Settings,
+    database: Database,
+    providers: NotificationProvider | dict[str, NotificationProvider] | None,
+    stop: Event,
+    *,
+    monotonic: Callable[[], float] = monotonic,
+    wait: Callable[[float], bool] | None = None,
+) -> None:
+    """Schedule bounded health and notification work independently until shutdown."""
+    wait_for = wait or stop.wait
+    next_sweep_at = 0.0
+    next_delivery_at = 0.0
+    while not stop.is_set():
+        now = monotonic()
+        if now >= next_sweep_at:
+            _sweep(settings, database)
+            next_sweep_at = now + settings.health_sweep_seconds
+        if now >= next_delivery_at:
+            _deliver(settings, database, providers)
+            next_delivery_at = now + settings.notification_poll_seconds
+        wait_for(max(0.0, min(next_sweep_at, next_delivery_at) - monotonic()))
 
 
 def main() -> None:
     settings = Settings()
     database = Database(settings)
     providers = build_notification_providers(settings)
+    stop = Event()
+
+    def request_stop(_signum: int, _frame: object) -> None:
+        logger.info("Worker stopping", extra={"event_type": "shutdown"})
+        stop.set()
+
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
     if settings.alert_email_recipients and "EMAIL" not in providers:
         logger.error(
             "Email recipients configured without usable SMTP provider",
@@ -73,11 +122,11 @@ def main() -> None:
             },
         )
     try:
-        while True:
-            run_once(settings, database, provider=providers)
-            sleep(settings.health_sweep_seconds)
+        logger.info("Worker started", extra={"event_type": "startup"})
+        run_loop(settings, database, providers, stop)
     finally:
         database.dispose()
+        logger.info("Worker stopped", extra={"event_type": "shutdown"})
 
 
 if __name__ == "__main__":

@@ -85,7 +85,7 @@ def test_production_requires_https_and_explicit_host_allowlist():
         database_url="mysql+pymysql://runtime:example@mysql/skybeat",
         google_client_id="skybeat-test-client",
         google_client_secret="not-a-real-secret",
-        session_encryption_key="MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
+        session_encryption_key="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
     )
     with pytest.raises(ValidationError):
         Settings(
@@ -161,6 +161,39 @@ def test_production_dashboard_requires_oidc_and_session_secret_configuration():
         )
 
 
+def test_production_rejects_placeholder_secrets_and_invalid_availability_order():
+    base = dict(
+        env="production",
+        database_url="mysql+pymysql://runtime:runtime-password@mysql/skybeat",
+        public_base_url="https://monitor.example.test",
+        allowed_hosts=["monitor.example.test"],
+        google_client_id="skybeat-client",
+        google_client_secret="google-client-secret",
+        session_encryption_key="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+    )
+    with pytest.raises(ValidationError):
+        Settings(**base, suspect_after_seconds=180, offline_after_seconds=180)
+    with pytest.raises(ValidationError):
+        Settings(**base, smtp_password="REPLACE_WITH_PROTECTED_SECRET")
+    with pytest.raises(ValidationError):
+        Settings(**{**base, "google_client_id": "REPLACE_WITH_GOOGLE_CLIENT_ID"})
+    with pytest.raises(ValidationError):
+        Settings(**base, sms_enabled=True, alert_sms_recipients=["+15551234567"])
+
+
+def test_production_notification_poll_default_and_availability_thresholds_are_explicit():
+    config = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+        suspect_after_seconds=10,
+        offline_after_seconds=20,
+    )
+
+    assert config.notification_poll_seconds == 2
+    assert config.suspect_after_seconds == 10
+    assert config.offline_after_seconds == 20
+
+
 def test_dashboard_session_encryption_key_must_be_a_fernet_key_without_echoing_it():
     invalid = "not-a-valid-fernet-key"
     with pytest.raises(ValidationError) as error:
@@ -170,3 +203,16 @@ def test_dashboard_session_encryption_key_must_be_a_fernet_key_without_echoing_i
             session_encryption_key=invalid,
         )
     assert invalid not in str(error.value)
+
+
+def test_production_rejects_a_trivially_weak_fernet_key():
+    with pytest.raises(ValidationError):
+        Settings(
+            env="production",
+            database_url="mysql+pymysql://runtime:runtime-password@mysql/skybeat",
+            public_base_url="https://monitor.example.test",
+            allowed_hosts=["monitor.example.test"],
+            google_client_id="skybeat-client",
+            google_client_secret="google-client-secret",
+            session_encryption_key="MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
+        )

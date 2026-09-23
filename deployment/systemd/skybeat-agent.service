@@ -1,0 +1,22 @@
+[Unit]
+Description=SkyBeat Device Monitoring Agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=skybeat
+Group=skybeat
+WorkingDirectory=/opt/skybeat-agent
+EnvironmentFile=/etc/skybeat-agent/agent.env
+ExecStart=/opt/skybeat-agent/venv/bin/skybeat-agent
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

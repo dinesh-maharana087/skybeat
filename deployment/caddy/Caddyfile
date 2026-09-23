@@ -1,0 +1,14 @@
+{
+	admin off
+}
+
+{$SKYBEAT_CADDY_HOST} {
+	@internal_health path /livez /readyz
+	respond @internal_health 404
+
+	request_body {
+		max_size 128KiB
+	}
+
+	reverse_proxy api:8000
+}

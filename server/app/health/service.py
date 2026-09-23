@@ -26,12 +26,20 @@ NOTIFICATION_EXPIRY = timedelta(hours=24)
 _EMAIL_RECIPIENT = re.compile(r"[^\s@\r\n]{1,64}@[^\s@\r\n]{1,255}")
 
 
-def availability_state(baseline: datetime, now: datetime) -> AvailabilityState:
+def availability_state(
+    baseline: datetime,
+    now: datetime,
+    *,
+    suspect_after_seconds: int = SUSPECT_AFTER_SECONDS,
+    offline_after_seconds: int = OFFLINE_AFTER_SECONDS,
+) -> AvailabilityState:
     """Return the state derived from trusted UTC server timestamps."""
+    if not 0 < suspect_after_seconds < offline_after_seconds:
+        raise ValueError("Availability thresholds are invalid.")
     age_seconds = (now - baseline).total_seconds()
-    if age_seconds < SUSPECT_AFTER_SECONDS:
+    if age_seconds < suspect_after_seconds:
         return AvailabilityState.ONLINE
-    if age_seconds < OFFLINE_AFTER_SECONDS:
+    if age_seconds < offline_after_seconds:
         return AvailabilityState.SUSPECT
     return AvailabilityState.OFFLINE
 
@@ -58,8 +66,14 @@ class AvailabilityService:
         *,
         email_recipients: tuple[str, ...] = (),
         sms_recipients: tuple[str, ...] = (),
+        suspect_after_seconds: int = SUSPECT_AFTER_SECONDS,
+        offline_after_seconds: int = OFFLINE_AFTER_SECONDS,
     ) -> None:
+        if not 0 < suspect_after_seconds < offline_after_seconds:
+            raise ValueError("Availability thresholds are invalid.")
         self.database = database
+        self.suspect_after_seconds = suspect_after_seconds
+        self.offline_after_seconds = offline_after_seconds
         self.email_recipients = tuple(
             sorted({validate_email_recipient(value) for value in email_recipients})
         )
@@ -81,7 +95,10 @@ class AvailabilityService:
                 return
             now = database_utc(session)
             desired = availability_state(
-                monitoring_baseline(device.monitoring_started_at, device.last_seen_at), now
+                monitoring_baseline(device.monitoring_started_at, device.last_seen_at),
+                now,
+                suspect_after_seconds=self.suspect_after_seconds,
+                offline_after_seconds=self.offline_after_seconds,
             )
             if desired is AvailabilityState.OFFLINE:
                 device.availability_state = AvailabilityState.OFFLINE.value
@@ -94,7 +111,10 @@ class AvailabilityService:
     def accept_heartbeat(self, session: Session, device: Device, received_at: datetime) -> None:
         """Reconcile overdue state before a new accepted heartbeat replaces its baseline."""
         prior_state = availability_state(
-            monitoring_baseline(device.monitoring_started_at, device.last_seen_at), received_at
+            monitoring_baseline(device.monitoring_started_at, device.last_seen_at),
+            received_at,
+            suspect_after_seconds=self.suspect_after_seconds,
+            offline_after_seconds=self.offline_after_seconds,
         )
         if prior_state is AvailabilityState.OFFLINE:
             device.availability_state = AvailabilityState.OFFLINE.value

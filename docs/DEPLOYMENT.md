@@ -2461,3 +2461,77 @@ ALERTING
 only.
 
 Remote administration, command execution, repair, and self-healing remain outside V1.
+
+---
+
+# 87. Stage 06 Operator Runbook
+
+This runbook implements the approved Compose/systemd architecture. It is an operator procedure, not permission to alter an existing production host, database, firewall, or credentials without the required change approval.
+
+## Central server layout and protected configuration
+
+Place a reviewed release under `/opt/skybeat`. Create `/opt/skybeat/.env` from `deployment/production.env.example`, keep it out of Git, and set owner `root:root` with mode `0600`. It contains the application runtime URL, a distinct migration-account URL, MySQL bootstrap values, Caddy hostname, OIDC settings, session encryption key, and approved notification settings.
+
+Use a real operator-controlled HTTPS hostname for both `SKYBEAT_PUBLIC_BASE_URL` and `SKYBEAT_CADDY_HOST`. Do not use placeholders, localhost, wildcard hosts, MySQL root URLs, or a real SMS recipient with SMS enabled before an approved provider adapter exists. The application rejects placeholder secrets, invalid timing relationships, weak all-identical Fernet keys, and incomplete production notification configuration.
+
+Only Caddy publishes TCP 80 and 443. API, worker, and MySQL publish no host ports. Firewall/security-group policy must independently permit only intended HTTP/HTTPS and restricted operator administration access. Keep Docker socket mounts out of application containers.
+
+On a fresh Compose MySQL volume, `deployment/mysql/01-create-migration-user.sh` creates the separately scoped migration account from the protected `.env` values. The MySQL image intentionally does not run initialization scripts against an existing volume. Before applying this layout to an existing database, have an approved operator provision and verify the migration account; do not reset, reinitialize, or replace retained data to make the script run.
+
+Caddy is the sole public reverse proxy. The API does not enable unconditional forwarded-header trust, so arbitrary clients cannot manufacture client scheme or address metadata by sending proxy headers directly.
+
+## Safe startup and migration sequence
+
+Run the following from `/opt/skybeat` only after an approved database backup has completed:
+
+```sh
+python scripts/validate_deployment.py
+docker compose --env-file .env config -q
+docker compose --env-file .env up -d mysql
+docker compose --env-file .env --profile migrate run --rm migrate python -m alembic current
+docker compose --env-file .env --profile migrate run --rm migrate
+docker compose --env-file .env --profile migrate run --rm migrate python -m alembic heads
+docker compose --env-file .env up -d api worker caddy
+```
+
+The `migrate` profile is intentionally separate. API and worker startup never runs Alembic, creates a schema, drops a table, resets data, or initializes an existing database. A migration error stops the release: inspect the revision and backup, then follow the approved recovery process. Never solve a migration failure with `docker compose down -v`, a volume removal, a schema reset, or an automatic downgrade.
+
+Verify internal API health after startup without exposing health endpoints publicly through Caddy:
+
+```sh
+docker compose --env-file .env exec api python -c "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/livez', timeout=3).read()"
+docker compose --env-file .env exec api python -c "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/readyz', timeout=3).read()"
+docker compose --env-file .env ps
+docker compose --env-file .env logs --tail=100 api worker caddy mysql
+```
+
+`/readyz` checks bounded MySQL connectivity and schema compatibility. It does not depend on SMTP, SMS, Google, or individual device availability. Caddy intentionally returns 404 for public `/livez` and `/readyz` requests.
+
+## Backup, restore, and upgrade
+
+Create a daily logical MySQL backup using a dedicated backup account or protected MySQL client configuration; do not put a password on the command line. Store backups outside `mysql_data`, retain at least 30 days, copy them off-host, and use restricted/encrypted storage where available. Initial targets are RPO no worse than 24 hours and RTO no worse than 4 hours.
+
+Test restore into an isolated MySQL environment first. Verify the Alembic revision, projects/devices, incident/event history, and notification jobs. Start the restored API with notification delivery disabled, validate dashboard and one heartbeat, reconcile sessions, credential revocations, and allowlists, then enable the worker and run a controlled outage/recovery test. Never overwrite a running production database automatically. Do not automatically downgrade Alembic revisions during application rollback; only roll back application code that remains schema-compatible.
+
+For an upgrade: record deployed version and current revision, complete a backup, validate `.env`, build/pull the approved image, run the explicit migration sequence above, restart API/worker/Caddy, and run the smoke checks. Docker logs rotate through the Compose `local` driver; inspect them with `docker compose logs` rather than enabling payload-heavy debug logging.
+
+## Agent installation, upgrade, and disable
+
+Agents run directly under systemd. On a supported Linux device, create a non-login `skybeat` system user with no sudo or Docker access. Install the agent under `/opt/skybeat-agent`, create its virtual environment from the pinned agent dependencies, and install `deployment/systemd/skybeat-agent.service` as `/etc/systemd/system/skybeat-agent.service`.
+
+Create `/etc/skybeat-agent/agent.env` from `deployment/systemd/agent.env.example`, replace its UUID and one-time enrollment token through a protected operator channel, and set owner `root:root` plus mode `0600`. Then run:
+
+```sh
+systemctl daemon-reload
+systemctl enable --now skybeat-agent
+systemctl status skybeat-agent
+journalctl -u skybeat-agent --since "10 minutes ago"
+```
+
+Use a one-device canary before wider upgrades. Verify heartbeat, GPU telemetry, service restart, and boot startup; retain the previous compatible agent package for rollback. To stop monitoring on a device without deleting history, use `systemctl disable --now skybeat-agent` and separately disable monitoring through the approved server operator workflow.
+
+## Production smoke test and pending verification
+
+After deployment, verify from the intended network: valid Caddy TLS certificate, HTTP-to-HTTPS redirect, Google login and allowlist denial, first agent heartbeat, current dashboard telemetry, controlled OFFLINE/RECOVERED flow, GPU confirmation flow, SMTP behavior, and no-network SMS fallback. Do not deliberately damage production GPUs or send unapproved notifications.
+
+The Windows development environment does not establish real Docker/Compose, Caddy/TLS/DNS, Linux systemd, NVIDIA, SMTP, SMS provider, firewall, backup restore, load, or soak evidence. The retained isolated MySQL data directory is unwritable and must not be repaired, reinitialized, reset, or have its ACLs changed merely for verification. Record those checks as environment-pending until exercised safely.

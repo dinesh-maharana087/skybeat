@@ -1,5 +1,6 @@
 """Validated, secret-safe runtime configuration."""
 
+import base64
 import re
 from typing import Annotated, Literal, Self
 from urllib.parse import urlsplit
@@ -32,8 +33,10 @@ class Settings(BaseSettings):
     db_write_timeout_seconds: int = Field(default=3, ge=1, le=10)
     db_lock_timeout_seconds: int = Field(default=1, ge=1, le=3)
     db_select_timeout_ms: int = Field(default=3000, ge=100, le=10000)
+    suspect_after_seconds: int = Field(default=75, ge=1, le=3600)
+    offline_after_seconds: int = Field(default=180, ge=2, le=86400)
     health_sweep_seconds: int = Field(default=5, ge=1, le=60)
-    notification_poll_seconds: int = Field(default=5, ge=1, le=60)
+    notification_poll_seconds: int = Field(default=2, ge=1, le=60)
     notification_concurrency: int = Field(default=4, ge=1, le=4)
     alert_email_recipients: Annotated[tuple[str, ...], NoDecode] = ()
     sms_enabled: bool = False
@@ -177,6 +180,8 @@ class Settings(BaseSettings):
             raise ValueError("Public base URL must be an origin without credentials or query.")
         if url.path not in {"", "/"}:
             raise ValueError("Public base URL must not contain a path.")
+        if self.offline_after_seconds <= self.suspect_after_seconds:
+            raise ValueError("Offline threshold must exceed suspect threshold.")
         if not self.allowed_hosts or any("*" in host for host in self.allowed_hosts):
             raise ValueError("An explicit host allowlist is required.")
         if self.env == "production":
@@ -190,6 +195,25 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production email recipients require protected SMTP configuration."
                 )
+            protected_values = (
+                make_url(self.database_url.get_secret_value()).password,
+                self.google_client_secret.get_secret_value()
+                if self.google_client_secret is not None
+                else None,
+                self.smtp_password.get_secret_value() if self.smtp_password is not None else None,
+            )
+            if any(_placeholder_secret(value) for value in protected_values):
+                raise ValueError("Production configuration contains a placeholder secret.")
+            if _placeholder_secret(self.google_client_id):
+                raise ValueError(
+                    "Production configuration contains a placeholder client identifier."
+                )
+            if self.session_encryption_key is not None and _weak_fernet_key(
+                self.session_encryption_key.get_secret_value()
+            ):
+                raise ValueError("Production session encryption key is weak.")
+            if self.sms_enabled and self.alert_sms_recipients:
+                raise ValueError("Production SMS requires an approved provider adapter.")
             if (
                 not self.google_client_id
                 or self.google_client_secret is None
@@ -199,3 +223,20 @@ class Settings(BaseSettings):
                     "Production dashboard authentication requires protected OIDC settings."
                 )
         return self
+
+
+def _placeholder_secret(value: str | None) -> bool:
+    if value is None:
+        return False
+    normalized = value.strip().lower()
+    return not normalized or any(
+        marker in normalized for marker in ("replace", "changeme", "default")
+    )
+
+
+def _weak_fernet_key(value: str) -> bool:
+    try:
+        decoded = base64.urlsafe_b64decode(value.encode("ascii"))
+    except (ValueError, UnicodeEncodeError):
+        return True
+    return len(decoded) != 32 or len(set(decoded)) <= 1

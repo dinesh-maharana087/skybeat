@@ -26,3 +26,35 @@ def test_monitoring_baseline_prefers_last_accepted_heartbeat():
 
     assert monitoring_baseline(started, seen) == seen
     assert monitoring_baseline(started, None) == started
+
+
+def test_availability_state_uses_configured_boundaries_without_changing_default_policy():
+    now = datetime(2026, 9, 23, 12, 0, tzinfo=UTC)
+
+    assert (
+        availability_state(
+            now - timedelta(seconds=9),
+            now,
+            suspect_after_seconds=10,
+            offline_after_seconds=20,
+        )
+        is AvailabilityState.ONLINE
+    )
+    assert (
+        availability_state(
+            now - timedelta(seconds=10),
+            now,
+            suspect_after_seconds=10,
+            offline_after_seconds=20,
+        )
+        is AvailabilityState.SUSPECT
+    )
+    assert (
+        availability_state(
+            now - timedelta(seconds=20),
+            now,
+            suspect_after_seconds=10,
+            offline_after_seconds=20,
+        )
+        is AvailabilityState.OFFLINE
+    )

@@ -2,7 +2,7 @@
 
 SkyBeat is a standalone Linux/GPU monitoring and alerting platform for an initial fleet of up to 100 devices on one Ubuntu VM. The approved design uses FastAPI, a separate worker, MySQL 8.x/InnoDB, lightweight Python agents, and a same-origin Jinja2 dashboard behind Caddy. SkyBeat observes device health; it does not execute remote commands or repair devices.
 
-Implementation is in progress. Stage 01 provides the server foundation, database migrations, and a restricted local device-management CLI. Heartbeats, the agent, alerts, dashboard authentication, and deployment hardening belong to subsequent stages. See [implementation status](docs/IMPLEMENTATION_STATUS.md) for verified progress and limitations, and [the approved plan](docs/IMPLEMENTATION_PLAN.md) for stage acceptance criteria. This development setup is not a production rollout.
+Stages 01–05 are accepted. Stage 06 provides the deployment artifacts and hardening needed for a reproducible production deployment; it does not itself deploy SkyBeat. See [implementation status](docs/IMPLEMENTATION_STATUS.md), [the deployment runbook](docs/DEPLOYMENT.md), and [the production checklist](docs/PRODUCTION_CHECKLIST.md) for verified evidence and environment-dependent work.
 
 ## Local development
 
@@ -98,3 +98,18 @@ python -m mypy app
 Real MySQL tests require `SKYBEAT_TEST_DATABASE_URL` supplied through a protected environment. Point it only at an isolated loopback MySQL 8.x test database, with a name ending in `_test` and an account scoped to that database. Tests may apply migrations and create test records. They must never target production. Without the test URL, MySQL-specific tests are skipped; a unit-only pass does not complete Stage 01 acceptance. Keep test credentials and data outside version control.
 
 The hash-locked dependency file is generated from `server/pyproject.toml`. Intentional dependency updates require regenerating the lock, reviewing changes, and rerunning affected checks. See [security requirements](docs/SECURITY.md) for secret handling, credential lifecycle, audit, and least-privilege requirements.
+
+## Production deployment
+
+The central server is deployed with [Docker Compose](docker-compose.yml): Caddy is the only public service; API, worker, and MySQL have no host-port publication. API and worker use the same non-root application image. Migrations are an explicit, profile-gated operator action and never run during API or worker startup.
+
+Use the [deployment runbook](docs/DEPLOYMENT.md) for the required sequence: protected configuration, backup, configuration validation, migration revision inspection, explicit migration, service start, readiness and smoke checks. Agents are installed directly with [systemd assets](deployment/systemd/), not in Docker.
+
+Before an operator uses Compose, validate committed artifacts without contacting infrastructure:
+
+```sh
+python scripts/validate_deployment.py
+docker compose --env-file .env config -q
+```
+
+The second command requires an operator-created protected `.env`; it intentionally fails with missing or placeholder configuration. Do not run migrations against a production database without an approved backup and maintenance procedure.

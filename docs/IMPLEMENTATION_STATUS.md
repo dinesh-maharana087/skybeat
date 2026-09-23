@@ -1,9 +1,9 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-09-23
-Current stage: Stage 05 - GPU Incidents + SMS Boundary
-Current milestone: Stage 05 acceptance checkpoint
-Status: COMPLETE / ACCEPTED. Stage 06 has not been started.
+Current stage: Stage 06 - Deployment + Production Hardening
+Current milestone: Stage 06 acceptance checkpoint
+Status: COMPLETE / ACCEPTED. No further V1 implementation stage is scheduled.
 
 ## Completed
 
@@ -27,10 +27,13 @@ Status: COMPLETE / ACCEPTED. Stage 06 has not been started.
 - Added protected project, device, detail and alert-history APIs; a server-rendered Jinja Device Status page with safe DOM-only polling, stale telemetry labels, filters, and expandable detail/incident views.
 - Completed Stage 05 GPU lifecycle handling: server-policy-aware effective state, two-observation degradation/recovery semantics, 75-second maximum confirmation gap, CPU-only suppression, durable GPU incidents/events, stale-outage supersession, and dashboard effective-state projection.
 - Completed the provider-independent SMS boundary: validated server-controlled E.164 recipients, durable EMAIL/SMS queue jobs, channel-routed worker delivery/retry/idempotency reuse, deterministic fake provider, and a safe no-network disabled adapter pending a separately approved vendor.
+- Completed Stage 06 Compose deployment artifacts: non-root read-only API/worker image, MySQL 8.4 persistent volume and health check, Caddy-only 80/443 publication, private API/worker/MySQL ports, log rotation, and an explicit profile-gated migration service that never runs at API/worker startup.
+- Added fresh-volume-only bootstrap of the distinct scoped MySQL migration account, with explicit documentation that retained volumes require approved operator provisioning rather than reset/reinitialization.
+- Added the Stage 06 operator runbook, production checklist, agent systemd unit/configuration template, deployment artifact validator, production configuration rejection of placeholders/weak session keys/unsafe timing, and independent two-second notification polling.
 
 ## In Progress
 
-- None. Stage 05 is complete; Stage 06 has not been started.
+- None. Stage 06 is complete.
 
 ## Verification Completed
 
@@ -52,6 +55,9 @@ Status: COMPLETE / ACCEPTED. Stage 06 has not been started.
 - Final Stage 04 acceptance verification: complete server suite passed (231 passed, 30 skipped, 0 failed). Ruff check and format check passed (64 files already formatted); strict mypy passed for 36 source files; migration history reports `7d2e8a91c4bf` as the sole head; `git diff --check` passed.
 - Stage 05 focused GPU/SMS/dashboard/configuration/worker/provider tests passed (38 passed).
 - Final Stage 05 server verification: full suite passed (241 passed, 33 skipped, 0 failed). Every skip requires the unavailable isolated MySQL URL. Ruff check and format check passed (66 files already formatted); strict mypy passed for 39 source files; Alembic history has sole head `a58c71d904ef`; `git diff --check` passed.
+- Stage 06 focused configuration/availability/worker/deployment-artifact tests: 38 passed. Full server suite: 248 passed, 33 real-MySQL-dependent tests skipped, 0 failed; the only warnings were upstream FastAPI/Starlette/Authlib deprecations.
+- Stage 06 full agent suite: 64 passed, 0 failed, 0 skipped. Server Ruff check/format passed (73 files); agent Ruff check/format passed (19 files). Strict mypy passed for 39 server source files and 11 agent source files using dedicated writable workspace caches because the default Windows cache path is ACL-restricted.
+- Stage 06 Alembic graph verification: sole head `a58c71d904ef`; complete linear history from `614a53a9e2cb`. `python scripts/validate_deployment.py` passed and `git diff --check` passed without whitespace errors.
 
 ## Verification Pending
 
@@ -60,6 +66,7 @@ Status: COMPLETE / ACCEPTED. Stage 06 has not been started.
 - Stage 04 real-MySQL migration and durable OAuth-transaction/session lifecycle verification are pending only because that retained instance cannot safely start. The tests are present; fake OIDC tests validate the application boundary but are not represented as real-Google or real-MySQL evidence.
 - Stage 05 real-MySQL migration, GPU incident/event/delivery lifecycle, offline supersession, and independent EMAIL/SMS retry tests are present but pending only because that retained instance cannot safely start. The retained data, ACLs and initialization state were not modified.
 - Linux host/systemd behavior, real NVIDIA hardware/driver behavior, actual HTTPS proxy/network transport, load/soak testing and production deployment remain unverified.
+- Stage 06 Docker image build/run, Compose rendering/network isolation/volume/log behavior, Caddy configuration/TLS/DNS/firewall behavior, Linux systemd sandbox compatibility, backup restore, and production smoke/load/soak verification remain environment-pending because Docker/Compose and Linux production infrastructure are unavailable locally.
 
 ## Files Changed
 
@@ -71,6 +78,7 @@ Status: COMPLETE / ACCEPTED. Stage 06 has not been started.
 - Stage 03: `server/app/health/`, `server/app/notifications/`, `server/app/worker.py`, `server/app/models/alerts.py`, heartbeat/configuration integration, migration `625bfa1677df`, focused Stage 03 tests, `.env.example`, and `server/pyproject.toml`.
 - Stage 04: `server/app/dashboard/`, `server/app/api/auth.py`, `server/app/api/dashboard.py`, `server/app/api/dashboard_page.py`, `server/app/templates/`, `server/app/static/`, authentication/read integration in `server/app/main.py`, additive migration `7d2e8a91c4bf`, configuration/dependency updates, `.env.example`, and focused dashboard tests.
 - Stage 05: `.env.example`, `server/app/gpu/`, GPU state model and heartbeat/availability/dashboard integration, notification worker/email routing, provider-neutral SMS adapter, additive migration `a58c71d904ef`, and focused GPU/SMS lifecycle tests.
+- Stage 06: `docker-compose.yml`, `deployment/docker/Dockerfile.server`, `deployment/caddy/Caddyfile`, `deployment/mysql/01-create-migration-user.sh`, `deployment/systemd/`, `deployment/production.env.example`, `scripts/validate_deployment.py`, `docs/PRODUCTION_CHECKLIST.md`, deployment/readme documentation, configuration/availability/heartbeat/worker integration, and focused deployment tests.
 
 ## Migrations Applied/Tested
 
@@ -79,6 +87,7 @@ Status: COMPLETE / ACCEPTED. Stage 06 has not been started.
 - Additive Stage 03 revision `625bfa1677df` is the current Alembic head and chains from `1b2785bb39ef`; it has not been applied in this session because the retained isolated MySQL data files are not writable.
 - Additive Stage 04 revision `7d2e8a91c4bf` chains from `625bfa1677df` and is the current Alembic head. It creates `admin_sessions` and `oauth_transactions`; it has not been applied in this session because the retained isolated MySQL data files are not writable.
 - Additive Stage 05 revision `a58c71d904ef` chains from `7d2e8a91c4bf` and is the sole Alembic head. It adds durable device GPU confirmation state; its real-MySQL application is environment-pending because the retained data files are not writable.
+- Stage 06 requires no schema change and adds no Alembic revision. Fresh Alembic `heads`/`history` verification confirms `a58c71d904ef` remains the sole linear head.
 - No production database was accessed. No downgrade, drop, reset or destructive database action occurred.
 
 ## Known Issues
@@ -91,6 +100,7 @@ Status: COMPLETE / ACCEPTED. Stage 06 has not been started.
 - No Stage 03 software acceptance blockers remain. Its MySQL-specific verification remains environment-pending rather than fabricated.
 - No Stage 04 software acceptance blockers remain. Its real-MySQL migration/session verification, production Google OIDC credentials, and real browser/HTTPS proxy verification remain environment-specific pending.
 - No Stage 05 software acceptance blockers remain. A production SMS vendor is intentionally not selected; the tested fake/no-network adapter records no external delivery and leaves vendor integration as an environment/product decision.
+- No Stage 06 software acceptance blockers remain. Docker/Compose/Caddy/Linux/backup execution and MySQL migration application are environment-specific operational verification, not fabricated as local evidence.
 
 ## Security Notes
 
@@ -99,6 +109,7 @@ Status: COMPLETE / ACCEPTED. Stage 06 has not been started.
 - A valid credential with a different payload device UUID returns 403 and cannot retrieve an acknowledgement.
 - Agent transport does not place credentials in URLs and does not disable TLS verification. GPU collection uses a fixed `nvidia-smi` argument list through `asyncio.create_subprocess_exec`.
 - Dashboard authentication uses Authlib validation rather than manually decoding JWTs. Google tokens are not persisted; only hashes of browser session/state/binding values and encrypted nonce/PKCE material are stored. Dashboard responses use `no-store`, the UI inserts dynamic values with `textContent`, and logout checks same-origin headers in addition to SameSite cookies.
+- Stage 06 keeps API/worker containers non-root and read-only, avoids automatic migrations, does not publish MySQL/API ports, bounds the Caddy request body to 128 KiB, rejects production placeholder/weak secrets, and does not trust arbitrary forwarded headers.
 
 ## Environment Limitations
 
@@ -107,23 +118,24 @@ Status: COMPLETE / ACCEPTED. Stage 06 has not been started.
 - Windows cache ACLs require Ruff `--no-cache` and mypy temporary-system cache directories.
 - Agent tests use controlled fixtures on Windows. No actual Linux systemd service, NVIDIA device, Caddy TLS endpoint or external network was exercised.
 - The retained isolated MySQL data files are not writable in this environment, preventing startup. Their ACLs and contents were not changed, and MySQL was not reset or reinitialized.
+- Docker CLI/Compose is unavailable on this Windows environment; no image build, container, proxy, volume, or Caddy runtime check was attempted through an alternative or destructive path.
 
 ## Next Action
 
-- Next stage: Stage 06 - Deployment + Production Hardening. Do not begin it in this checkpoint. Preserve `Local MySQL.session.sql` and leave the retained MySQL data directory untouched unless separately authorized.
+- Stage 06 is COMPLETE / ACCEPTED. Stop here; no Stage 07 is defined. Preserve `Local MySQL.session.sql` and leave the retained MySQL data directory untouched unless separately authorized.
 
 ## Latest Stage Completion
 
-- Stage: 05 - GPU Incidents + SMS Boundary.
+- Stage: 06 - Deployment + Production Hardening.
 - Status: COMPLETE / ACCEPTED.
-- Files changed: deterministic server GPU confirmation and durable state, heartbeat/availability/incident/event integration, GPU alert cancellation on offline/recovery, server-effective dashboard state, SMS recipient configuration, durable dual-channel jobs and worker routing, fake/no-network SMS providers, focused tests, and additive migration `a58c71d904ef`.
-- Migrations: `a58c71d904ef` is the additive sole head and has not been applied in this final session because the retained isolated MySQL data files are not writable. Previous successful Stage 02 real-MySQL 8.4.10/InnoDB and agent-to-API-to-MySQL vertical evidence remains recorded above. No production database was accessed.
-- Tests executed: focused Stage 05 tests 38 passed; final server suite 241 passed, 33 MySQL-dependent tests skipped, 0 failed; Ruff check/format passed; strict mypy passed for 39 source files; migration history and diff check passed.
-- Security implications: SMS recipients are validated server-controlled E.164 configuration, destinations are hashed in queue uniqueness fields, no vendor credentials or network adapter were added, provider failures are isolated per channel, and stable delivery UUIDs are retained for provider idempotency correlation.
+- Files changed: Compose/Caddy/Dockerfile/systemd/MySQL-init deployment artifacts; protected production template and deployment validator; operator runbook/checklist; configurable 75/180 availability timing and two-second notification polling; coordinated worker scheduler/shutdown; focused tests.
+- Migrations: no Stage 06 revision is required. `a58c71d904ef` remains the existing sole Alembic head. It was not reapplied because the retained isolated MySQL data files are unwritable; prior successful Stage 02 real-MySQL 8.4.10/InnoDB and agent-to-API-to-MySQL vertical evidence remains retained. No production database was accessed.
+- Tests executed: focused Stage 06 tests 38 passed; full server suite 248 passed, 33 MySQL-dependent tests skipped, 0 failed; full agent suite 64 passed; server/agent Ruff and format checks passed; strict mypy passed for 39 server and 11 agent files; Alembic history, deployment artifact validator, and diff check passed.
+- Security implications: only Caddy publishes 80/443; app containers are non-root/read-only; migrations are manual/profile-gated; Caddy blocks public health paths and bounds bodies; configuration rejects unsafe production values; no provider/network/production action occurred.
 - Known limitations: fresh Stage 03–05 MySQL migration/concurrency/lifecycle verification, production Google OIDC credentials, real browser/HTTPS/Caddy behavior, Linux/systemd, real NVIDIA hardware, real SMTP/SMS delivery and soak validation remain environment-specific pending. No SMS vendor has been selected.
-- Next stage: Stage 06 - Deployment + Production Hardening. Do not begin it in this session.
-- Worktree: dirty/uncommitted by request, containing the accepted Stage 05 implementation and status checkpoint.
+- Next stage: none. Stop after this accepted Stage 06 checkpoint.
+- Worktree: dirty/uncommitted by request, containing the accepted Stage 06 implementation and status checkpoint.
 
 ## Resume Command / Guidance
 
-Read AGENTS.md, this file, the Stage 06 section of `docs/IMPLEMENTATION_PLAN.md`, and the deployment/security specifications. Inspect the current Git diff and existing deployment assets before continuing. Production operations remain separately gated.
+Stage 06 is accepted and no Stage 07 is defined. Do not continue implementation without a new approved scope. Any production operation remains separately gated.

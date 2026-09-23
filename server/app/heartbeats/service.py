@@ -41,11 +41,17 @@ class HeartbeatService:
         allowed: Callable[[int], bool],
         email_recipients: tuple[str, ...] = (),
         sms_recipients: tuple[str, ...] = (),
+        suspect_after_seconds: int = 75,
+        offline_after_seconds: int = 180,
     ) -> None:
         self.database = database
         self.allowed = allowed
         self.availability = AvailabilityService(
-            database, email_recipients=email_recipients, sms_recipients=sms_recipients
+            database,
+            email_recipients=email_recipients,
+            sms_recipients=sms_recipients,
+            suspect_after_seconds=suspect_after_seconds,
+            offline_after_seconds=offline_after_seconds,
         )
         self.gpu = GPUIncidentService(
             email_recipients=email_recipients, sms_recipients=sms_recipients
