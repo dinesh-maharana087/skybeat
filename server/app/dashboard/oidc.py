@@ -3,8 +3,9 @@
 from collections.abc import Mapping
 from typing import Protocol
 
-from authlib.integrations.base_client.errors import OAuthError
-from authlib.integrations.starlette_client import OAuth
+from authlib.common.errors import AuthlibBaseError  # type: ignore[import-untyped]
+from authlib.integrations.base_client.errors import OAuthError  # type: ignore[import-untyped]
+from authlib.integrations.starlette_client import OAuth  # type: ignore[import-untyped]
 from httpx import HTTPError
 
 from app.dashboard.auth import VerifiedIdentity
@@ -62,7 +63,7 @@ class GoogleOIDCClient:
             if not isinstance(url, str):
                 raise OIDCError("Google authorization response was invalid.")
             return url
-        except (HTTPError, OAuthError, RuntimeError, ValueError) as error:
+        except (AuthlibBaseError, HTTPError, OAuthError, RuntimeError, ValueError) as error:
             raise OIDCError("Google authentication is temporarily unavailable.") from error
 
     async def verify_callback(
@@ -77,7 +78,7 @@ class GoogleOIDCClient:
                 code_verifier=code_verifier,
             )
             claims = await self._client.parse_id_token(token, nonce=nonce)
-        except (HTTPError, OAuthError, RuntimeError, ValueError) as error:
+        except (AuthlibBaseError, HTTPError, OAuthError, RuntimeError, ValueError) as error:
             raise OIDCError("Google authentication failed.") from error
         return _identity_from_claims(claims)
 

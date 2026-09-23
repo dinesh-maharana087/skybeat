@@ -4,6 +4,7 @@ import re
 from typing import Annotated, Literal, Self
 from urllib.parse import urlsplit
 
+from cryptography.fernet import Fernet
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
@@ -117,10 +118,25 @@ class Settings(BaseSettings):
             if not isinstance(domain, str):
                 raise ValueError("Allowed domains must be domain names.")
             hostname = domain.strip().lower()
-            if not re.fullmatch(r"(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", hostname):
+            if not re.fullmatch(
+                r"(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", hostname
+            ):
                 raise ValueError("Allowed domain is invalid.")
             normalized.append(hostname)
         return tuple(sorted(set(normalized)))
+
+    @field_validator("session_encryption_key", mode="before")
+    @classmethod
+    def validate_session_encryption_key(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Dashboard session encryption key is invalid.")
+        try:
+            Fernet(value.strip().encode("ascii"))
+        except (TypeError, ValueError, UnicodeEncodeError):
+            raise ValueError("Dashboard session encryption key is invalid.") from None
+        return value.strip()
 
     @property
     def dashboard_authorization_configured(self) -> bool:
@@ -162,5 +178,7 @@ class Settings(BaseSettings):
                 or self.google_client_secret is None
                 or self.session_encryption_key is None
             ):
-                raise ValueError("Production dashboard authentication requires protected OIDC settings.")
+                raise ValueError(
+                    "Production dashboard authentication requires protected OIDC settings."
+                )
         return self

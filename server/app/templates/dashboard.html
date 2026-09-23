@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SkyBeat Device Status</title>
+    <link rel="stylesheet" href="/static/dashboard.css">
+  </head>
+  <body>
+    <header>
+      <h1>SkyBeat Device Status</h1>
+      <p id="identity">{{ user_email }}</p>
+      <button id="logout" type="button">Log out</button>
+    </header>
+    <main>
+      <div class="controls">
+        <label>Search <input id="search" maxlength="128" autocomplete="off"></label>
+        <label>State
+          <select id="state">
+            <option value="">All states</option>
+            <option>ONLINE</option>
+            <option>SUSPECT</option>
+            <option>OFFLINE</option>
+            <option>AWAITING_FIRST_HEARTBEAT</option>
+          </select>
+        </label>
+      </div>
+      <p id="refresh-status" aria-live="polite">Loading current device status…</p>
+      <section id="devices" aria-live="polite"></section>
+      <section id="detail" aria-live="polite"></section>
+    </main>
+    <script src="/static/dashboard.js" defer></script>
+  </body>
+</html>

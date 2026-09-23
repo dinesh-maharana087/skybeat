@@ -34,4 +34,4 @@ class AuthorizationPolicy:
 
 def session_token_digest(token: str) -> bytes:
     """Return the only browser-session representation stored by the server."""
-    return sha256(token.encode("ascii")).digest()
+    return sha256(token.encode("utf-8")).digest()

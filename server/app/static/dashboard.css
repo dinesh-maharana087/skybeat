@@ -1,0 +1,9 @@
+body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 1rem; }
+header { display: flex; align-items: center; gap: 1rem; }
+#identity { margin-left: auto; overflow-wrap: anywhere; }
+.controls { display: flex; flex-wrap: wrap; gap: 1rem; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border-bottom: 1px solid #ddd; padding: .6rem; text-align: left; vertical-align: top; }
+.stale { background: #fff8e1; }
+#detail { margin-top: 1rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+#detail button { margin-bottom: .5rem; }

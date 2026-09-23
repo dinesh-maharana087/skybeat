@@ -143,3 +143,14 @@ def test_production_dashboard_requires_oidc_and_session_secret_configuration():
             allowed_hosts=["monitor.example.test"],
             allowed_emails=["ops@example.test"],
         )
+
+
+def test_dashboard_session_encryption_key_must_be_a_fernet_key_without_echoing_it():
+    invalid = "not-a-valid-fernet-key"
+    with pytest.raises(ValidationError) as error:
+        Settings(
+            env="test",
+            database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+            session_encryption_key=invalid,
+        )
+    assert invalid not in str(error.value)

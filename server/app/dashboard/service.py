@@ -30,6 +30,7 @@ class SessionRejected(DashboardAuthError):
 class LoginRedirect:
     url: str
     browser_binding: str
+    state: str
 
 
 @dataclass(frozen=True)
@@ -65,7 +66,7 @@ class DashboardAuthService:
             )
         except OIDCError as error:
             raise DashboardAuthError("Google authentication is temporarily unavailable.") from error
-        return LoginRedirect(url=url, browser_binding=binding)
+        return LoginRedirect(url=url, browser_binding=binding, state=state)
 
     async def complete_login(
         self, *, state: str, code: str, browser_binding: str, redirect_uri: str
