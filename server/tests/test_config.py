@@ -64,7 +64,13 @@ def test_database_url_must_be_explicit_safe_mysql(url):
 
 
 def test_production_requires_https_and_explicit_host_allowlist():
-    base = dict(env="production", database_url="mysql+pymysql://runtime:example@mysql/skybeat")
+    base = dict(
+        env="production",
+        database_url="mysql+pymysql://runtime:example@mysql/skybeat",
+        google_client_id="skybeat-test-client",
+        google_client_secret="not-a-real-secret",
+        session_encryption_key="MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
+    )
     with pytest.raises(ValidationError):
         Settings(
             **base,
@@ -107,4 +113,33 @@ def test_external_operation_limits_are_positive(setting, value):
     with pytest.raises(ValidationError):
         Settings(
             env="test", database_url="mysql+pymysql://test:example@localhost/db", **{setting: value}
+        )
+
+
+def test_dashboard_authorization_is_normalized_and_empty_policy_denies():
+    config = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+        allowed_emails=["OPS@example.test"],
+        allowed_domains=["Example.Test"],
+    )
+
+    assert config.allowed_emails == ("ops@example.test",)
+    assert config.allowed_domains == ("example.test",)
+    assert config.dashboard_authorization_configured
+
+    denied = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test"
+    )
+    assert not denied.dashboard_authorization_configured
+
+
+def test_production_dashboard_requires_oidc_and_session_secret_configuration():
+    with pytest.raises(ValidationError):
+        Settings(
+            env="production",
+            database_url="mysql+pymysql://runtime:example@mysql/skybeat",
+            public_base_url="https://monitor.example.test",
+            allowed_hosts=["monitor.example.test"],
+            allowed_emails=["ops@example.test"],
         )

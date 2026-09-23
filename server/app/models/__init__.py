@@ -181,9 +181,11 @@ from app.models.alerts import (  # noqa: E402
     NotificationAttempt,
     NotificationDelivery,
 )
+from app.models.auth import AdminSession, OAuthTransaction  # noqa: E402
 
 __all__ = [
     "AlertEvent",
+    "AdminSession",
     "AuditEvent",
     "Base",
     "Device",
@@ -194,5 +196,6 @@ __all__ = [
     "Incident",
     "NotificationAttempt",
     "NotificationDelivery",
+    "OAuthTransaction",
     "Project",
 ]

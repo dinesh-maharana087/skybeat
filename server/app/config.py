@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     notification_poll_seconds: int = Field(default=5, ge=1, le=60)
     notification_concurrency: int = Field(default=4, ge=1, le=4)
     alert_email_recipients: Annotated[tuple[str, ...], NoDecode] = ()
+    allowed_emails: Annotated[tuple[str, ...], NoDecode] = ()
+    allowed_domains: Annotated[tuple[str, ...], NoDecode] = ()
+    google_client_id: str | None = Field(default=None, min_length=1, max_length=255)
+    google_client_secret: SecretStr | None = Field(default=None, repr=False)
+    session_encryption_key: SecretStr | None = Field(default=None, repr=False)
+    oidc_timeout_seconds: int = Field(default=5, ge=1, le=15)
     smtp_host: str | None = Field(default=None, min_length=1, max_length=253)
     smtp_port: int = Field(default=587, ge=1, le=65535)
     smtp_username: str | None = Field(default=None, max_length=320)
@@ -84,6 +90,42 @@ class Settings(BaseSettings):
             normalized.append(address)
         return tuple(sorted(set(normalized)))
 
+    @field_validator("allowed_emails", mode="before")
+    @classmethod
+    def parse_allowed_emails(cls, value: object) -> object:
+        values = value.split(",") if isinstance(value, str) else value
+        if not isinstance(values, (list, tuple)):
+            return values
+        normalized = []
+        for email in values:
+            if not isinstance(email, str):
+                raise ValueError("Allowed emails must be email addresses.")
+            address = email.strip().lower()
+            if not re.fullmatch(r"[^\s@\r\n]{1,64}@[^\s@\r\n]{1,255}", address):
+                raise ValueError("Allowed email is invalid.")
+            normalized.append(address)
+        return tuple(sorted(set(normalized)))
+
+    @field_validator("allowed_domains", mode="before")
+    @classmethod
+    def parse_allowed_domains(cls, value: object) -> object:
+        values = value.split(",") if isinstance(value, str) else value
+        if not isinstance(values, (list, tuple)):
+            return values
+        normalized = []
+        for domain in values:
+            if not isinstance(domain, str):
+                raise ValueError("Allowed domains must be domain names.")
+            hostname = domain.strip().lower()
+            if not re.fullmatch(r"(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", hostname):
+                raise ValueError("Allowed domain is invalid.")
+            normalized.append(hostname)
+        return tuple(sorted(set(normalized)))
+
+    @property
+    def dashboard_authorization_configured(self) -> bool:
+        return bool(self.allowed_emails or self.allowed_domains)
+
     @field_validator("smtp_host", "smtp_username", "smtp_from_address", mode="before")
     @classmethod
     def normalize_optional_smtp_text(cls, value: object) -> object:
@@ -115,4 +157,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production email recipients require protected SMTP configuration."
                 )
+            if (
+                not self.google_client_id
+                or self.google_client_secret is None
+                or self.session_encryption_key is None
+            ):
+                raise ValueError("Production dashboard authentication requires protected OIDC settings.")
         return self
