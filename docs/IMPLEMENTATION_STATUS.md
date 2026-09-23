@@ -1,9 +1,9 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-09-22
+Last updated: 2026-09-23
 Current stage: Stage 02 - Heartbeat API + Agent
-Current milestone: Stage 02 incomplete - bounded system-collector shutdown and enforced safe logging
-Status: Blocked from safe Stage 02 completion by review findings; do not begin Stage 03.
+Current milestone: Stage 02 acceptance checkpoint
+Status: COMPLETE / ACCEPTED. Do not begin Stage 03 in this session.
 
 ## Completed
 
@@ -18,10 +18,12 @@ Status: Blocked from safe Stage 02 completion by review findings; do not begin S
 - Added bounded total transport attempts, 401/403 slow-probe pacing, capped Retry-After handling and 30-to-60-second outage pacing. Valid JSON-safe telemetry byte values up to `2^53 - 1` are accepted.
 - Moved synchronous heartbeat persistence off the ASGI event loop and added a concurrent-request regression test. Added narrowly fixture-tested NVIDIA driver failure classification.
 - Added cancellation-aware runtime handling for in-flight GPU collection and send operations, bounded startup/interval jitter, CPU priming, Linux OS telemetry semantics, controlled host/network failure coverage, and basic transport failure logging.
+- Resolved the final Stage 02 acceptance findings: synchronous host collection now runs in a killable spawned process with bounded cleanup, and process-wide agent log records are redacted with safe categorical collector-failure logging.
+- Completed the Windows-spawn-safe regression proving that a permanently stuck system collector does not prevent prompt agent shutdown.
 
 ## In Progress
 
-- Resolve the two final independent-review acceptance blockers before relying on the agent implementation or beginning Stage 03.
+- None. Stage 03 has not been started.
 
 ## Verification Completed
 
@@ -36,11 +38,11 @@ Status: Blocked from safe Stage 02 completion by review findings; do not begin S
 - Post-fix focused verification: agent suite 51 passed; server heartbeat contract/API suite 139 passed; real MySQL heartbeat and vertical integration suite 9 passed; full server suite 220 passed.
 - Post-fix Ruff check/format and strict mypy passed for server (19 source files) and agent (10 source files).
 - Final attempted verification: agent suite 61 passed; server suite 220 passed; agent Ruff/format/mypy passed for 11 source files; server Ruff/format/mypy passed for 19 source files; isolated MySQL migration state is `1b2785bb39ef (head)`.
+- Final fresh Stage 02 agent verification on Windows: `tests/test_runtime.py::test_agent_process_exits_promptly_when_system_collector_is_permanently_stuck` passed (1 passed); full agent suite passed (64 passed); Ruff check and format check passed (19 files already formatted); strict mypy passed (11 source files).
 
 ## Verification Pending
 
-- Independent final review found no remaining critical defect in streaming body limits, bounded subprocess handling, driver classification, numeric ranges, transport deadlines/pacing, or asynchronous DB offload.
-- Final independent review found two Stage 02 acceptance blockers; the passing suite is insufficient evidence for Stage 02 completion.
+- The retained isolated MySQL instance could not be started in this final session because its existing data files are not writable. ACLs, retained data, initialization and reset were deliberately left untouched. The prior successful real-MySQL 8.4.10/InnoDB evidence above remains the accepted Stage 02 database/vertical verification; a fresh repeat is environment-specific pending.
 - Linux host/systemd behavior, real NVIDIA hardware/driver behavior, actual HTTPS proxy/network transport, load/soak testing and production deployment remain unverified.
 
 ## Files Changed
@@ -59,9 +61,9 @@ Status: Blocked from safe Stage 02 completion by review findings; do not begin S
 
 ## Known Issues
 
-- Blocking Stage 02: `build_snapshot()` runs synchronous host collection through `asyncio.to_thread`. Runtime task cancellation does not terminate a stuck worker thread; a blocked psutil/filesystem call can therefore keep the agent process alive past the approved 15-second shutdown target. The new runtime tests cover blocked async GPU/send work but not a blocked synchronous host collector.
-- Blocking Stage 02: agent logging is not an enforced secret-redaction boundary. `logging.basicConfig` does not filter dependency/root output at DEBUG, and collector exceptions are converted to fallback telemetry without a safe operator-visible category. The current test covers one sender message only.
+- No Stage 02 acceptance blockers remain.
 - Environment-specific pending: real Linux process-group child cleanup, actual NVIDIA hardware/driver, real HTTPS/Caddy/network/TLS, Linux systemd shutdown, and soak validation remain unexercised on this Windows laptop.
+- The retained isolated MySQL data directory is currently not writable, so final-session real-MySQL rerun remains pending; no corrective or destructive action was taken.
 - The initial authenticated per-device rate limiter is intentionally in-process for the single-VM V1 baseline; it resets on API restart and must be revisited before horizontal scaling.
 - Starlette emits httpx and AnyIO deprecation warnings in tests; assess dependency compatibility before production rollout.
 
@@ -78,19 +80,26 @@ Status: Blocked from safe Stage 02 completion by review findings; do not begin S
 - Portable MySQL and isolated credentials remain ignored under `.tools/` and `.test-data/`; the unrelated local MySQL service on port 3306 was untouched.
 - Windows cache ACLs require Ruff `--no-cache` and mypy temporary-system cache directories.
 - Agent tests use controlled fixtures on Windows. No actual Linux systemd service, NVIDIA device, Caddy TLS endpoint or external network was exercised.
+- The retained isolated MySQL data files are not writable in this environment, preventing startup. Their ACLs and contents were not changed, and MySQL was not reset or reinitialized.
 
 ## Next Action
 
-- Exact next stage after Stage 02 acceptance: Stage 03 - Availability + Incidents + Email.
-- Recommended fresh-session action: read AGENTS.md, this file, only Stage 02 sections 10-17 of `docs/IMPLEMENTATION_PLAN.md` and the necessary API/agent/security specifications. Inspect `git status`, `git diff`, migrations and Stage 02 tests. First design and test a bounded system-collector execution boundary that cannot keep process shutdown alive; then add enforced log redaction and safe collector-failure logging tests. Preserve `Local MySQL.session.sql`; do not auto-commit or begin Stage 03.
+- Next stage: Stage 03 - Availability + Incidents + Email.
+- Stop after this Stage 02 acceptance checkpoint. A future Stage 03 session must follow the resume procedure, inspect the Git diff, and preserve `Local MySQL.session.sql`. Do not auto-commit.
 
 ## Latest Stage Completion
 
-- Stage: 01 - Foundation + Database + Device Identity.
-- Status: complete and verified locally. Stage 02 is not accepted: the prior critical defects and most remaining findings are fixed, but bounded synchronous host-collection shutdown and enforced safe logging remain blocking.
-- Stage 02 attempted verification: agent 61 passed; server 220 passed; contract/API 139 passed; real-MySQL and vertical integration 9 passed; Ruff/format/mypy passed; isolated migration is at `1b2785bb39ef (head)`. Two upstream TestClient deprecation warnings remain.
+- Stage: 02 - Heartbeat API + Agent.
+- Status: COMPLETE / ACCEPTED.
+- Files changed: Stage 02 server heartbeat/persistence implementation and migration; Stage 02 agent collection, runtime, transport, safe logging and tests; this checkpoint updates `docs/IMPLEMENTATION_STATUS.md`.
+- Migrations: additive Stage 02 revision `1b2785bb39ef` was previously applied and verified against isolated MySQL 8.4.10/InnoDB; no production database was accessed.
+- Tests executed: final fresh stuck-collector regression (1 passed), full agent suite (64 passed), agent Ruff check/format check (passed), agent strict mypy (11 source files, passed). Prior retained evidence: server suite 220 passed; strict contract/API 139 passed; real-MySQL heartbeat plus vertical integration 9 passed; server Ruff/format/mypy passed.
+- Passed: all fresh final-session checks. Failed: none. Skipped: none.
+- Security implications: bounded child cleanup prevents a stuck synchronous collector from delaying shutdown; the agent logging boundary redacts secrets. No production credentials, deployment, notifications, destructive database work or commits occurred.
+- Known limitations: final-session MySQL rerun is pending solely because the retained instance's data files are not writable; Linux/NVIDIA/systemd/TLS/soak validation remains environment-specific pending.
+- Next stage: Stage 03 - Availability + Incidents + Email. Do not begin it in this session.
 - Worktree intentionally remains dirty/uncommitted because no commit was requested.
 
 ## Resume Command / Guidance
 
-Read AGENTS.md, this file, Stage 02 sections 10-17 of `docs/IMPLEMENTATION_PLAN.md` and only necessary API/agent/security specifications. Inspect the Git diff and migrations before continuing. Resume with a design/test for bounded synchronous host collection and shutdown, followed by enforced log redaction and collector-failure diagnostics; do not begin Stage 03. Production operations remain separately gated.
+Read AGENTS.md, this file, the Stage 03 section of `docs/IMPLEMENTATION_PLAN.md`, and only necessary availability/alerting/security specifications. Inspect the current Git diff and migrations before beginning Stage 03. Production operations remain separately gated.
