@@ -32,6 +32,7 @@ def test_device_view_preserves_nulls_multiple_inventory_and_marks_offline_teleme
         last_seen_at=datetime(2026, 9, 23, 10, 0),
         availability_state="OFFLINE",
         gpu_monitoring_enabled=True,
+        gpu_effective_state="DRIVER_ERROR",
         expected_gpu_min_count=2,
         expected_gpu_uuids=["GPU-one", "GPU-two"],
     )
@@ -46,6 +47,7 @@ def test_device_view_preserves_nulls_multiple_inventory_and_marks_offline_teleme
     assert view["memory"]["total_bytes"] is None
     assert len(view["disks"]) == 2
     assert len(view["gpus"]) == 2
+    assert view["gpu_health"]["effective"] == "DRIVER_ERROR"
 
 
 def test_device_view_uses_awaiting_first_heartbeat_without_fabricating_telemetry():
@@ -56,6 +58,7 @@ def test_device_view_uses_awaiting_first_heartbeat_without_fabricating_telemetry
         last_seen_at=None,
         availability_state="ONLINE",
         gpu_monitoring_enabled=False,
+        gpu_effective_state="OK",
         expected_gpu_min_count=0,
         expected_gpu_uuids=[],
     )

@@ -1,5 +1,5 @@
 from app.config import Settings
-from app.worker import build_smtp_provider, run_once
+from app.worker import build_notification_providers, build_smtp_provider, run_once
 
 
 def _settings(**values):
@@ -26,12 +26,22 @@ def test_worker_builds_smtp_provider_only_from_protected_complete_configuration(
     assert provider.host == "smtp.example.test"
 
 
+def test_worker_uses_a_safe_sms_noop_until_a_vendor_adapter_is_approved():
+    providers = build_notification_providers(
+        _settings(sms_enabled=True, alert_sms_recipients=("+15551234567",))
+    )
+
+    assert set(providers) == {"SMS"}
+    assert providers["SMS"].send is not None
+
+
 def test_worker_run_once_sweeps_before_claiming_notification_work(monkeypatch):
     calls = []
 
     class Health:
-        def __init__(self, database, *, email_recipients):
+        def __init__(self, database, *, email_recipients, sms_recipients):
             assert email_recipients == ()
+            assert sms_recipients == ()
 
         def sweep(self):
             calls.append("sweep")

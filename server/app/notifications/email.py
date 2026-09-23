@@ -77,7 +77,12 @@ class SMTPEmailProvider:
     def _message(self, delivery: DeliveryMessage) -> EmailMessage:
         project = _safe_text(delivery.project_name)
         device = _safe_text(delivery.device_name)
-        event = "RECOVERED" if delivery.event_kind == "DEVICE_RECOVERED" else "OFFLINE"
+        event = {
+            "DEVICE_OFFLINE": "OFFLINE",
+            "DEVICE_RECOVERED": "RECOVERED",
+            "GPU_DEGRADED": "GPU DEGRADED",
+            "GPU_RECOVERED": "GPU RECOVERED",
+        }.get(delivery.event_kind, "ALERT")
         message = EmailMessage()
         message["From"] = self.from_address
         message["To"] = delivery.destination
@@ -97,7 +102,7 @@ class SMTPEmailProvider:
                     "Current state: OFFLINE",
                 )
             )
-        else:
+        elif event == "RECOVERED":
             duration = delivery.occurred_at - delivery.opened_at
             body.extend(
                 (
@@ -107,5 +112,23 @@ class SMTPEmailProvider:
                     "Current state: ONLINE",
                 )
             )
+        elif event == "GPU DEGRADED":
+            body.extend(
+                (
+                    "GPU health degradation was confirmed by two fresh observations.",
+                    f"Detected: {_wire_time(delivery.occurred_at)}",
+                    "Current GPU state requires investigation.",
+                )
+            )
+        elif event == "GPU RECOVERED":
+            body.extend(
+                (
+                    "GPU health recovery was confirmed by two fresh observations.",
+                    f"Recovered: {_wire_time(delivery.occurred_at)}",
+                    "Current GPU state: OK",
+                )
+            )
+        else:
+            body.append(f"Occurred: {_wire_time(delivery.occurred_at)}")
         message.set_content("\n".join(body) + "\n")
         return message

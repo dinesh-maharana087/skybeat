@@ -1,9 +1,9 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-09-23
-Current stage: Stage 04 - Dashboard + Google Authentication
-Current milestone: Stage 04 acceptance checkpoint
-Status: COMPLETE / ACCEPTED. Do not begin Stage 05 in this session.
+Current stage: Stage 05 - GPU Incidents + SMS Boundary
+Current milestone: Stage 05 acceptance checkpoint
+Status: COMPLETE / ACCEPTED. Stage 06 has not been started.
 
 ## Completed
 
@@ -25,10 +25,12 @@ Status: COMPLETE / ACCEPTED. Do not begin Stage 05 in this session.
 - Implemented Stage 04 Google OIDC authorization-code login/callback/logout through Authlib, with PKCE S256, state, nonce, a Secure/HttpOnly/SameSite=Lax host-only binding cookie, server-side short-lived single-use transactions, and opaque application-owned sessions.
 - Implemented deny-by-default dashboard authorization using a normalized exact email allowlist and/or Google-verified hosted-domain claim, including session revalidation after an allowlist change.
 - Added protected project, device, detail and alert-history APIs; a server-rendered Jinja Device Status page with safe DOM-only polling, stale telemetry labels, filters, and expandable detail/incident views.
+- Completed Stage 05 GPU lifecycle handling: server-policy-aware effective state, two-observation degradation/recovery semantics, 75-second maximum confirmation gap, CPU-only suppression, durable GPU incidents/events, stale-outage supersession, and dashboard effective-state projection.
+- Completed the provider-independent SMS boundary: validated server-controlled E.164 recipients, durable EMAIL/SMS queue jobs, channel-routed worker delivery/retry/idempotency reuse, deterministic fake provider, and a safe no-network disabled adapter pending a separately approved vendor.
 
 ## In Progress
 
-- None. Stage 05 has not been started.
+- None. Stage 05 is complete; Stage 06 has not been started.
 
 ## Verification Completed
 
@@ -48,12 +50,15 @@ Status: COMPLETE / ACCEPTED. Do not begin Stage 05 in this session.
 - Final Stage 03 acceptance verification: complete server suite passed (216 passed, 27 skipped, 0 failed); all skips require the unavailable isolated MySQL URL. Ruff check and format check passed (49 files already formatted); strict mypy passed (27 source files); migration history reports `625bfa1677df` as head; `git diff --check` passed.
 - Stage 04 focused verification: dashboard authorization/configuration/session-model/API/page/read-projection tests passed (32 passed); three new MySQL session-lifecycle tests collected and skipped only because `SKYBEAT_TEST_DATABASE_URL` is unavailable.
 - Final Stage 04 acceptance verification: complete server suite passed (231 passed, 30 skipped, 0 failed). Ruff check and format check passed (64 files already formatted); strict mypy passed for 36 source files; migration history reports `7d2e8a91c4bf` as the sole head; `git diff --check` passed.
+- Stage 05 focused GPU/SMS/dashboard/configuration/worker/provider tests passed (38 passed).
+- Final Stage 05 server verification: full suite passed (241 passed, 33 skipped, 0 failed). Every skip requires the unavailable isolated MySQL URL. Ruff check and format check passed (66 files already formatted); strict mypy passed for 39 source files; Alembic history has sole head `a58c71d904ef`; `git diff --check` passed.
 
 ## Verification Pending
 
 - The retained isolated MySQL instance could not be started in this final session because its existing data files are not writable. ACLs, retained data, initialization and reset were deliberately left untouched. The prior successful real-MySQL 8.4.10/InnoDB evidence above remains the accepted Stage 02 database/vertical verification; a fresh repeat is environment-specific pending.
 - Stage 03 real-MySQL migration, availability race, incident deduplication, delivery claiming and rollback verification are pending only because that retained instance cannot safely start. The tests are present; no substitute is treated as proof of MySQL behavior.
 - Stage 04 real-MySQL migration and durable OAuth-transaction/session lifecycle verification are pending only because that retained instance cannot safely start. The tests are present; fake OIDC tests validate the application boundary but are not represented as real-Google or real-MySQL evidence.
+- Stage 05 real-MySQL migration, GPU incident/event/delivery lifecycle, offline supersession, and independent EMAIL/SMS retry tests are present but pending only because that retained instance cannot safely start. The retained data, ACLs and initialization state were not modified.
 - Linux host/systemd behavior, real NVIDIA hardware/driver behavior, actual HTTPS proxy/network transport, load/soak testing and production deployment remain unverified.
 
 ## Files Changed
@@ -65,6 +70,7 @@ Status: COMPLETE / ACCEPTED. Do not begin Stage 05 in this session.
 - `agent/pyproject.toml`, `agent/requirements.lock`, `agent/src/`, `agent/tests/`
 - Stage 03: `server/app/health/`, `server/app/notifications/`, `server/app/worker.py`, `server/app/models/alerts.py`, heartbeat/configuration integration, migration `625bfa1677df`, focused Stage 03 tests, `.env.example`, and `server/pyproject.toml`.
 - Stage 04: `server/app/dashboard/`, `server/app/api/auth.py`, `server/app/api/dashboard.py`, `server/app/api/dashboard_page.py`, `server/app/templates/`, `server/app/static/`, authentication/read integration in `server/app/main.py`, additive migration `7d2e8a91c4bf`, configuration/dependency updates, `.env.example`, and focused dashboard tests.
+- Stage 05: `.env.example`, `server/app/gpu/`, GPU state model and heartbeat/availability/dashboard integration, notification worker/email routing, provider-neutral SMS adapter, additive migration `a58c71d904ef`, and focused GPU/SMS lifecycle tests.
 
 ## Migrations Applied/Tested
 
@@ -72,6 +78,7 @@ Status: COMPLETE / ACCEPTED. Do not begin Stage 05 in this session.
 - Additive Stage 02 revision `1b2785bb39ef` applied successfully to that same isolated database and exercised by real-MySQL tests. It creates `heartbeat_receipts`, `heartbeat_samples` and `device_latest`.
 - Additive Stage 03 revision `625bfa1677df` is the current Alembic head and chains from `1b2785bb39ef`; it has not been applied in this session because the retained isolated MySQL data files are not writable.
 - Additive Stage 04 revision `7d2e8a91c4bf` chains from `625bfa1677df` and is the current Alembic head. It creates `admin_sessions` and `oauth_transactions`; it has not been applied in this session because the retained isolated MySQL data files are not writable.
+- Additive Stage 05 revision `a58c71d904ef` chains from `7d2e8a91c4bf` and is the sole Alembic head. It adds durable device GPU confirmation state; its real-MySQL application is environment-pending because the retained data files are not writable.
 - No production database was accessed. No downgrade, drop, reset or destructive database action occurred.
 
 ## Known Issues
@@ -83,6 +90,7 @@ Status: COMPLETE / ACCEPTED. Do not begin Stage 05 in this session.
 - Starlette emits httpx and AnyIO deprecation warnings in tests; assess dependency compatibility before production rollout.
 - No Stage 03 software acceptance blockers remain. Its MySQL-specific verification remains environment-pending rather than fabricated.
 - No Stage 04 software acceptance blockers remain. Its real-MySQL migration/session verification, production Google OIDC credentials, and real browser/HTTPS proxy verification remain environment-specific pending.
+- No Stage 05 software acceptance blockers remain. A production SMS vendor is intentionally not selected; the tested fake/no-network adapter records no external delivery and leaves vendor integration as an environment/product decision.
 
 ## Security Notes
 
@@ -102,21 +110,20 @@ Status: COMPLETE / ACCEPTED. Do not begin Stage 05 in this session.
 
 ## Next Action
 
-- Next stage: Stage 05 - GPU Incidents + SMS Boundary.
-- Stop after this Stage 04 acceptance checkpoint. A future Stage 05 session must follow the resume procedure, inspect the current dirty/uncommitted worktree, preserve `Local MySQL.session.sql`, and leave the retained MySQL data directory untouched unless separately authorized.
+- Next stage: Stage 06 - Deployment + Production Hardening. Do not begin it in this checkpoint. Preserve `Local MySQL.session.sql` and leave the retained MySQL data directory untouched unless separately authorized.
 
 ## Latest Stage Completion
 
-- Stage: 04 - Dashboard + Google Authentication.
+- Stage: 05 - GPU Incidents + SMS Boundary.
 - Status: COMPLETE / ACCEPTED.
-- Files changed: Google OIDC/Authlib boundary, explicit authorization policy, opaque session and temporary OAuth models, additive migration `7d2e8a91c4bf`, authenticated dashboard read APIs, Jinja/CSS/JavaScript status page, protected configuration and focused tests; this checkpoint updates `docs/IMPLEMENTATION_STATUS.md`.
-- Migrations: `7d2e8a91c4bf` is the additive current head and has not been applied in this final session because the retained isolated MySQL data files are not writable. Previous successful Stage 02 real-MySQL and vertical evidence remains recorded above. No production database was accessed.
-- Tests executed: final server suite 231 passed, 30 MySQL-dependent tests skipped, 0 failed; Ruff check/format passed; strict mypy passed for 36 source files; migration history and diff check passed.
-- Security implications: Authlib validates Google ID-token signature/issuer/audience/expiry/nonce; Google tokens are transient; OAuth state is single-use and bound to a Secure cookie; opaque browser-session digests are the only session values retained; authorization is rechecked against live server configuration; API/page content is no-store and dynamically rendered values are escaped or DOM text.
-- Known limitations: fresh Stage 03/04 MySQL migration/concurrency/session verification, production Google OIDC credentials, real browser/HTTPS/Caddy behavior, Linux/systemd, real SMTP delivery and soak validation remain environment-specific pending.
-- Next stage: Stage 05 - GPU Incidents + SMS Boundary. Do not begin it in this session.
-- Worktree: dirty/uncommitted by request, containing the Stage 04 implementation and status checkpoint.
+- Files changed: deterministic server GPU confirmation and durable state, heartbeat/availability/incident/event integration, GPU alert cancellation on offline/recovery, server-effective dashboard state, SMS recipient configuration, durable dual-channel jobs and worker routing, fake/no-network SMS providers, focused tests, and additive migration `a58c71d904ef`.
+- Migrations: `a58c71d904ef` is the additive sole head and has not been applied in this final session because the retained isolated MySQL data files are not writable. Previous successful Stage 02 real-MySQL 8.4.10/InnoDB and agent-to-API-to-MySQL vertical evidence remains recorded above. No production database was accessed.
+- Tests executed: focused Stage 05 tests 38 passed; final server suite 241 passed, 33 MySQL-dependent tests skipped, 0 failed; Ruff check/format passed; strict mypy passed for 39 source files; migration history and diff check passed.
+- Security implications: SMS recipients are validated server-controlled E.164 configuration, destinations are hashed in queue uniqueness fields, no vendor credentials or network adapter were added, provider failures are isolated per channel, and stable delivery UUIDs are retained for provider idempotency correlation.
+- Known limitations: fresh Stage 03–05 MySQL migration/concurrency/lifecycle verification, production Google OIDC credentials, real browser/HTTPS/Caddy behavior, Linux/systemd, real NVIDIA hardware, real SMTP/SMS delivery and soak validation remain environment-specific pending. No SMS vendor has been selected.
+- Next stage: Stage 06 - Deployment + Production Hardening. Do not begin it in this session.
+- Worktree: dirty/uncommitted by request, containing the accepted Stage 05 implementation and status checkpoint.
 
 ## Resume Command / Guidance
 
-Read AGENTS.md, this file, the Stage 05 section of `docs/IMPLEMENTATION_PLAN.md`, and only necessary GPU/SMS specifications. Inspect the current Git diff and Stage 04 migration/tests before beginning Stage 05. Production operations remain separately gated.
+Read AGENTS.md, this file, the Stage 06 section of `docs/IMPLEMENTATION_PLAN.md`, and the deployment/security specifications. Inspect the current Git diff and existing deployment assets before continuing. Production operations remain separately gated.

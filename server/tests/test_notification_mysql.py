@@ -119,3 +119,34 @@ def test_recovery_finishes_inflight_outage_attempt_without_permitting_retry(
         attempt = session.scalar(select(NotificationAttempt))
         assert attempt is not None
         assert attempt.outcome == "TRANSIENT_FAILURE"
+
+
+def test_email_and_sms_deliveries_are_claimed_and_retried_independently(identity, mysql_database):
+    project = identity.create_project("Channel independence")
+    enrolled = identity.enroll(project.public_id, "Dual channel device")
+    with mysql_database.transaction() as session:
+        device = session.get(Device, enrolled.device.id)
+        assert device is not None
+        device.monitoring_started_at = database_utc(session) - timedelta(seconds=180)
+    AvailabilityService(
+        mysql_database,
+        email_recipients=("ops@example.test",),
+        sms_recipients=("+15551234567",),
+    ).sweep()
+    email = Provider(ProviderResult(ProviderOutcome.ACCEPTED, provider_message_id="email-id"))
+    sms = Provider(ProviderResult(ProviderOutcome.TRANSIENT_FAILURE, "sms_timeout"))
+
+    NotificationService(mysql_database, jitter=lambda _: 0).process_due(
+        {"EMAIL": email, "SMS": sms}
+    )
+
+    with mysql_database.transaction() as session:
+        deliveries = {
+            delivery.channel: delivery for delivery in session.scalars(select(NotificationDelivery))
+        }
+        assert deliveries["EMAIL"].status == "SUCCEEDED"
+        assert deliveries["EMAIL"].provider_message_id == "email-id"
+        assert deliveries["SMS"].status == "RETRY_WAIT"
+        assert deliveries["SMS"].last_error_category == "sms_timeout"
+    assert len(email.messages) == len(sms.messages) == 1
+    assert sms.messages[0].delivery_uuid

@@ -73,7 +73,7 @@ def device_view(
     payload = _mapping(latest.payload)
     gpu_health = _mapping(payload.get("gpu_health"))
     effective_gpu_health = (
-        "NOT MONITORED" if not device.gpu_monitoring_enabled else gpu_health.get("state", "UNKNOWN")
+        "NOT MONITORED" if not device.gpu_monitoring_enabled else device.gpu_effective_state
     )
     return {
         "device_id": device.device_uuid,

@@ -32,6 +32,22 @@ def test_global_alert_email_recipients_are_normalized_and_validate_header_safety
         )
 
 
+def test_global_sms_recipients_are_normalized_and_require_e164():
+    config = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+        sms_enabled=True,
+        alert_sms_recipients=["+15551234567", "+15551234567"],
+    )
+    assert config.alert_sms_recipients == ("+15551234567",)
+    with pytest.raises(ValidationError):
+        Settings(
+            env="test",
+            database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+            alert_sms_recipients=["5551234567"],
+        )
+
+
 def test_empty_optional_smtp_environment_values_do_not_block_monitoring_without_recipients():
     config = Settings(
         env="test",

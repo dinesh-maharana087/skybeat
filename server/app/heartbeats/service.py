@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.db import Database, database_utc
 from app.devices.service import IdentityService
+from app.gpu.service import GPUIncidentService
 from app.health.service import AvailabilityService
 from app.models import DeviceLatest, HeartbeatReceipt, HeartbeatSample
 from app.schemas.heartbeat import Heartbeat, normalized_payload, payload_digest
@@ -39,10 +40,16 @@ class HeartbeatService:
         *,
         allowed: Callable[[int], bool],
         email_recipients: tuple[str, ...] = (),
+        sms_recipients: tuple[str, ...] = (),
     ) -> None:
         self.database = database
         self.allowed = allowed
-        self.availability = AvailabilityService(database, email_recipients=email_recipients)
+        self.availability = AvailabilityService(
+            database, email_recipients=email_recipients, sms_recipients=sms_recipients
+        )
+        self.gpu = GPUIncidentService(
+            email_recipients=email_recipients, sms_recipients=sms_recipients
+        )
 
     def accept(self, heartbeat: Heartbeat, token: str) -> AcceptedHeartbeat:
         digest = payload_digest(heartbeat)
@@ -64,6 +71,7 @@ class HeartbeatService:
                 return AcceptedHeartbeat(receipt.response_payload)
             received_at = database_utc(session)
             self.availability.accept_heartbeat(session, device, received_at)
+            self.gpu.accept(session, device, payload, received_at)
             acknowledgement: dict[str, str | int] = {
                 "schema_version": 1,
                 "heartbeat_id": heartbeat.heartbeat_id,

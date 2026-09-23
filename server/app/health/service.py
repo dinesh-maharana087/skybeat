@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import Database, database_utc
+from app.gpu.service import GPUIncidentService
 from app.models import AlertEvent, Device, Incident, NotificationDelivery, Project
 
 
@@ -51,11 +52,18 @@ def validate_email_recipient(value: str) -> str:
 class AvailabilityService:
     """Serializes device availability with the same row lock used by heartbeat ingestion."""
 
-    def __init__(self, database: Database, *, email_recipients: tuple[str, ...] = ()) -> None:
+    def __init__(
+        self,
+        database: Database,
+        *,
+        email_recipients: tuple[str, ...] = (),
+        sms_recipients: tuple[str, ...] = (),
+    ) -> None:
         self.database = database
         self.email_recipients = tuple(
             sorted({validate_email_recipient(value) for value in email_recipients})
         )
+        self.sms_recipients = tuple(sorted(set(sms_recipients)))
 
     def sweep(self) -> None:
         """Evaluate every enabled device; the initial fleet is small enough for bounded scans."""
@@ -78,6 +86,7 @@ class AvailabilityService:
             if desired is AvailabilityState.OFFLINE:
                 device.availability_state = AvailabilityState.OFFLINE.value
                 self._ensure_offline_incident(session, device, now)
+                GPUIncidentService.reset_for_device_offline(session, device, now)
             elif device.availability_state != AvailabilityState.OFFLINE.value:
                 device.availability_state = desired.value
             device.updated_at = now
@@ -90,6 +99,7 @@ class AvailabilityService:
         if prior_state is AvailabilityState.OFFLINE:
             device.availability_state = AvailabilityState.OFFLINE.value
             self._ensure_offline_incident(session, device, received_at)
+            GPUIncidentService.reset_for_device_offline(session, device, received_at)
         device.last_seen_at = received_at
         if device.availability_state == AvailabilityState.OFFLINE.value:
             self._close_for_recovery(session, device, received_at)
@@ -180,15 +190,18 @@ class AvailabilityService:
         )
         session.add(event)
         session.flush()
-        for destination in self.email_recipients:
+        recipients = tuple(("EMAIL", "smtp", value) for value in self.email_recipients) + tuple(
+            ("SMS", "sms", value) for value in self.sms_recipients
+        )
+        for channel, provider, destination in recipients:
             session.add(
                 NotificationDelivery(
                     delivery_uuid=str(uuid4()),
                     event_id=event.id,
-                    channel="EMAIL",
+                    channel=channel,
                     recipient_key=sha256(destination.encode("utf-8")).hexdigest(),
                     destination_snapshot=destination,
-                    provider_name="smtp",
+                    provider_name=provider,
                     status="PENDING",
                     attempt_count=0,
                     next_attempt_at=now,

@@ -8,6 +8,7 @@ from app.db import Database
 from app.health.service import AvailabilityService
 from app.notifications.email import SMTPEmailProvider
 from app.notifications.service import NotificationProvider, NotificationService
+from app.notifications.sms import DisabledSMSProvider
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,29 @@ def build_smtp_provider(settings: Settings) -> SMTPEmailProvider | None:
     )
 
 
+def build_notification_providers(settings: Settings) -> dict[str, NotificationProvider]:
+    """Return independently routable providers; SMS remains deliberately vendor-neutral."""
+    providers: dict[str, NotificationProvider] = {}
+    email = build_smtp_provider(settings)
+    if email is not None:
+        providers["EMAIL"] = email
+    if settings.sms_enabled and settings.alert_sms_recipients:
+        providers["SMS"] = DisabledSMSProvider()
+    return providers
+
+
 def run_once(
-    settings: Settings, database: Database, *, provider: NotificationProvider | None
+    settings: Settings,
+    database: Database,
+    *,
+    provider: NotificationProvider | dict[str, NotificationProvider] | None,
 ) -> None:
     """Perform one bounded sweep and then attempt a bounded notification batch."""
-    AvailabilityService(database, email_recipients=settings.alert_email_recipients).sweep()
+    AvailabilityService(
+        database,
+        email_recipients=settings.alert_email_recipients,
+        sms_recipients=settings.alert_sms_recipients if settings.sms_enabled else (),
+    ).sweep()
     if provider is not None:
         NotificationService(database).process_due(provider, limit=settings.notification_concurrency)
 
@@ -39,15 +58,23 @@ def run_once(
 def main() -> None:
     settings = Settings()
     database = Database(settings)
-    provider = build_smtp_provider(settings)
-    if settings.alert_email_recipients and provider is None:
+    providers = build_notification_providers(settings)
+    if settings.alert_email_recipients and "EMAIL" not in providers:
         logger.error(
             "Email recipients configured without usable SMTP provider",
             extra={"event_type": "notification_configuration", "error_category": "smtp_missing"},
         )
+    if settings.sms_enabled and settings.alert_sms_recipients:
+        logger.warning(
+            "SMS recipients configured without a production SMS adapter",
+            extra={
+                "event_type": "notification_configuration",
+                "error_category": "sms_not_configured",
+            },
+        )
     try:
         while True:
-            run_once(settings, database, provider=provider)
+            run_once(settings, database, provider=providers)
             sleep(settings.health_sweep_seconds)
     finally:
         database.dispose()

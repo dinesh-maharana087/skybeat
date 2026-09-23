@@ -79,6 +79,10 @@ class Device(Base):
     )
     expected_gpu_min_count: Mapped[int] = mapped_column(BIGINT(unsigned=True))
     expected_gpu_uuids: Mapped[list[str]] = mapped_column(JSON)
+    gpu_effective_state: Mapped[str] = mapped_column(String(32), default="OK")
+    gpu_failure_streak: Mapped[int] = mapped_column(BIGINT(unsigned=True), default=0)
+    gpu_ok_streak: Mapped[int] = mapped_column(BIGINT(unsigned=True), default=0)
+    gpu_last_sample_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
     created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
     updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
 

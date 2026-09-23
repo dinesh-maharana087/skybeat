@@ -116,6 +116,11 @@ async def receive_heartbeat(request: Request) -> JSONResponse:
         request.app.state.database,
         allowed=request.app.state.heartbeat_limiter.allow,
         email_recipients=request.app.state.settings.alert_email_recipients,
+        sms_recipients=(
+            request.app.state.settings.alert_sms_recipients
+            if request.app.state.settings.sms_enabled
+            else ()
+        ),
     )
     try:
         accepted = await asyncio.to_thread(service.accept, heartbeat, token)

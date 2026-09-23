@@ -33,6 +33,7 @@ class ClaimedDelivery:
     delivery_id: int
     attempt_no: int
     lease_token: str
+    channel: str
     message: DeliveryMessage
 
 
@@ -45,11 +46,19 @@ class NotificationService:
         self.database = database
         self.jitter = jitter or (lambda delay: _jitter_random.uniform(0, delay * 0.1))
 
-    def process_due(self, provider: NotificationProvider, *, limit: int = 4) -> None:
+    def process_due(
+        self, provider: NotificationProvider | dict[str, NotificationProvider], *, limit: int = 4
+    ) -> None:
         self.recover_stuck()
         for claim in self.claim_due(limit=limit):
+            selected = provider.get(claim.channel) if isinstance(provider, dict) else provider
+            if selected is None:
+                self.record_result(
+                    claim, ProviderResult(ProviderOutcome.PERMANENT_FAILURE, "provider_missing")
+                )
+                continue
             try:
-                result = provider.send(claim.message)
+                result = selected.send(claim.message)
             except Exception:
                 logger.warning(
                     "Notification provider raised unexpectedly",
@@ -104,6 +113,7 @@ class NotificationService:
                         delivery_id=delivery.id,
                         attempt_no=delivery.attempt_count,
                         lease_token=lease_token,
+                        channel=delivery.channel,
                         message=DeliveryMessage(
                             delivery_uuid=delivery.delivery_uuid,
                             destination=delivery.destination_snapshot,

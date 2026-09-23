@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     notification_poll_seconds: int = Field(default=5, ge=1, le=60)
     notification_concurrency: int = Field(default=4, ge=1, le=4)
     alert_email_recipients: Annotated[tuple[str, ...], NoDecode] = ()
+    sms_enabled: bool = False
+    alert_sms_recipients: Annotated[tuple[str, ...], NoDecode] = ()
     allowed_emails: Annotated[tuple[str, ...], NoDecode] = ()
     allowed_domains: Annotated[tuple[str, ...], NoDecode] = ()
     google_client_id: str | None = Field(default=None, min_length=1, max_length=255)
@@ -89,6 +91,21 @@ class Settings(BaseSettings):
             if not re.fullmatch(r"[^\s@\r\n]{1,64}@[^\s@\r\n]{1,255}", address):
                 raise ValueError("Alert recipient is invalid.")
             normalized.append(address)
+        return tuple(sorted(set(normalized)))
+
+    @field_validator("alert_sms_recipients", mode="before")
+    @classmethod
+    def parse_alert_sms_recipients(cls, value: object) -> object:
+        values = value.split(",") if isinstance(value, str) else value
+        if not isinstance(values, (list, tuple)):
+            return values
+        normalized = []
+        for recipient in values:
+            if not isinstance(recipient, str) or not re.fullmatch(
+                r"\+[1-9]\d{7,14}", recipient.strip()
+            ):
+                raise ValueError("SMS recipients must be E.164 phone numbers.")
+            normalized.append(recipient.strip())
         return tuple(sorted(set(normalized)))
 
     @field_validator("allowed_emails", mode="before")

@@ -114,3 +114,38 @@ def test_smtp_timeout_is_retryable_without_provider_detail(monkeypatch):
 
     assert result.outcome is ProviderOutcome.TRANSIENT_FAILURE
     assert result.error_category == "smtp_unavailable"
+
+
+def test_smtp_provider_uses_gpu_specific_operational_content(monkeypatch):
+    sent = []
+
+    class SMTP:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def starttls(self, context):
+            assert context is not None
+
+        def send_message(self, message):
+            sent.append(message)
+            return {}
+
+    monkeypatch.setattr("app.notifications.email.smtplib.SMTP", SMTP)
+    provider = SMTPEmailProvider(
+        host="smtp.example.test",
+        port=587,
+        username=None,
+        password=None,
+        from_address="skybeat@example.test",
+        timeout_seconds=15,
+    )
+
+    assert provider.send(_message("GPU_DEGRADED")).outcome is ProviderOutcome.ACCEPTED
+    assert sent[0]["Subject"] == "[SkyBeat] GPU DEGRADED - Training Fleet / GPU host 01"
+    assert "two fresh observations" in sent[0].get_content()
