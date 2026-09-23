@@ -23,7 +23,18 @@ const includeDisabled = document.getElementById("include-disabled");
 const filters = document.getElementById("filters");
 const resetFilters = document.getElementById("reset-filters");
 const loadMore = document.getElementById("load-more");
-const detail = document.getElementById("detail");
+const detailPanel = document.getElementById("detail-panel");
+const detailTitle = document.getElementById("detail-title");
+const detailStatus = document.getElementById("detail-status");
+const detailRetry = document.getElementById("detail-retry");
+const detailClose = document.getElementById("detail-close");
+const detailIdentity = document.getElementById("detail-identity");
+const detailFreshness = document.getElementById("detail-freshness");
+const detailSystem = document.getElementById("detail-system");
+const detailStorage = document.getElementById("detail-storage");
+const detailGpus = document.getElementById("detail-gpus");
+const detailPolicy = document.getElementById("detail-policy");
+const detailIncidents = document.getElementById("detail-incidents");
 
 let refreshTimer = null;
 let searchTimer = null;
@@ -31,6 +42,11 @@ let refreshing = false;
 let loadingDevices = false;
 let nextCursor = null;
 let overviewTotal = null;
+let selectedDeviceId = null;
+let detailGeneration = 0;
+let detailAbortController = null;
+let detailLastSuccess = null;
+let detailOrigin = null;
 
 function element(tag, text) {
   const node = document.createElement(tag);
@@ -171,7 +187,8 @@ function deviceRow(item) {
   const deviceCell = document.createElement("td");
   const detailButton = element("button", displayValue(item.name));
   detailButton.type = "button";
-  detailButton.addEventListener("click", () => showDetail(item.device_id));
+  detailButton.ariaLabel = `View details for ${displayValue(item.name)}`;
+  detailButton.addEventListener("click", () => openDetail(item.device_id, detailButton));
   deviceCell.append(detailButton);
   row.append(deviceCell);
   const values = [
@@ -295,37 +312,257 @@ async function refreshDashboard() {
     else overviewStatus.textContent = "Unable to refresh overview. Displayed overview data was retained.";
     if (devicesSucceeded) applyDevicePayload(devicesResult.value);
     else showDeviceError();
-    if (overviewSucceeded && devicesSucceeded) markDashboardFresh(devicesResult.value.server_time);
-    else markDashboardStale();
+    if (overviewSucceeded && devicesSucceeded) {
+      markDashboardFresh(devicesResult.value.server_time);
+      await refreshOpenDetail();
+    } else markDashboardStale();
   } finally {
     refreshing = false;
     scheduleRefresh();
   }
 }
 
-async function showDetail(deviceId) {
-  detail.replaceChildren(element("p", "Loading device detail…"));
-  try {
-    const [deviceResponse, alertsResponse] = await Promise.all([
-      fetch(`/api/v1/devices/${encodeURIComponent(deviceId)}`, { credentials: "same-origin" }),
-      fetch(`/api/v1/devices/${encodeURIComponent(deviceId)}/alerts`, {
-        credentials: "same-origin",
-      }),
-    ]);
-    if (!deviceResponse.ok || !alertsResponse.ok) throw new Error("detail request failed");
-    const device = await deviceResponse.json();
-    const alerts = await alertsResponse.json();
-    const close = element("button", "Close detail");
-    close.type = "button";
-    close.addEventListener("click", () => detail.replaceChildren());
-    detail.replaceChildren(
-      close,
-      element("h2", displayValue(device.name)),
-      element("pre", JSON.stringify({ device, alerts: alerts.items }, null, 2))
-    );
-  } catch (_) {
-    detail.replaceChildren(element("p", "Unable to load device detail."));
+function detailPairs(target, pairs) {
+  target.replaceChildren();
+  for (const [label, value] of pairs) {
+    target.append(element("dt", label), element("dd", displayValue(value)));
   }
+}
+
+function formatBytes(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "—";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let amount = value;
+  let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) {
+    amount /= 1024;
+    unit += 1;
+  }
+  return `${amount.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+function formatTemperature(value) {
+  return typeof value === "number" && Number.isFinite(value) ? `${value} °C` : "—";
+}
+
+function resetDetailSections() {
+  for (const target of [
+    detailIdentity,
+    detailFreshness,
+    detailSystem,
+    detailPolicy,
+    detailStorage,
+    detailGpus,
+    detailIncidents,
+  ]) {
+    target.replaceChildren();
+  }
+}
+
+async function requestDeviceDetail(deviceId, signal) {
+  const response = await fetch(`/api/v1/devices/${encodeURIComponent(deviceId)}`, {
+    credentials: "same-origin",
+    signal,
+  });
+  if (!response.ok) throw new Error("device detail request failed");
+  return response.json();
+}
+
+async function requestDeviceIncidents(deviceId, signal) {
+  const query = new URLSearchParams({ limit: "20" });
+  query.set("device_id", deviceId);
+  const response = await fetch(`/api/v1/incidents?${query}`, {
+    credentials: "same-origin",
+    signal,
+  });
+  if (!response.ok) throw new Error("device incident request failed");
+  return response.json();
+}
+
+function renderDetail(device) {
+  detailTitle.textContent = `Device detail: ${displayValue(device.name)}`;
+  detailPairs(detailIdentity, [
+    ["Device name", device.name],
+    ["Device UUID", device.device_id],
+    ["Project", device.project?.name],
+    ["Monitoring", device.monitoring_enabled === true ? "Enabled" : "Disabled"],
+    ["Availability", device.state],
+    ["GPU health", device.gpu_health?.effective],
+  ]);
+  detailPairs(detailFreshness, [
+    ["Latest telemetry receipt", device.latest_received_at],
+    ["Last seen", device.last_seen_at],
+    ["Telemetry freshness", device.telemetry_stale === true ? "STALE" : "Current"],
+  ]);
+  const os = device.os ?? {};
+  detailPairs(detailSystem, [
+    ["Hostname", device.hostname],
+    ["Primary IP", device.primary_ip],
+    ["IP addresses", Array.isArray(device.ip_addresses) ? device.ip_addresses.join(", ") : null],
+    ["Operating system", os.name],
+    ["Architecture", os.architecture],
+    ["Agent version", device.agent_version],
+    ["Uptime", device.uptime_seconds],
+    ["CPU utilization", formatPercent(device.cpu?.utilization_percent)],
+    ["Memory utilization", formatPercent(device.memory?.utilization_percent)],
+  ]);
+  renderStorage(device.disks);
+  renderGpus(device.gpus);
+  const policy = device.expected_gpu_policy ?? {};
+  detailPairs(detailPolicy, [
+    ["Minimum expected GPU count", policy.minimum_count],
+    ["Expected GPU UUIDs", Array.isArray(policy.uuids) ? policy.uuids.join(", ") : null],
+  ]);
+}
+
+function renderStorage(disks) {
+  const items = Array.isArray(disks) ? disks : [];
+  if (!items.length) {
+    detailStorage.replaceChildren(element("p", "No storage telemetry available."));
+    return;
+  }
+  const list = document.createElement("div");
+  list.className = "detail-card-list";
+  for (const disk of items) {
+    const card = document.createElement("article");
+    card.className = "detail-card";
+    card.append(element("h4", `Filesystem: ${displayValue(disk.mountpoint ?? disk.path)}`));
+    const values = document.createElement("dl");
+    detailPairs(values, [
+      ["Total", formatBytes(disk.total_bytes)],
+      ["Used", formatBytes(disk.used_bytes)],
+      ["Available", formatBytes(disk.free_bytes ?? disk.available_bytes)],
+      ["Utilization", formatPercent(disk.utilization_percent)],
+    ]);
+    card.append(values);
+    list.append(card);
+  }
+  detailStorage.replaceChildren(list);
+}
+
+function renderGpus(gpus) {
+  const items = Array.isArray(gpus) ? gpus : [];
+  if (!items.length) {
+    detailGpus.replaceChildren(element("p", "No GPU telemetry available."));
+    return;
+  }
+  const list = document.createElement("div");
+  list.className = "detail-card-list";
+  for (const gpu of items) {
+    const card = document.createElement("article");
+    card.className = "detail-card";
+    card.append(element("h4", displayValue(gpu.name ?? gpu.model ?? gpu.uuid)));
+    const values = document.createElement("dl");
+    detailPairs(values, [
+      ["Index", gpu.index],
+      ["GPU UUID", gpu.uuid],
+      ["Utilization", formatPercent(gpu.utilization_percent)],
+      ["Temperature", formatTemperature(gpu.temperature_celsius)],
+      ["Memory used", formatBytes(gpu.memory_used_bytes)],
+      ["Memory total", formatBytes(gpu.memory_total_bytes)],
+    ]);
+    card.append(values);
+    list.append(card);
+  }
+  detailGpus.replaceChildren(list);
+}
+
+function renderIncidents(items) {
+  const incidents = Array.isArray(items) ? items : [];
+  if (!incidents.length) {
+    detailIncidents.replaceChildren(element("p", "No recent incidents for this device."));
+    return;
+  }
+  const list = document.createElement("ul");
+  list.className = "detail-incident-list";
+  for (const incident of incidents) {
+    const item = document.createElement("li");
+    item.append(
+      element("strong", `${displayValue(incident.type)} — ${displayValue(incident.status)}`),
+      element("span", `Reason: ${displayValue(incident.reason)}`),
+      element("span", `Opened: ${displayValue(incident.opened_at)}`),
+      element("span", `Closed: ${displayValue(incident.closed_at)}`),
+      element("span", `Resolution: ${displayValue(incident.resolution)}`)
+    );
+    list.append(item);
+  }
+  detailIncidents.replaceChildren(list);
+}
+
+function renderIncidentFailure() {
+  detailIncidents.replaceChildren(element("p", "Recent incidents are currently unavailable."));
+}
+
+function isCurrentDetailRequest(generation, deviceId) {
+  return generation === detailGeneration && deviceId === selectedDeviceId;
+}
+
+async function loadDetail(deviceId, { focus = false } = {}) {
+  detailGeneration += 1;
+  const generation = detailGeneration;
+  detailAbortController?.abort();
+  detailAbortController = new AbortController();
+  const { signal } = detailAbortController;
+  detailStatus.textContent = "Loading canonical device detail…";
+  detailRetry.hidden = true;
+  const [deviceResult, incidentResult] = await Promise.allSettled([
+    requestDeviceDetail(deviceId, signal),
+    requestDeviceIncidents(deviceId, signal),
+  ]);
+  if (!isCurrentDetailRequest(generation, deviceId) || signal.aborted) return;
+  if (deviceResult.status === "fulfilled") {
+    renderDetail(deviceResult.value);
+    detailLastSuccess = { deviceId, detail: deviceResult.value };
+    if (incidentResult.status === "fulfilled") {
+      renderIncidents(incidentResult.value.items);
+      detailStatus.textContent = "Current device detail.";
+    } else {
+      renderIncidentFailure();
+      detailStatus.textContent = "Device detail loaded; recent incidents are unavailable.";
+    }
+    if (focus) detailTitle.focus();
+    return;
+  }
+  if (detailLastSuccess?.deviceId === deviceId) {
+    detailStatus.textContent = "Device detail may be stale — refresh failed.";
+    if (incidentResult.status === "fulfilled") renderIncidents(incidentResult.value.items);
+    else renderIncidentFailure();
+    return;
+  }
+  resetDetailSections();
+  detailStatus.textContent = "Unable to load device detail.";
+  detailRetry.hidden = false;
+  if (focus) detailTitle.focus();
+}
+
+function openDetail(deviceId, origin) {
+  selectedDeviceId = deviceId;
+  detailOrigin = origin;
+  detailLastSuccess = null;
+  detailPanel.hidden = false;
+  detailTitle.textContent = "Loading device detail…";
+  detailTitle.focus();
+  resetDetailSections();
+  void loadDetail(deviceId, { focus: true });
+}
+
+async function refreshOpenDetail() {
+  if (selectedDeviceId === null || detailPanel.hidden) return;
+  await loadDetail(selectedDeviceId);
+}
+
+function closeDetail() {
+  detailGeneration += 1;
+  detailAbortController?.abort();
+  detailAbortController = null;
+  selectedDeviceId = null;
+  detailLastSuccess = null;
+  detailPanel.hidden = true;
+  detailStatus.textContent = "";
+  detailRetry.hidden = true;
+  const origin = detailOrigin;
+  detailOrigin = null;
+  if (origin?.isConnected) origin.focus();
 }
 
 filters.addEventListener("submit", (event) => {
@@ -344,6 +581,10 @@ resetFilters.addEventListener("click", () => {
   reloadDevices();
 });
 loadMore.addEventListener("click", loadMoreDevices);
+detailClose.addEventListener("click", closeDetail);
+detailRetry.addEventListener("click", () => {
+  if (selectedDeviceId !== null) void loadDetail(selectedDeviceId, { focus: true });
+});
 document.getElementById("logout").addEventListener("click", async () => {
   await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
   window.location.assign("/auth/google/login");
@@ -355,6 +596,9 @@ document.addEventListener("visibilitychange", () => {
     return;
   }
   refreshDashboard();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !detailPanel.hidden) closeDetail();
 });
 
 refreshDashboard();

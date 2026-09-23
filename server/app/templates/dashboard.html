@@ -103,7 +103,47 @@
         </section>
       </section>
 
-      <section id="detail" aria-live="polite"></section>
+      <aside id="detail-panel" class="detail-panel" role="complementary" aria-labelledby="detail-title" hidden>
+        <div class="detail-panel-header">
+          <div>
+            <p class="eyebrow">Selected device</p>
+            <h2 id="detail-title" tabindex="-1">Device detail</h2>
+          </div>
+          <button id="detail-close" type="button">Close detail</button>
+        </div>
+        <p id="detail-status" aria-live="polite"></p>
+        <button id="detail-retry" type="button" hidden>Retry detail</button>
+        <div id="detail-content">
+          <section aria-labelledby="detail-identity-heading">
+            <h3 id="detail-identity-heading">Identity</h3>
+            <dl id="detail-identity"></dl>
+          </section>
+          <section aria-labelledby="detail-freshness-heading">
+            <h3 id="detail-freshness-heading">Freshness</h3>
+            <dl id="detail-freshness"></dl>
+          </section>
+          <section aria-labelledby="detail-system-heading">
+            <h3 id="detail-system-heading">Host and system</h3>
+            <dl id="detail-system"></dl>
+          </section>
+          <section aria-labelledby="detail-storage-heading">
+            <h3 id="detail-storage-heading">Storage</h3>
+            <div id="detail-storage"></div>
+          </section>
+          <section aria-labelledby="detail-gpus-heading">
+            <h3 id="detail-gpus-heading">Observed GPUs</h3>
+            <div id="detail-gpus"></div>
+          </section>
+          <section aria-labelledby="detail-policy-heading">
+            <h3 id="detail-policy-heading">Expected GPU configuration</h3>
+            <dl id="detail-policy"></dl>
+          </section>
+          <section aria-labelledby="detail-incidents-heading">
+            <h3 id="detail-incidents-heading">Recent incidents</h3>
+            <div id="detail-incidents"></div>
+          </section>
+        </div>
+      </aside>
     </main>
     <script src="/static/dashboard.js" defer></script>
   </body>

@@ -83,11 +83,14 @@ async def incidents(
     _: DashboardUserDependency,
     limit: int = Query(default=50, ge=1, le=100),
     cursor: str | None = Query(default=None, max_length=512),
+    device_id: str | None = Query(default=None, max_length=36),
 ) -> JSONResponse:
     service: DashboardReadService = request.app.state.dashboard_read_service
     try:
-        payload = await asyncio.to_thread(service.list_incidents, limit=limit, cursor=cursor)
-    except ValueError as error:
+        payload = await asyncio.to_thread(
+            service.list_incidents, limit=limit, cursor=cursor, device_id=device_id
+        )
+    except (DashboardNotFound, ValueError) as error:
         raise HTTPException(status_code=422, detail="Dashboard query is invalid.") from error
     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 

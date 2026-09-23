@@ -98,7 +98,7 @@ select:focus-visible {
 #project-summary,
 .controls,
 .device-table-region,
-#detail {
+.detail-panel {
   background: #fff;
   border: 1px solid #cbd5e1;
   border-radius: .45rem;
@@ -137,8 +137,47 @@ td { overflow-wrap: anywhere; }
 .telemetry-stale td { background: #fff3d9; }
 #device-empty, #device-error { margin-top: .75rem; }
 #load-more { margin-top: .9rem; }
-#detail { margin-top: .75rem; overflow-wrap: anywhere; padding: 1rem; white-space: pre-wrap; }
-#detail button { margin-bottom: .6rem; }
+.detail-panel {
+  margin-top: .75rem;
+  overflow-wrap: anywhere;
+  padding: 1rem;
+}
+
+.detail-panel-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.detail-panel #detail-content { display: grid; gap: 1rem; margin-top: 1rem; }
+.detail-panel h3 { margin-bottom: .55rem; }
+.detail-panel h4 { font-size: .9rem; margin: 0 0 .5rem; overflow-wrap: anywhere; }
+.detail-panel dl { display: grid; gap: .35rem; margin: 0; }
+.detail-panel dt { color: #526275; font-size: .85rem; font-weight: 700; }
+.detail-panel dd { margin: 0; overflow-wrap: anywhere; }
+.detail-panel dd + dt { margin-top: .3rem; }
+.detail-card-list { display: grid; gap: .65rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+.detail-card { background: #f7f9fc; border: 1px solid #d8e0ea; border-radius: .35rem; padding: .75rem; }
+.detail-incident-list { display: grid; gap: .65rem; list-style: none; margin: 0; padding: 0; }
+.detail-incident-list li { display: grid; gap: .2rem; overflow-wrap: anywhere; }
+.detail-incident-list span { color: #526275; font-size: .9rem; }
+
+@media (min-width: 1081px) {
+  .detail-panel {
+    bottom: 0;
+    border-radius: .45rem 0 0 .45rem;
+    box-shadow: -0.35rem 0 1.25rem rgb(23 32 51 / 18%);
+    margin-top: 0;
+    max-width: 42rem;
+    overflow-y: auto;
+    position: fixed;
+    right: 0;
+    top: 0;
+    width: min(42rem, 48vw);
+    z-index: 2;
+  }
+}
 
 @media (max-width: 1080px) {
   .overview-cards { grid-template-columns: repeat(3, minmax(9rem, 1fr)); }
@@ -153,4 +192,5 @@ td { overflow-wrap: anywhere; }
   .controls label, .controls input, .controls select { width: 100%; }
   .checkbox-control { margin-top: 0; }
   .filter-actions { align-self: stretch; }
+  .detail-panel-header { align-items: flex-start; flex-direction: column; }
 }

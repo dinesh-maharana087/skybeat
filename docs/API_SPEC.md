@@ -1373,7 +1373,7 @@ Authentication:
 
 authorized browser session.
 
-Returns active and recent durable incidents, ordered by newest `opened_at` and stable incident identity descending. It accepts `limit` (default 50, minimum 1, maximum page size of 100) and an opaque validated `cursor`; it uses limit-plus-one keyset pagination.
+Returns active and recent durable incidents, ordered by newest `opened_at` and stable incident identity descending. It accepts `limit` (default 50, minimum 1, maximum page size of 100), an opaque validated `cursor`, and an optional canonical `device_id` UUID. When supplied, `device_id` is applied in the server-side incident query before the cursor and limit-plus-one keyset pagination; an unknown valid UUID returns an empty bounded page. It does not change the pagination ordering or response projection.
 
 Each display-safe item contains only incident ID, device UUID/display name, project display name, incident type, current reason, opened/closed timestamps, `ACTIVE` or `CLOSED` status, and stored resolution/close reason. It does not return alert-event payloads, delivery/provider data, recipient addresses, phone numbers, token material, or credentials.
 

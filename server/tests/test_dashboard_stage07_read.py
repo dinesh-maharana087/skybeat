@@ -125,6 +125,35 @@ def test_incident_projection_exposes_lifecycle_without_notification_destinations
     assert "destination" not in repr(item).lower()
 
 
+def test_incident_device_filter_is_applied_before_limit_plus_one(monkeypatch):
+    statements: list[object] = []
+
+    class Result:
+        def all(self):
+            return []
+
+    class Session:
+        def execute(self, statement):
+            statements.append(statement)
+            return Result()
+
+    class Database:
+        @contextmanager
+        def transaction(self):
+            yield Session()
+
+    monkeypatch.setattr(
+        read, "database_utc", lambda session: datetime(2026, 9, 23, 10, 0, tzinfo=UTC)
+    )
+
+    result = read.DashboardReadService(Database()).list_incidents(limit=50, device_id=DEVICE_UUID)
+
+    assert result["items"] == []
+    statement = statements[0]
+    assert "devices.device_uuid" in str(statement)
+    assert statement._limit_clause.value == 51
+
+
 def test_history_rejects_an_unsupported_range_before_database_access():
     service = read.DashboardReadService(object())
 

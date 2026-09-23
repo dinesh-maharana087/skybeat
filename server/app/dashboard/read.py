@@ -625,7 +625,9 @@ class DashboardReadService:
             device, project, latest = result
             return device_view(device, project, latest, now)
 
-    def list_incidents(self, *, limit: int = 50, cursor: str | None = None) -> dict[str, object]:
+    def list_incidents(
+        self, *, limit: int = 50, cursor: str | None = None, device_id: str | None = None
+    ) -> dict[str, object]:
         if not 1 <= limit <= 100:
             raise ValueError("Limit is outside the supported range.")
         page_cursor = decode_incident_cursor(cursor)
@@ -635,6 +637,8 @@ class DashboardReadService:
             .join(Project, Device.project_id == Project.id)
             .order_by(Incident.opened_at.desc(), Incident.id.desc())
         )
+        if device_id is not None:
+            statement = statement.where(Device.device_uuid == _uuid(device_id))
         if page_cursor is not None:
             statement = statement.where(
                 or_(

@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.dashboard.read import DashboardReadService
 from app.dashboard.service import DashboardUser, LoginRedirect
 from app.main import create_app
 
@@ -95,8 +96,12 @@ def test_authorized_incidents_and_history_use_bounded_read_projections():
             return DashboardUser("google-user", "ops@example.test", None)
 
     class DashboardRead:
-        def list_incidents(self, *, limit, cursor):
-            assert (limit, cursor) == (1, "incident-page-token")
+        def list_incidents(self, *, limit, cursor, device_id):
+            assert (limit, cursor, device_id) == (
+                1,
+                "incident-page-token",
+                "65f5cbda-529a-4f75-8ef1-aef3c57a5ff0",
+            )
             return {"items": [], "next_cursor": None, "server_time": "2026-09-23T10:00:00Z"}
 
         def device_history(self, device_uuid, range_name):
@@ -114,7 +119,10 @@ def test_authorized_incidents_and_history_use_bounded_read_projections():
     app.state.dashboard_read_service = DashboardRead()
     with TestClient(app, base_url="https://testserver") as client:
         client.cookies.set("__Host-skybeat_session", "valid-browser-session")
-        incidents = client.get("/api/v1/incidents?limit=1&cursor=incident-page-token")
+        incidents = client.get(
+            "/api/v1/incidents?limit=1&cursor=incident-page-token&"
+            "device_id=65f5cbda-529a-4f75-8ef1-aef3c57a5ff0"
+        )
         history = client.get(
             "/api/v1/devices/65f5cbda-529a-4f75-8ef1-aef3c57a5ff0/history?range=6h"
         )
@@ -139,6 +147,26 @@ def test_invalid_dashboard_read_query_keeps_no_store_response_header():
     with TestClient(app, base_url="https://testserver") as client:
         client.cookies.set("__Host-skybeat_session", "valid-browser-session")
         response = client.get("/api/v1/devices?gpu_state=not-a-state")
+
+    assert response.status_code == 422
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_invalid_incident_device_filter_is_rejected_before_database_access():
+    class AuthorizedSession:
+        def authenticate_session(self, token):
+            assert token == "valid-browser-session"
+            return DashboardUser("google-user", "ops@example.test", None)
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = AuthorizedSession()
+    app.state.dashboard_read_service = DashboardReadService(object())
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        response = client.get("/api/v1/incidents?device_id=not-a-canonical-uuid")
 
     assert response.status_code == 422
     assert response.headers["cache-control"] == "no-store"

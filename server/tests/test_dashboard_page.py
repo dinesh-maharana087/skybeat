@@ -18,6 +18,10 @@ def dashboard_template() -> str:
     return (TEMPLATE_ROOT / "dashboard.html").read_text(encoding="utf-8")
 
 
+def dashboard_styles() -> str:
+    return (STATIC_ROOT / "dashboard.css").read_text(encoding="utf-8")
+
+
 def test_dashboard_page_redirects_unauthenticated_browser_to_google_login():
     settings = Settings(
         env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
@@ -111,3 +115,70 @@ def test_dashboard_polling_waits_for_an_inflight_page_request_and_uses_visibilit
     assert "Promise.allSettled" in script
     assert "Dashboard data may be stale — refresh failed." in script
     assert "decode" not in script.lower()
+
+
+def test_dashboard_page_contains_accessible_device_detail_drawer():
+    class Authenticated:
+        def authenticate_session(self, token):
+            assert token == "valid-browser-session"
+            return DashboardUser("google-user", "ops@example.test", None)
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Authenticated()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'id="detail-panel"' in response.text
+    assert 'aria-labelledby="detail-title"' in response.text
+    assert 'id="detail-close"' in response.text
+    assert 'id="detail-retry"' in response.text
+    assert 'id="detail-incidents"' in response.text
+
+
+def test_dashboard_detail_uses_canonical_bounded_endpoints_with_race_and_scope_guards():
+    script = dashboard_script()
+
+    assert "fetch(`/api/v1/devices/${encodeURIComponent(deviceId)}`" in script
+    assert 'query.set("device_id", deviceId)' in script
+    assert "detailButton.ariaLabel" in script
+    assert "let detailGeneration" in script
+    assert "AbortController" in script
+    assert "refreshOpenDetail" in script
+    assert "/history" not in script
+    assert "JSON.stringify" not in script
+    for unsafe_api in (
+        "innerHTML",
+        "outerHTML",
+        "insertAdjacentHTML",
+        "document.write",
+        "eval(",
+    ):
+        assert unsafe_api not in script
+
+
+def test_dashboard_detail_resets_its_title_before_a_new_canonical_request():
+    script = dashboard_script()
+
+    assert 'detailTitle.textContent = "Loading device detail…";' in script
+    assert "detailTitle.focus();\n  resetDetailSections();" in script
+
+
+def test_dashboard_detail_is_a_right_side_drawer_on_wide_screens():
+    styles = dashboard_styles()
+
+    assert "@media (min-width: 1081px)" in styles
+    assert "position: fixed;" in styles
+
+
+def test_dashboard_detail_excludes_history_charts_and_raw_json():
+    script = dashboard_script()
+
+    assert "/history" not in script
+    assert "JSON.stringify" not in script
+    assert 'createElement("svg")' not in script
+    assert 'createElement("canvas")' not in script
