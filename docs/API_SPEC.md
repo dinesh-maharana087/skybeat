@@ -1089,6 +1089,20 @@ This endpoint is read-only.
 
 ---
 
+# 36.1 GET /api/v1/dashboard/overview
+
+Authentication:
+
+authorized browser session.
+
+Returns a bounded current-state projection for the operational dashboard. `counts` contains total devices, `online`, `suspect`, `offline`, `awaiting_first_heartbeat`, `gpu_problem`, and `active_incident`. Availability uses the same projection as `GET /api/v1/devices`: a device with no accepted heartbeat is `AWAITING_FIRST_HEARTBEAT`; other devices use their persisted server-authoritative availability state.
+
+`gpu_problem` counts effective GPU states other than `OK` and `NOT_MONITORED`. It does not create a separate GPU-health taxonomy.
+
+`projects` is ordered by project name and project UUID, contains at most 100 project summaries, and has `projects_truncated: true` only when additional projects exist. Every summary contains only a project ID, display name, and current availability counts. No device tree, credentials, session material, or notification data is returned.
+
+---
+
 # 37. GET /api/v1/devices
 
 Authentication:
@@ -1104,6 +1118,7 @@ project_id
 state
 include_disabled
 search
+gpu_state
 ```
 
 `limit`:
@@ -1113,6 +1128,8 @@ default 50
 minimum 1
 maximum 100
 ```
+
+Oversized limits are rejected with the standard validation response; the API does not clamp them.
 
 `state` may be:
 
@@ -1124,6 +1141,19 @@ AWAITING_FIRST_HEARTBEAT
 ```
 
 `project_id` filters devices by project.
+
+`gpu_state` may be one of the current effective states:
+
+```text
+OK
+GPU_MISSING
+NVIDIA_SMI_FAILED
+DRIVER_ERROR
+UNKNOWN
+NOT_MONITORED
+```
+
+Filtering uses the same effective GPU state returned in the device projection. `NOT_MONITORED` means server GPU monitoring is disabled; it is not a healthy GPU result.
 
 `search` may search safe server-managed/display fields such as:
 
@@ -1147,11 +1177,11 @@ device name
 device UUID
 ```
 
-Cursor values must be opaque to clients.
+Cursor values are versioned opaque keyset tokens, validated by the server. They are not a client contract for SQL state and malformed, oversized, mismatched, or type-invalid cursors receive the standard dashboard-query validation response.
 
-Do not expose raw SQL offsets or implementation internals through cursor encoding.
+The service fetches at most `limit + 1` records. `next_cursor` is present only when that extra record proves another page exists. Offset pagination is not used.
 
-For the initial 100-device fleet, conventional bounded pagination is sufficient; implementation should prioritize correctness and simplicity.
+The maximum page size of 100 bounds every response.
 
 ---
 
@@ -1174,6 +1204,8 @@ Example:
 
       "hostname": "edge-gpu-01",
 
+      "primary_ip": "192.0.2.10",
+
       "ip_addresses": [
         "192.0.2.10"
       ],
@@ -1185,6 +1217,8 @@ Example:
       "pending_first_heartbeat": false,
 
       "last_seen_at": "2026-09-21T10:30:00Z",
+
+      "latest_received_at": "2026-09-21T10:30:00Z",
 
       "telemetry_stale": false,
 
@@ -1223,7 +1257,9 @@ Example:
           "memory_used_bytes": 6442450944,
           "health": "OK"
         }
-      ]
+      ],
+
+      "gpu_count": 1
     }
   ],
 
@@ -1255,6 +1291,12 @@ memory = null
 disks = []
 
 gpus = []
+
+primary_ip = null
+
+latest_received_at = null
+
+gpu_count = null
 ```
 
 Do not fabricate zeros.
@@ -1302,6 +1344,7 @@ Includes:
 * device name
 * UUID
 * hostname
+* primary IP
 * IP addresses
 * OS
 * agent version
@@ -1313,6 +1356,7 @@ Includes:
 * full memory metrics
 * all disks
 * all GPUs
+* GPU count when a canonical latest inventory exists
 * reported GPU health
 * effective GPU health
 * expected GPU policy
@@ -1320,6 +1364,30 @@ Includes:
 * recent operational status if appropriate
 
 Credentials are never returned.
+
+---
+
+# 42.1 GET /api/v1/incidents
+
+Authentication:
+
+authorized browser session.
+
+Returns active and recent durable incidents, ordered by newest `opened_at` and stable incident identity descending. It accepts `limit` (default 50, minimum 1, maximum page size of 100) and an opaque validated `cursor`; it uses limit-plus-one keyset pagination.
+
+Each display-safe item contains only incident ID, device UUID/display name, project display name, incident type, current reason, opened/closed timestamps, `ACTIVE` or `CLOSED` status, and stored resolution/close reason. It does not return alert-event payloads, delivery/provider data, recipient addresses, phone numbers, token material, or credentials.
+
+---
+
+# 42.2 GET /api/v1/devices/{device_uuid}/history
+
+Authentication:
+
+authorized browser session.
+
+The required query is exactly `range=1h|6h|24h|7d`; arbitrary timestamps and durations are rejected. The endpoint reads canonical `heartbeat_samples` only and returns server-generated CPU-utilization, memory-utilization, and GPU utilization/temperature series. GPU history identifies a series by UUID when present, otherwise by canonical index.
+
+The server reads at most 5,001 newest samples and retains the newest 5,000. It returns points chronologically and deterministically downsamples every series to at most 240 chart points. It returns `truncated: true` when the raw cap was exceeded and `series_truncated: true` only when more than 64 distinct GPU series occur in the retained window. Missing metrics remain null or absent observations; no zero values or measurements are fabricated. The raw heartbeat payload is never returned.
 
 ---
 

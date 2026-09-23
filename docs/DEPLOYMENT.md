@@ -1198,7 +1198,7 @@ systemd
 Recommended:
 
 ```text
-/opt/skybeat-agent/
+/opt/skybeat/
 
 /etc/skybeat-agent/agent.env
 
@@ -1273,7 +1273,7 @@ Type=simple
 User=skybeat
 Group=skybeat
 EnvironmentFile=/etc/skybeat-agent/agent.env
-ExecStart=/opt/skybeat-agent/venv/bin/python -m skybeat_agent.main
+ExecStart=/opt/skybeat/venv/bin/skybeat-agent
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
@@ -2517,7 +2517,7 @@ For an upgrade: record deployed version and current revision, complete a backup,
 
 ## Agent installation, upgrade, and disable
 
-Agents run directly under systemd. On a supported Linux device, create a non-login `skybeat` system user with no sudo or Docker access. Install the agent under `/opt/skybeat-agent`, create its virtual environment from the pinned agent dependencies, and install `deployment/systemd/skybeat-agent.service` as `/etc/systemd/system/skybeat-agent.service`.
+Agents run directly under systemd. On a supported Linux device, create a non-login `skybeat` system user with no sudo or Docker access. Install the agent under `/opt/skybeat`, create its virtual environment from the pinned agent dependencies, and install `deployment/systemd/skybeat-agent.service` as `/etc/systemd/system/skybeat-agent.service`.
 
 Create `/etc/skybeat-agent/agent.env` from `deployment/systemd/agent.env.example`, replace its UUID and one-time enrollment token through a protected operator channel, and set owner `root:root` plus mode `0600`. Then run:
 

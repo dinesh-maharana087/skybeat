@@ -43,6 +43,9 @@ def test_device_view_preserves_nulls_multiple_inventory_and_marks_offline_teleme
     assert view["state"] == "OFFLINE"
     assert view["telemetry_stale"] is True
     assert view["name"] == "<script>alert(1)</script>"
+    assert view["primary_ip"] == "192.0.2.10"
+    assert view["latest_received_at"] == "2026-09-23T10:00:00.000000Z"
+    assert view["gpu_count"] == 2
     assert view["cpu"]["utilization_percent"] is None
     assert view["memory"]["total_bytes"] is None
     assert len(view["disks"]) == 2
@@ -68,6 +71,9 @@ def test_device_view_uses_awaiting_first_heartbeat_without_fabricating_telemetry
 
     assert view["state"] == "AWAITING_FIRST_HEARTBEAT"
     assert view["hostname"] is None
+    assert view["primary_ip"] is None
+    assert view["latest_received_at"] is None
+    assert view["gpu_count"] is None
     assert view["cpu"] is None
     assert view["disks"] == []
     assert view["gpus"] == []

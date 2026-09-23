@@ -1,9 +1,9 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-09-23
-Current stage: Stage 06 - Deployment + Production Hardening
-Current milestone: Stage 06 acceptance checkpoint
-Status: COMPLETE / ACCEPTED. No further V1 implementation stage is scheduled.
+Current stage: Stage 07 - Dashboard, Operational Visibility & Deployment Runbook
+Current milestone: Stage 07.2 - Operational Dashboard Read API
+Status: IN PROGRESS. Stage 07.2 is COMPLETE / ACCEPTED; Stage 07.3 has not started.
 
 ## Completed
 
@@ -30,10 +30,12 @@ Status: COMPLETE / ACCEPTED. No further V1 implementation stage is scheduled.
 - Completed Stage 06 Compose deployment artifacts: non-root read-only API/worker image, MySQL 8.4 persistent volume and health check, Caddy-only 80/443 publication, private API/worker/MySQL ports, log rotation, and an explicit profile-gated migration service that never runs at API/worker startup.
 - Added fresh-volume-only bootstrap of the distinct scoped MySQL migration account, with explicit documentation that retained volumes require approved operator provisioning rather than reset/reinitialization.
 - Added the Stage 06 operator runbook, production checklist, agent systemd unit/configuration template, deployment artifact validator, production configuration rejection of placeholders/weak session keys/unsafe timing, and independent two-second notification polling.
+- Completed Stage 07.1 deployment baseline: a dedicated deployment runbook, active agent-path standardization to `/opt/skybeat`, a root-operated idempotent installer that accepts only a source directory and protected environment file, and static safety validation. Stage 07 dashboard/API work has not started.
+- Completed Stage 07.2 bounded dashboard read APIs: canonical overview counts, effective-GPU filtered device keyset pagination, display-safe device/detail additions, durable incident projections, and capped server-side heartbeat history. No monitoring lifecycle or schema behavior changed.
 
 ## In Progress
 
-- None. Stage 06 is complete.
+- Stage 07 remains IN PROGRESS. Stages 07.1 and 07.2 are complete; Stage 07.3 dashboard UI work remains explicitly out of scope.
 
 ## Verification Completed
 
@@ -58,6 +60,10 @@ Status: COMPLETE / ACCEPTED. No further V1 implementation stage is scheduled.
 - Stage 06 focused configuration/availability/worker/deployment-artifact tests: 38 passed. Full server suite: 248 passed, 33 real-MySQL-dependent tests skipped, 0 failed; the only warnings were upstream FastAPI/Starlette/Authlib deprecations.
 - Stage 06 full agent suite: 64 passed, 0 failed, 0 skipped. Server Ruff check/format passed (73 files); agent Ruff check/format passed (19 files). Strict mypy passed for 39 server source files and 11 agent source files using dedicated writable workspace caches because the default Windows cache path is ACL-restricted.
 - Stage 06 Alembic graph verification: sole head `a58c71d904ef`; complete linear history from `614a53a9e2cb`. `python scripts/validate_deployment.py` passed and `git diff --check` passed without whitespace errors.
+- Operator-supplied Stage 06 acceptance evidence: an Ubuntu agent on an NVIDIA GeForce RTX 5080 (driver 595.84; CUDA 13.2 reported by `nvidia-smi`) installed under `/opt/skybeat` successfully sent HTTPS heartbeats through Caddy, FastAPI, and MySQL. Current device/latest/receipt/sample data showed ONLINE, GPU OK, CPU, memory, hostname, and GPU-summary telemetry. This report contains no credentials, tokens, private addresses, or raw telemetry and is distinct from local executable verification.
+- Stage 07.1 focused deployment artifact/status tests: final fresh run passed (7 passed, 2 Bash-execution checks skipped because Bash is unavailable on this Windows host). Full server suite: 253 passed, 35 skipped (33 isolated-MySQL-dependent tests plus 2 Bash-unavailable installer tests), 0 failed; upstream FastAPI/Starlette/Authlib deprecation warnings remain. Full agent suite: 64 passed, 0 skipped, 0 failed.
+- Stage 07.1 static verification: server Ruff/format passed (73 files) and strict mypy passed for 39 source files; agent Ruff/format passed (19 files) and strict mypy passed for 11 source files. Alembic `heads`/`history` confirms sole head `a58c71d904ef`; deployment validator and `git diff --check` passed.
+- Stage 07.2 focused dashboard read/API/page tests passed (19 passed). Full server suite passed (264 passed, 35 skipped, 0 failed): 33 skips require the unavailable isolated MySQL URL and 2 require unavailable Bash. Full agent suite passed (64 passed, 0 skipped, 0 failed). Server Ruff/format passed (74 files) and strict mypy passed for 39 source files; agent Ruff/format passed (19 files) and strict mypy passed for 11 source files. Alembic `heads`/`history` confirms sole head `a58c71d904ef`; deployment validator and `git diff --check` passed.
 
 ## Verification Pending
 
@@ -67,6 +73,8 @@ Status: COMPLETE / ACCEPTED. No further V1 implementation stage is scheduled.
 - Stage 05 real-MySQL migration, GPU incident/event/delivery lifecycle, offline supersession, and independent EMAIL/SMS retry tests are present but pending only because that retained instance cannot safely start. The retained data, ACLs and initialization state were not modified.
 - Linux host/systemd behavior, real NVIDIA hardware/driver behavior, actual HTTPS proxy/network transport, load/soak testing and production deployment remain unverified.
 - Stage 06 Docker image build/run, Compose rendering/network isolation/volume/log behavior, Caddy configuration/TLS/DNS/firewall behavior, Linux systemd sandbox compatibility, backup restore, and production smoke/load/soak verification remain environment-pending because Docker/Compose and Linux production infrastructure are unavailable locally.
+- Stage 07.1 Bash syntax validation and rejected-input execution tests remain environment-pending because this Windows host has no Bash. The installer itself was not run with valid inputs, so no user/service/directory/configuration change occurred. Linux systemd installation remains a real-host verification item.
+- Stage 07.2 real-MySQL query execution for overview aggregation, keyset pagination, incident ordering, and bounded heartbeat-history reads remains environment-pending because the retained isolated MySQL data files are not writable. No ACL, data, initialization, or reset action was taken.
 
 ## Files Changed
 
@@ -79,6 +87,8 @@ Status: COMPLETE / ACCEPTED. No further V1 implementation stage is scheduled.
 - Stage 04: `server/app/dashboard/`, `server/app/api/auth.py`, `server/app/api/dashboard.py`, `server/app/api/dashboard_page.py`, `server/app/templates/`, `server/app/static/`, authentication/read integration in `server/app/main.py`, additive migration `7d2e8a91c4bf`, configuration/dependency updates, `.env.example`, and focused dashboard tests.
 - Stage 05: `.env.example`, `server/app/gpu/`, GPU state model and heartbeat/availability/dashboard integration, notification worker/email routing, provider-neutral SMS adapter, additive migration `a58c71d904ef`, and focused GPU/SMS lifecycle tests.
 - Stage 06: `docker-compose.yml`, `deployment/docker/Dockerfile.server`, `deployment/caddy/Caddyfile`, `deployment/mysql/01-create-migration-user.sh`, `deployment/systemd/`, `deployment/production.env.example`, `scripts/validate_deployment.py`, `docs/PRODUCTION_CHECKLIST.md`, deployment/readme documentation, configuration/availability/heartbeat/worker integration, and focused deployment tests.
+- Stage 07.1: `docs/DEPLOYMENT_RUNBOOK.md`, active agent installation references in `AGENTS.md`, `docs/AGENT_SPEC.md`, and `docs/DEPLOYMENT.md`, `deployment/systemd/skybeat-agent.service`, `scripts/install-agent.sh`, deployment validator/static tests, and this checkpoint.
+- Stage 07.2: `server/app/dashboard/read.py`, `server/app/api/dashboard.py`, dashboard read/API tests, `docs/API_SPEC.md`, and this checkpoint.
 
 ## Migrations Applied/Tested
 
@@ -88,6 +98,8 @@ Status: COMPLETE / ACCEPTED. No further V1 implementation stage is scheduled.
 - Additive Stage 04 revision `7d2e8a91c4bf` chains from `625bfa1677df` and is the current Alembic head. It creates `admin_sessions` and `oauth_transactions`; it has not been applied in this session because the retained isolated MySQL data files are not writable.
 - Additive Stage 05 revision `a58c71d904ef` chains from `7d2e8a91c4bf` and is the sole Alembic head. It adds durable device GPU confirmation state; its real-MySQL application is environment-pending because the retained data files are not writable.
 - Stage 06 requires no schema change and adds no Alembic revision. Fresh Alembic `heads`/`history` verification confirms `a58c71d904ef` remains the sole linear head.
+- Stage 07.1 adds no schema change or Alembic revision; `a58c71d904ef` remains the verified sole head.
+- Stage 07.2 adds no schema change or Alembic revision; it uses the existing `heartbeat_samples(device_id, received_at)` index and `a58c71d904ef` remains the verified sole head.
 - No production database was accessed. No downgrade, drop, reset or destructive database action occurred.
 
 ## Known Issues
@@ -101,6 +113,8 @@ Status: COMPLETE / ACCEPTED. No further V1 implementation stage is scheduled.
 - No Stage 04 software acceptance blockers remain. Its real-MySQL migration/session verification, production Google OIDC credentials, and real browser/HTTPS proxy verification remain environment-specific pending.
 - No Stage 05 software acceptance blockers remain. A production SMS vendor is intentionally not selected; the tested fake/no-network adapter records no external delivery and leaves vendor integration as an environment/product decision.
 - No Stage 06 software acceptance blockers remain. Docker/Compose/Caddy/Linux/backup execution and MySQL migration application are environment-specific operational verification, not fabricated as local evidence.
+- No Stage 07.1 software acceptance blockers remain. Bash/systemd runtime execution is environment-pending; Stage 07 remains in progress pending explicitly deferred dashboard work.
+- No Stage 07.2 software acceptance blockers remain. Real-MySQL execution is environment-pending; Stage 07 remains in progress pending explicitly deferred dashboard UI work.
 
 ## Security Notes
 
@@ -110,6 +124,8 @@ Status: COMPLETE / ACCEPTED. No further V1 implementation stage is scheduled.
 - Agent transport does not place credentials in URLs and does not disable TLS verification. GPU collection uses a fixed `nvidia-smi` argument list through `asyncio.create_subprocess_exec`.
 - Dashboard authentication uses Authlib validation rather than manually decoding JWTs. Google tokens are not persisted; only hashes of browser session/state/binding values and encrypted nonce/PKCE material are stored. Dashboard responses use `no-store`, the UI inserts dynamic values with `textContent`, and logout checks same-origin headers in addition to SameSite cookies.
 - Stage 06 keeps API/worker containers non-root and read-only, avoids automatic migrations, does not publish MySQL/API ports, bounds the Caddy request body to 128 KiB, rejects production placeholder/weak secrets, and does not trust arbitrary forwarded headers.
+- Stage 07.1 installer rejects token/credential/secret options, requires root only after safe input validation, never reads or prints the protected environment file, installs it root-owned mode 0600, and keeps the running agent under `skybeat`. The runbook preserves mandatory TLS verification and treats private-CA trust only as a development/LAN procedure.
+- Stage 07.2 endpoints require the existing dashboard session dependency, use no-store responses, validate bounded inputs/cursors, expose projections rather than ORM records, and omit credentials, sessions, token digests, notification destinations, and provider data.
 
 ## Environment Limitations
 
@@ -122,20 +138,20 @@ Status: COMPLETE / ACCEPTED. No further V1 implementation stage is scheduled.
 
 ## Next Action
 
-- Stage 06 is COMPLETE / ACCEPTED. Stop here; no Stage 07 is defined. Preserve `Local MySQL.session.sql` and leave the retained MySQL data directory untouched unless separately authorized.
+- Stage 07.2 is COMPLETE. Stop before Stage 07.3; do not implement dashboard UI changes without a new approved scope. Preserve `Local MySQL.session.sql` and leave the retained MySQL data directory untouched unless separately authorized.
 
 ## Latest Stage Completion
 
-- Stage: 06 - Deployment + Production Hardening.
+- Stage: 07.2 - Operational Dashboard Read API.
 - Status: COMPLETE / ACCEPTED.
-- Files changed: Compose/Caddy/Dockerfile/systemd/MySQL-init deployment artifacts; protected production template and deployment validator; operator runbook/checklist; configurable 75/180 availability timing and two-second notification polling; coordinated worker scheduler/shutdown; focused tests.
-- Migrations: no Stage 06 revision is required. `a58c71d904ef` remains the existing sole Alembic head. It was not reapplied because the retained isolated MySQL data files are unwritable; prior successful Stage 02 real-MySQL 8.4.10/InnoDB and agent-to-API-to-MySQL vertical evidence remains retained. No production database was accessed.
-- Tests executed: focused Stage 06 tests 38 passed; full server suite 248 passed, 33 MySQL-dependent tests skipped, 0 failed; full agent suite 64 passed; server/agent Ruff and format checks passed; strict mypy passed for 39 server and 11 agent files; Alembic history, deployment artifact validator, and diff check passed.
-- Security implications: only Caddy publishes 80/443; app containers are non-root/read-only; migrations are manual/profile-gated; Caddy blocks public health paths and bounds bodies; configuration rejects unsafe production values; no provider/network/production action occurred.
-- Known limitations: fresh Stage 03–05 MySQL migration/concurrency/lifecycle verification, production Google OIDC credentials, real browser/HTTPS/Caddy behavior, Linux/systemd, real NVIDIA hardware, real SMTP/SMS delivery and soak validation remain environment-specific pending. No SMS vendor has been selected.
-- Next stage: none. Stop after this accepted Stage 06 checkpoint.
-- Worktree: dirty/uncommitted by request, containing the accepted Stage 06 implementation and status checkpoint.
+- Files changed: bounded dashboard read service/cursor/history projection, protected overview/device/incident/history endpoints, dashboard API contract, focused tests, and this checkpoint.
+- Migrations: no Stage 07.2 revision is required. `a58c71d904ef` remains the existing sole Alembic head; no database operation occurred.
+- Tests executed: focused Stage 07.2 dashboard suite 19 passed; full server suite 264 passed, 35 environment-dependent skips; full agent suite 64 passed; server/agent Ruff, format, and strict mypy passed; Alembic history, deployment validator, and diff check passed.
+- Security implications: every new read endpoint requires the existing dashboard authorization, returns no-store, has bounded pagination/history, and omits secrets, session data, credential digests, delivery destinations, and provider data.
+- Known limitations: real-MySQL execution, Bash/systemd, Docker/Compose, Linux, Caddy, real hardware, and production integration remain environment-pending as separately documented. No data or ACL was changed to make any check pass.
+- Next stage: Stage 07.3 dashboard UI work is explicitly not started.
+- Worktree: dirty/uncommitted by request, containing accepted Stage 06, Stage 07.1, and Stage 07.2 implementation.
 
 ## Resume Command / Guidance
 
-Stage 06 is accepted and no Stage 07 is defined. Do not continue implementation without a new approved scope. Any production operation remains separately gated.
+Stage 07.2 is accepted. Stop before Stage 07.3 unless the user supplies separate authorization. Any production operation remains separately gated.

@@ -289,7 +289,7 @@ Preferred configuration location:
 Application:
 
 ```text
-/opt/skybeat-agent
+/opt/skybeat
 ```
 
 Service:
@@ -1533,7 +1533,7 @@ Type=simple
 User=skybeat
 Group=skybeat
 EnvironmentFile=/etc/skybeat-agent/agent.env
-ExecStart=/opt/skybeat-agent/venv/bin/python -m skybeat_agent.main
+ExecStart=/opt/skybeat/venv/bin/skybeat-agent
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
@@ -1831,7 +1831,7 @@ Do not automatically revoke the old credential before successful validation.
 Recommended:
 
 ```text
-/opt/skybeat-agent/
+/opt/skybeat/
     venv/
     app/
 

@@ -14,6 +14,7 @@ REQUIRED = (
     "deployment/systemd/skybeat-agent.service",
     "deployment/systemd/agent.env.example",
     "deployment/production.env.example",
+    "scripts/install-agent.sh",
 )
 
 
@@ -25,6 +26,7 @@ def validate(root: Path) -> list[str]:
     caddy = (root / "deployment/caddy/Caddyfile").read_text(encoding="utf-8")
     dockerfile = (root / "deployment/docker/Dockerfile.server").read_text(encoding="utf-8")
     unit = (root / "deployment/systemd/skybeat-agent.service").read_text(encoding="utf-8")
+    installer = (root / "scripts/install-agent.sh").read_text(encoding="utf-8")
     required_compose = ("mysql:", "migrate:", "api:", "worker:", "caddy:", "profiles:")
     errors.extend(f"compose missing: {item}" for item in required_compose if item not in compose)
     if "3306:3306" in compose or "8000:8000" in compose:
@@ -37,8 +39,32 @@ def validate(root: Path) -> list[str]:
         errors.append("server image does not use the skybeat runtime user")
     if "max_size 128KiB" not in caddy or "/livez" not in caddy or "/readyz" not in caddy:
         errors.append("Caddy lacks request-size or internal-health protection")
-    required_unit = ("User=skybeat", "Restart=on-failure", "NoNewPrivileges=true")
+    required_unit = (
+        "User=skybeat",
+        "Restart=on-failure",
+        "NoNewPrivileges=true",
+        "EnvironmentFile=/etc/skybeat-agent/agent.env",
+        "ExecStart=/opt/skybeat/venv/bin/skybeat-agent",
+    )
     errors.extend(f"agent unit missing: {item}" for item in required_unit if item not in unit)
+    if "/opt/skybeat-agent" in unit:
+        errors.append("agent unit retains the legacy installation path")
+    required_installer = (
+        "set -euo pipefail",
+        '[[ "${EUID}" -eq 0 ]]',
+        "credential command-line arguments are not accepted",
+        "getent group skybeat",
+        "/opt/skybeat/venv",
+        "/etc/skybeat-agent/agent.env",
+        "install -m 0600",
+        "systemctl daemon-reload",
+        "systemctl enable --now skybeat-agent.service",
+    )
+    errors.extend(
+        f"agent installer missing: {item}" for item in required_installer if item not in installer
+    )
+    if "set -x" in installer or "verify=False" in installer:
+        errors.append("agent installer contains an unsafe diagnostic or TLS setting")
     return errors
 
 

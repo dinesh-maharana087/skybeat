@@ -46,6 +46,104 @@ def test_authorized_dashboard_api_uses_read_projection_and_does_not_expose_deliv
     assert response.headers["cache-control"] == "no-store"
 
 
+def test_authorized_overview_and_device_filter_use_bounded_read_projection():
+    class AuthorizedSession:
+        def authenticate_session(self, token):
+            assert token == "valid-browser-session"
+            return DashboardUser("google-user", "ops@example.test", None)
+
+    class DashboardRead:
+        def overview(self):
+            return {"counts": {"total": 1}, "projects": [], "server_time": "2026-09-23T10:00:00Z"}
+
+        def list_devices(self, **query):
+            assert query == {
+                "project_id": None,
+                "state": None,
+                "gpu_state": "DRIVER_ERROR",
+                "include_disabled": False,
+                "search": None,
+                "cursor": "opaque-page-token",
+                "limit": 1,
+            }
+            return {"items": [], "next_cursor": None, "server_time": "2026-09-23T10:00:00Z"}
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = AuthorizedSession()
+    app.state.dashboard_read_service = DashboardRead()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        overview = client.get("/api/v1/dashboard/overview")
+        devices = client.get(
+            "/api/v1/devices?limit=1&gpu_state=DRIVER_ERROR&cursor=opaque-page-token"
+        )
+
+    assert overview.status_code == 200
+    assert overview.headers["cache-control"] == "no-store"
+    assert overview.json()["counts"] == {"total": 1}
+    assert devices.status_code == 200
+    assert devices.headers["cache-control"] == "no-store"
+
+
+def test_authorized_incidents_and_history_use_bounded_read_projections():
+    class AuthorizedSession:
+        def authenticate_session(self, token):
+            assert token == "valid-browser-session"
+            return DashboardUser("google-user", "ops@example.test", None)
+
+    class DashboardRead:
+        def list_incidents(self, *, limit, cursor):
+            assert (limit, cursor) == (1, "incident-page-token")
+            return {"items": [], "next_cursor": None, "server_time": "2026-09-23T10:00:00Z"}
+
+        def device_history(self, device_uuid, range_name):
+            assert (device_uuid, range_name) == (
+                "65f5cbda-529a-4f75-8ef1-aef3c57a5ff0",
+                "6h",
+            )
+            return {"range": "6h", "truncated": False, "cpu_utilization": []}
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = AuthorizedSession()
+    app.state.dashboard_read_service = DashboardRead()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        incidents = client.get("/api/v1/incidents?limit=1&cursor=incident-page-token")
+        history = client.get(
+            "/api/v1/devices/65f5cbda-529a-4f75-8ef1-aef3c57a5ff0/history?range=6h"
+        )
+
+    assert incidents.status_code == 200
+    assert incidents.headers["cache-control"] == "no-store"
+    assert history.status_code == 200
+    assert history.headers["cache-control"] == "no-store"
+
+
+def test_invalid_dashboard_read_query_keeps_no_store_response_header():
+    class AuthorizedSession:
+        def authenticate_session(self, token):
+            assert token == "valid-browser-session"
+            return DashboardUser("google-user", "ops@example.test", None)
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = AuthorizedSession()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        response = client.get("/api/v1/devices?gpu_state=not-a-state")
+
+    assert response.status_code == 422
+    assert response.headers["cache-control"] == "no-store"
+
+
 def test_google_login_callback_and_logout_use_host_only_opaque_cookies():
     class FakeAuth:
         async def begin_login(self, redirect_uri):

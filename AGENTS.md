@@ -1322,7 +1322,7 @@ systemd service
 Preferred paths:
 
 ```text
-/opt/skybeat-agent
+/opt/skybeat
 
 /etc/skybeat-agent/agent.env
 
