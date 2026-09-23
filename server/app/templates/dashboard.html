@@ -7,26 +7,102 @@
     <link rel="stylesheet" href="/static/dashboard.css">
   </head>
   <body>
-    <header>
-      <h1>SkyBeat Device Status</h1>
-      <p id="identity">{{ user_email }}</p>
-      <button id="logout" type="button">Log out</button>
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">SkyBeat</p>
+        <h1>Device Status</h1>
+      </div>
+      <div class="account-actions">
+        <p id="identity">{{ user_email }}</p>
+        <button id="logout" type="button">Log out</button>
+      </div>
     </header>
     <main>
-      <div class="controls">
-        <label>Search <input id="search" maxlength="128" autocomplete="off"></label>
-        <label>State
-          <select id="state">
-            <option value="">All states</option>
-            <option>ONLINE</option>
-            <option>SUSPECT</option>
-            <option>OFFLINE</option>
-            <option>AWAITING_FIRST_HEARTBEAT</option>
-          </select>
-        </label>
-      </div>
-      <p id="refresh-status" aria-live="polite">Loading current device status…</p>
-      <section id="devices" aria-live="polite"></section>
+      <section class="refresh-meta" aria-label="Dashboard refresh status">
+        <p id="last-refresh" aria-live="polite">Last successful refresh: not yet available.</p>
+        <p id="dashboard-stale-warning" role="status" hidden>
+          Dashboard data may be stale — refresh failed.
+        </p>
+      </section>
+
+      <section aria-labelledby="overview-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Current state</p>
+            <h2 id="overview-heading">Fleet overview</h2>
+          </div>
+          <p id="overview-status" aria-live="polite">Loading overview…</p>
+        </div>
+        <div id="overview-cards" class="overview-cards" aria-label="Current device overview"></div>
+        <p id="awaiting-first-heartbeat" class="secondary-count"></p>
+      </section>
+
+      <section id="project-summary" aria-labelledby="project-summary-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Organisation</p>
+            <h2 id="project-summary-heading">Projects</h2>
+          </div>
+        </div>
+        <div id="project-summary-content"></div>
+      </section>
+
+      <section aria-labelledby="device-status-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Operations</p>
+            <h2 id="device-status-heading">Devices</h2>
+          </div>
+          <p id="refresh-status" aria-live="polite">Loading current device status…</p>
+        </div>
+
+        <form id="filters" class="controls" novalidate>
+          <label for="project-filter">Project
+            <select id="project-filter" name="project_id">
+              <option value="">All projects</option>
+            </select>
+          </label>
+          <label for="state-filter">Availability
+            <select id="state-filter" name="state">
+              <option value="">All availability states</option>
+              <option value="ONLINE">ONLINE</option>
+              <option value="SUSPECT">SUSPECT</option>
+              <option value="OFFLINE">OFFLINE</option>
+              <option value="AWAITING_FIRST_HEARTBEAT">AWAITING_FIRST_HEARTBEAT</option>
+            </select>
+          </label>
+          <label for="gpu-state-filter">GPU state
+            <select id="gpu-state-filter" name="gpu_state">
+              <option value="">All GPU states</option>
+              <option value="OK">OK</option>
+              <option value="GPU_MISSING">GPU_MISSING</option>
+              <option value="NVIDIA_SMI_FAILED">NVIDIA_SMI_FAILED</option>
+              <option value="DRIVER_ERROR">DRIVER_ERROR</option>
+              <option value="UNKNOWN">UNKNOWN</option>
+              <option value="NOT_MONITORED">NOT_MONITORED</option>
+            </select>
+          </label>
+          <label for="search">Search
+            <input id="search" name="search" maxlength="128" autocomplete="off" placeholder="Device or hostname">
+          </label>
+          <label class="checkbox-control" for="include-disabled">
+            <input id="include-disabled" name="include_disabled" type="checkbox">
+            Include disabled devices
+          </label>
+          <div class="filter-actions">
+            <button type="submit">Apply filters</button>
+            <button id="reset-filters" type="button">Reset filters</button>
+          </div>
+        </form>
+
+        <section class="device-table-region" aria-label="Current device status table">
+          <div id="devices" aria-live="polite"></div>
+          <p id="device-empty" role="status" hidden></p>
+          <p id="device-error" role="alert" hidden></p>
+          <button id="load-more" type="button" hidden>Load more devices</button>
+        </section>
+      </section>
+
       <section id="detail" aria-live="polite"></section>
     </main>
     <script src="/static/dashboard.js" defer></script>
