@@ -113,7 +113,9 @@ async def receive_heartbeat(request: Request) -> JSONResponse:
             request, exc.status_code, exc.code, "Heartbeat payload is invalid.", fields=exc.fields
         )
     service = HeartbeatService(
-        request.app.state.database, allowed=request.app.state.heartbeat_limiter.allow
+        request.app.state.database,
+        allowed=request.app.state.heartbeat_limiter.allow,
+        email_recipients=request.app.state.settings.alert_email_recipients,
     )
     try:
         accepted = await asyncio.to_thread(service.accept, heartbeat, token)

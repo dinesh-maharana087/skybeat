@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.db import Database, database_utc
 from app.devices.service import IdentityService
+from app.health.service import AvailabilityService
 from app.models import DeviceLatest, HeartbeatReceipt, HeartbeatSample
 from app.schemas.heartbeat import Heartbeat, normalized_payload, payload_digest
 
@@ -32,9 +33,16 @@ def wire_time(value: datetime) -> str:
 
 
 class HeartbeatService:
-    def __init__(self, database: Database, *, allowed: Callable[[int], bool]) -> None:
+    def __init__(
+        self,
+        database: Database,
+        *,
+        allowed: Callable[[int], bool],
+        email_recipients: tuple[str, ...] = (),
+    ) -> None:
         self.database = database
         self.allowed = allowed
+        self.availability = AvailabilityService(database, email_recipients=email_recipients)
 
     def accept(self, heartbeat: Heartbeat, token: str) -> AcceptedHeartbeat:
         digest = payload_digest(heartbeat)
@@ -55,6 +63,7 @@ class HeartbeatService:
                     raise HeartbeatConflict()
                 return AcceptedHeartbeat(receipt.response_payload)
             received_at = database_utc(session)
+            self.availability.accept_heartbeat(session, device, received_at)
             acknowledgement: dict[str, str | int] = {
                 "schema_version": 1,
                 "heartbeat_id": heartbeat.heartbeat_id,
@@ -102,6 +111,4 @@ class HeartbeatService:
             else:
                 for key, value in values.items():
                     setattr(latest, key, value)
-            device.last_seen_at = received_at
-            device.updated_at = received_at
         return AcceptedHeartbeat(acknowledgement)

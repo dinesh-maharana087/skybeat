@@ -1,5 +1,6 @@
 """Validated, secret-safe runtime configuration."""
 
+import re
 from typing import Annotated, Literal, Self
 from urllib.parse import urlsplit
 
@@ -30,6 +31,15 @@ class Settings(BaseSettings):
     db_write_timeout_seconds: int = Field(default=3, ge=1, le=10)
     db_lock_timeout_seconds: int = Field(default=1, ge=1, le=3)
     db_select_timeout_ms: int = Field(default=3000, ge=100, le=10000)
+    health_sweep_seconds: int = Field(default=5, ge=1, le=60)
+    notification_poll_seconds: int = Field(default=5, ge=1, le=60)
+    notification_concurrency: int = Field(default=4, ge=1, le=4)
+    alert_email_recipients: Annotated[tuple[str, ...], NoDecode] = ()
+    smtp_host: str | None = Field(default=None, min_length=1, max_length=253)
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = Field(default=None, max_length=320)
+    smtp_password: SecretStr | None = Field(default=None, repr=False)
+    smtp_from_address: str | None = Field(default=None, max_length=320)
 
     @field_validator("database_url")
     @classmethod
@@ -58,6 +68,29 @@ class Settings(BaseSettings):
             return [host.strip() for host in value.split(",") if host.strip()]
         return value
 
+    @field_validator("alert_email_recipients", mode="before")
+    @classmethod
+    def parse_alert_email_recipients(cls, value: object) -> object:
+        values = value.split(",") if isinstance(value, str) else value
+        if not isinstance(values, (list, tuple)):
+            return values
+        normalized = []
+        for recipient in values:
+            if not isinstance(recipient, str):
+                raise ValueError("Alert recipients must be email addresses.")
+            address = recipient.strip().lower()
+            if not re.fullmatch(r"[^\s@\r\n]{1,64}@[^\s@\r\n]{1,255}", address):
+                raise ValueError("Alert recipient is invalid.")
+            normalized.append(address)
+        return tuple(sorted(set(normalized)))
+
+    @field_validator("smtp_host", "smtp_username", "smtp_from_address", mode="before")
+    @classmethod
+    def normalize_optional_smtp_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
     @model_validator(mode="after")
     def validate_production(self) -> Self:
         try:
@@ -76,4 +109,10 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires an explicit HTTPS origin.")
             if url.hostname not in self.allowed_hosts or self.enable_api_docs:
                 raise ValueError("Production requires an allowed origin and disabled API docs.")
+            if self.alert_email_recipients and (
+                not self.smtp_host or not self.smtp_from_address or self.smtp_password is None
+            ):
+                raise ValueError(
+                    "Production email recipients require protected SMTP configuration."
+                )
         return self

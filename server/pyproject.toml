@@ -27,6 +27,7 @@ dev = [
 
 [project.scripts]
 skybeat-admin = "app.cli:main"
+skybeat-worker = "app.worker:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

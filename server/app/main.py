@@ -43,6 +43,7 @@ def create_app(settings: Settings | None = None, *, database: Database | None = 
         openapi_url="/openapi.json" if config.enable_api_docs else None,
     )
     app.state.database = db
+    app.state.settings = config
     app.state.heartbeat_limiter = PerDeviceRateLimiter()
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.allowed_hosts)
 

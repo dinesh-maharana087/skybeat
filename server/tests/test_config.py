@@ -17,6 +17,35 @@ def test_settings_load_prefixed_environment(monkeypatch):
     assert "example" not in repr(config)
 
 
+def test_global_alert_email_recipients_are_normalized_and_validate_header_safety():
+    config = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+        alert_email_recipients=["OPS@example.test"],
+    )
+    assert config.alert_email_recipients == ("ops@example.test",)
+    with pytest.raises(ValidationError):
+        Settings(
+            env="test",
+            database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+            alert_email_recipients=["ops@example.test\nBcc: attacker@example.test"],
+        )
+
+
+def test_empty_optional_smtp_environment_values_do_not_block_monitoring_without_recipients():
+    config = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+        smtp_host="",
+        smtp_from_address="",
+        smtp_username="",
+    )
+
+    assert config.smtp_host is None
+    assert config.smtp_from_address is None
+    assert config.smtp_username is None
+
+
 @pytest.mark.parametrize(
     "url",
     [

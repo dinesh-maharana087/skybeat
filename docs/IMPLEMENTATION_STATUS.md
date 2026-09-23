@@ -1,9 +1,9 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-09-23
-Current stage: Stage 02 - Heartbeat API + Agent
-Current milestone: Stage 02 acceptance checkpoint
-Status: COMPLETE / ACCEPTED. Do not begin Stage 03 in this session.
+Current stage: Stage 03 - Availability + Incidents + Email
+Current milestone: Stage 03 acceptance checkpoint
+Status: COMPLETE / ACCEPTED. Do not begin Stage 04 in this session.
 
 ## Completed
 
@@ -20,10 +20,12 @@ Status: COMPLETE / ACCEPTED. Do not begin Stage 03 in this session.
 - Added cancellation-aware runtime handling for in-flight GPU collection and send operations, bounded startup/interval jitter, CPU priming, Linux OS telemetry semantics, controlled host/network failure coverage, and basic transport failure logging.
 - Resolved the final Stage 02 acceptance findings: synchronous host collection now runs in a killable spawned process with bounded cleanup, and process-wide agent log records are redacted with safe categorical collector-failure logging.
 - Completed the Windows-spawn-safe regression proving that a permanently stuck system collector does not prevent prompt agent shutdown.
+- Implemented Stage 03 server-authoritative availability evaluation with exact 75/180-second boundaries, trusted receipt-time baselines, late-heartbeat reconciliation under the existing device-row lock, and a five-second worker sweep configuration.
+- Implemented durable availability incidents, offline/recovery events, MySQL-compatible one-active-incident enforcement, durable notification deliveries/attempts, recovery supersession, bounded retry/lease recovery, SMTP provider classification, and a separate worker entry point.
 
 ## In Progress
 
-- None. Stage 03 has not been started.
+- None. Stage 04 has not been started.
 
 ## Verification Completed
 
@@ -39,10 +41,13 @@ Status: COMPLETE / ACCEPTED. Do not begin Stage 03 in this session.
 - Post-fix Ruff check/format and strict mypy passed for server (19 source files) and agent (10 source files).
 - Final attempted verification: agent suite 61 passed; server suite 220 passed; agent Ruff/format/mypy passed for 11 source files; server Ruff/format/mypy passed for 19 source files; isolated MySQL migration state is `1b2785bb39ef (head)`.
 - Final fresh Stage 02 agent verification on Windows: `tests/test_runtime.py::test_agent_process_exits_promptly_when_system_collector_is_permanently_stuck` passed (1 passed); full agent suite passed (64 passed); Ruff check and format check passed (19 files already formatted); strict mypy passed (11 source files).
+- Stage 03 focused Windows verification: availability/model/provider/worker tests passed (10 passed); Stage 03 MySQL lifecycle tests were collected and skipped (8) only because `SKYBEAT_TEST_DATABASE_URL` is unavailable; targeted configuration tests passed (18 passed); Stage 03 Ruff check passed; strict server mypy passed for 27 source files.
+- Final Stage 03 acceptance verification: complete server suite passed (216 passed, 27 skipped, 0 failed); all skips require the unavailable isolated MySQL URL. Ruff check and format check passed (49 files already formatted); strict mypy passed (27 source files); migration history reports `625bfa1677df` as head; `git diff --check` passed.
 
 ## Verification Pending
 
 - The retained isolated MySQL instance could not be started in this final session because its existing data files are not writable. ACLs, retained data, initialization and reset were deliberately left untouched. The prior successful real-MySQL 8.4.10/InnoDB evidence above remains the accepted Stage 02 database/vertical verification; a fresh repeat is environment-specific pending.
+- Stage 03 real-MySQL migration, availability race, incident deduplication, delivery claiming and rollback verification are pending only because that retained instance cannot safely start. The tests are present; no substitute is treated as proof of MySQL behavior.
 - Linux host/systemd behavior, real NVIDIA hardware/driver behavior, actual HTTPS proxy/network transport, load/soak testing and production deployment remain unverified.
 
 ## Files Changed
@@ -52,11 +57,13 @@ Status: COMPLETE / ACCEPTED. Do not begin Stage 03 in this session.
 - `server/app/models/__init__.py`, `server/app/devices/service.py`, `server/app/main.py`
 - `server/migrations/versions/1b2785bb39ef_heartbeat_storage.py`, `server/tests/`
 - `agent/pyproject.toml`, `agent/requirements.lock`, `agent/src/`, `agent/tests/`
+- Stage 03: `server/app/health/`, `server/app/notifications/`, `server/app/worker.py`, `server/app/models/alerts.py`, heartbeat/configuration integration, migration `625bfa1677df`, focused Stage 03 tests, `.env.example`, and `server/pyproject.toml`.
 
 ## Migrations Applied/Tested
 
 - Stage 01 revision `614a53a9e2cb` remains applied to isolated local `skybeat_test` on MySQL 8.4.10/InnoDB.
 - Additive Stage 02 revision `1b2785bb39ef` applied successfully to that same isolated database and exercised by real-MySQL tests. It creates `heartbeat_receipts`, `heartbeat_samples` and `device_latest`.
+- Additive Stage 03 revision `625bfa1677df` is the current Alembic head and chains from `1b2785bb39ef`; it has not been applied in this session because the retained isolated MySQL data files are not writable.
 - No production database was accessed. No downgrade, drop, reset or destructive database action occurred.
 
 ## Known Issues
@@ -66,6 +73,7 @@ Status: COMPLETE / ACCEPTED. Do not begin Stage 03 in this session.
 - The retained isolated MySQL data directory is currently not writable, so final-session real-MySQL rerun remains pending; no corrective or destructive action was taken.
 - The initial authenticated per-device rate limiter is intentionally in-process for the single-VM V1 baseline; it resets on API restart and must be revisited before horizontal scaling.
 - Starlette emits httpx and AnyIO deprecation warnings in tests; assess dependency compatibility before production rollout.
+- No Stage 03 software acceptance blockers remain. Its MySQL-specific verification remains environment-pending rather than fabricated.
 
 ## Security Notes
 
@@ -84,22 +92,22 @@ Status: COMPLETE / ACCEPTED. Do not begin Stage 03 in this session.
 
 ## Next Action
 
-- Next stage: Stage 03 - Availability + Incidents + Email.
-- Stop after this Stage 02 acceptance checkpoint. A future Stage 03 session must follow the resume procedure, inspect the Git diff, and preserve `Local MySQL.session.sql`. Do not auto-commit.
+- Next stage: Stage 04 - Dashboard + Google Authentication.
+- Stop after this Stage 03 acceptance checkpoint. A future Stage 04 session must follow the resume procedure, inspect the current dirty/uncommitted worktree, preserve `Local MySQL.session.sql`, and leave the retained MySQL data directory untouched unless separately authorized.
 
 ## Latest Stage Completion
 
-- Stage: 02 - Heartbeat API + Agent.
+- Stage: 03 - Availability + Incidents + Email.
 - Status: COMPLETE / ACCEPTED.
-- Files changed: Stage 02 server heartbeat/persistence implementation and migration; Stage 02 agent collection, runtime, transport, safe logging and tests; this checkpoint updates `docs/IMPLEMENTATION_STATUS.md`.
-- Migrations: additive Stage 02 revision `1b2785bb39ef` was previously applied and verified against isolated MySQL 8.4.10/InnoDB; no production database was accessed.
-- Tests executed: final fresh stuck-collector regression (1 passed), full agent suite (64 passed), agent Ruff check/format check (passed), agent strict mypy (11 source files, passed). Prior retained evidence: server suite 220 passed; strict contract/API 139 passed; real-MySQL heartbeat plus vertical integration 9 passed; server Ruff/format/mypy passed.
-- Passed: all fresh final-session checks. Failed: none. Skipped: none.
-- Security implications: bounded child cleanup prevents a stuck synchronous collector from delaying shutdown; the agent logging boundary redacts secrets. No production credentials, deployment, notifications, destructive database work or commits occurred.
-- Known limitations: final-session MySQL rerun is pending solely because the retained instance's data files are not writable; Linux/NVIDIA/systemd/TLS/soak validation remains environment-specific pending.
-- Next stage: Stage 03 - Availability + Incidents + Email. Do not begin it in this session.
-- Worktree intentionally remains dirty/uncommitted because no commit was requested.
+- Files changed: Stage 03 availability service; heartbeat late-outage reconciliation; incidents, events, deliveries and attempts models; additive migration `625bfa1677df`; SMTP provider, worker entry point, protected configuration, and focused availability/notification/worker tests; this checkpoint updates `docs/IMPLEMENTATION_STATUS.md`.
+- Migrations: `625bfa1677df` is the additive current head and has not been applied in this final session because the retained isolated MySQL data files are not writable. Prior Stage 02 real-MySQL evidence remains recorded above. No production database was accessed.
+- Tests executed: final server suite 216 passed, 27 MySQL-dependent tests skipped, 0 failed; Ruff check/format passed; strict mypy passed for 27 source files; migration history and diff check passed.
+- Idempotency/concurrency evidence: new focused MySQL tests cover availability boundaries, late heartbeat reconciliation, duplicate incident/event prevention, concurrent sweeps, rollback, durable delivery attempts, retries, worker-crash lease recovery, and in-flight recovery supersession. They are pending execution only on the unavailable retained MySQL instance.
+- Security implications: device-row locking serializes availability transitions; provider calls occur after durable queue claims; SMTP has a 15-second deadline and normalized safe outcomes; logs/messages/configuration avoid credentials and recipient routing remains server-controlled. No real external email, production deployment, destructive operation or commit occurred.
+- Known limitations: fresh Stage 03 MySQL migration/concurrency verification, Linux/systemd, real SMTP delivery, HTTPS/Caddy/network and soak validation remain environment-specific pending.
+- Next stage: Stage 04 - Dashboard + Google Authentication. Do not begin it in this session.
+- Worktree: dirty/uncommitted by request, containing the Stage 03 implementation and status checkpoint.
 
 ## Resume Command / Guidance
 
-Read AGENTS.md, this file, the Stage 03 section of `docs/IMPLEMENTATION_PLAN.md`, and only necessary availability/alerting/security specifications. Inspect the current Git diff and migrations before beginning Stage 03. Production operations remain separately gated.
+Read AGENTS.md, this file, the Stage 04 section of `docs/IMPLEMENTATION_PLAN.md`, and only necessary dashboard/authentication/security specifications. Inspect the current Git diff, Stage 03 migration and tests before beginning Stage 04. Production operations remain separately gated.

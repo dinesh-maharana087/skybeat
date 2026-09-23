@@ -7,7 +7,7 @@ from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, LargeBinary,
 from sqlalchemy.dialects.mysql import BIGINT, BINARY, CHAR, DATETIME, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-TABLE_OPTIONS = {
+TABLE_OPTIONS: dict[str, str] = {
     "mysql_engine": "InnoDB",
     "mysql_charset": "utf8mb4",
     "mysql_collate": "utf8mb4_0900_ai_ci",
@@ -56,6 +56,7 @@ class Device(Base):
             "JSON_LENGTH(expected_gpu_uuids) = 0)",
             name="disabled_gpu_policy",
         ),
+        CheckConstraint("availability_state IN ('ONLINE', 'SUSPECT', 'OFFLINE')", name="state"),
         TABLE_OPTIONS,
     )
 
@@ -72,6 +73,7 @@ class Device(Base):
     )
     monitoring_started_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
     last_seen_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    availability_state: Mapped[str] = mapped_column(String(16), default="ONLINE")
     gpu_monitoring_enabled: Mapped[bool] = mapped_column(
         Boolean(name="gpu_monitoring", create_constraint=True)
     )
@@ -171,3 +173,26 @@ class DeviceLatest(Base):
     disk_summary: Mapped[dict[str, Any]] = mapped_column(JSON)
     gpu_summary: Mapped[dict[str, Any]] = mapped_column(JSON)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+from app.models.alerts import (  # noqa: E402
+    AlertEvent,
+    Incident,
+    NotificationAttempt,
+    NotificationDelivery,
+)
+
+__all__ = [
+    "AlertEvent",
+    "AuditEvent",
+    "Base",
+    "Device",
+    "DeviceCredential",
+    "DeviceLatest",
+    "HeartbeatReceipt",
+    "HeartbeatSample",
+    "Incident",
+    "NotificationAttempt",
+    "NotificationDelivery",
+    "Project",
+]

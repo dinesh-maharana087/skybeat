@@ -1,0 +1,1 @@
+"""Server-authoritative availability evaluation."""
