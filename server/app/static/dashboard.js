@@ -204,6 +204,17 @@ function resetDevicePagination() {
 }
 
 function setSidebarCollapsed(collapsed) {
+  const isMobile = window.matchMedia("(max-width: 900px)").matches;
+  if (isMobile) {
+    appShell?.classList.toggle("sidebar-mobile-open", !collapsed);
+    sidebarToggle?.setAttribute("aria-expanded", String(!collapsed));
+    if (sidebarToggle !== null) {
+      sidebarToggle.textContent = collapsed ? "Open navigation" : "Close navigation";
+      sidebarToggle.setAttribute("aria-label", collapsed ? "Open navigation" : "Close navigation");
+    }
+    return;
+  }
+  appShell?.classList.remove("sidebar-mobile-open");
   appShell?.classList.toggle("sidebar-collapsed", collapsed);
   sidebarToggle?.setAttribute("aria-expanded", String(!collapsed));
   if (sidebarToggle !== null) {
@@ -212,6 +223,25 @@ function setSidebarCollapsed(collapsed) {
   }
   localStorage.setItem(SIDEBAR_PREFERENCE_KEY, collapsed ? "collapsed" : "expanded");
 }
+
+function toggleSidebar() {
+  const isMobile = window.matchMedia("(max-width: 900px)").matches;
+  const collapsed = isMobile
+    ? !appShell?.classList.contains("sidebar-mobile-open")
+    : !appShell?.classList.contains("sidebar-collapsed");
+  setSidebarCollapsed(collapsed);
+}
+
+document.addEventListener("keydown", (event) => {
+  if (
+    event.key === "Escape" &&
+    window.matchMedia("(max-width: 900px)").matches &&
+    appShell?.classList.contains("sidebar-mobile-open")
+  ) {
+    setSidebarCollapsed(true);
+    sidebarToggle?.focus();
+  }
+});
 
 function clearDeviceMessages() {
   setVisible(deviceEmpty, false);
@@ -1538,7 +1568,7 @@ if (projectIdFromUrl !== null && CANONICAL_UUID.test(projectIdFromUrl)) {
 const sidebarPreference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
 if (sidebarPreference === "collapsed") setSidebarCollapsed(true);
 sidebarToggle?.addEventListener("click", () => {
-  setSidebarCollapsed(!appShell?.classList.contains("sidebar-collapsed"));
+  toggleSidebar();
 });
 filters.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -1664,7 +1694,7 @@ document.addEventListener("keydown", (event) => {
 refreshActiveView();
 } else {
   sidebarToggle?.addEventListener("click", () => {
-    setSidebarCollapsed(!appShell?.classList.contains("sidebar-collapsed"));
+    toggleSidebar();
   });
   document.getElementById("logout")?.addEventListener("click", async () => {
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });

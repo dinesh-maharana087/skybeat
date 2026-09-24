@@ -24,6 +24,10 @@ def dashboard_styles() -> str:
     return (STATIC_ROOT / "dashboard.css").read_text(encoding="utf-8")
 
 
+def dashboard_shell_styles() -> str:
+    return (STATIC_ROOT / "dashboard-shell.css").read_text(encoding="utf-8")
+
+
 def test_dashboard_page_redirects_unauthenticated_browser_to_google_login():
     settings = Settings(
         env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
@@ -388,6 +392,22 @@ def test_dashboard_page_has_one_semantic_sidebar_shell_and_operational_sections(
     assert 'id="dashboard-workspace"' in template
     assert 'id="add-device"' in template
     assert 'id="new-project"' in template
+
+
+def test_dashboard_stage08b_shell_has_labelled_icon_navigation_and_page_context():
+    template = dashboard_template()
+    styles = dashboard_styles() + dashboard_shell_styles()
+
+    for destination in ("overview", "devices", "projects"):
+        assert f'data-nav-destination="{destination}"' in template
+    assert 'class="nav-icon" aria-hidden="true"' in template
+    assert 'class="nav-label"' in template
+    assert 'aria-current="page"' in template
+    assert 'id="page-title"' in template
+    assert 'id="page-description"' in template
+    assert "--sb-sidebar-width" in styles
+    assert ".app-shell.sidebar-mobile-open" in styles
+    assert '.sidebar-nav a[aria-current="page"]' in styles
 
 
 def test_dashboard_visual_system_preserves_accessibility_and_responsive_behavior():

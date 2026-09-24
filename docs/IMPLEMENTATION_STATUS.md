@@ -1,8 +1,9 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-09-24
-Current stage: Stage 08A - Design System Foundation
-Current milestone: Stage 08A - centralized dashboard visual tokens and reusable foundations
+Current stage: Stage 07 - Dashboard, Operational Visibility & Deployment Runbook (browser acceptance remains pending)
+Current UI stage: Stage 08B - Dashboard Shell & Navigation
+Current milestone: Stage 08B - server-rendered shell hierarchy and responsive navigation
 Status: IMPLEMENTED / AWAITING BROWSER ACCEPTANCE AND BASELINE QUALITY REMEDIATION. Stage 07 remains in progress pending its separate browser, real-device, and deployment acceptance.
 
 ## Completed
@@ -226,6 +227,18 @@ Status: IMPLEMENTED / AWAITING BROWSER ACCEPTANCE AND BASELINE QUALITY REMEDIATI
 - Security implications: canonical status text remains visible alongside decorative dots/tints; all existing same-origin DOM-safe rendering, authentication, session, polling, and server-owned health semantics remain intact. No dependency, browser storage, unsafe DOM API, remote font/icon system, or remote operation capability was added.
 - Known limitations: no local listener/browser acceptance environment; existing Windows Bash path-translation failures; existing mypy unused-ignore baseline failures; retained real-MySQL and deployment limitations remain unchanged.
 - Next stage: STOP. Do not begin Stage 08B. Stage 07 remains separately pending browser, real-device, and deployment acceptance.
+
+## Stage 08B Checkpoint
+
+- Stage: 08B - Dashboard Shell & Navigation.
+- Status: IMPLEMENTED / AWAITING BROWSER ACCEPTANCE AND EXISTING QUALITY-BASELINE REMEDIATION.
+- Files changed: `server/app/templates/dashboard.html`, `server/app/static/dashboard-shell.css`, `server/app/static/dashboard.css`, `server/app/static/dashboard.js`, `server/tests/test_dashboard_page.py`, and this checkpoint.
+- Implementation: added server-rendered Overview/Devices/Projects page context, labelled local-SVG navigation icons, accessible active navigation, tokenized shell additions, and a keyboard-operable small-screen overlay navigation state. Existing routes, identifiers, polling, filters, pagination, drawer/dialog behavior, and safe-DOM rendering remain unchanged.
+- Migrations: none. No backend, API, authentication, database, deployment, or Caddy behavior changed.
+- Tests executed: final focused dashboard/status regression 38 passed; full server suite before the status-line compatibility correction recorded 313 passed, 33 MySQL-environment skips, and 3 failures (two unrelated Windows Bash installer-path failures plus the corrected status-line expectation). Ruff check passed; formatting needed one Stage 08B test quote normalization, then must be rerun; strict mypy retains three existing unused-ignore errors outside Stage 08B files; `git diff --check` passed.
+- Browser verification: pending. No local dashboard listener or safely usable local database environment was available; protected infrastructure was not changed.
+- Known limitations: existing Windows Bash path translation, existing strict-mypy unused-ignore errors, and browser/MySQL/deployment acceptance limitations remain outside Stage 08B scope.
+- Next stage: STOP. Stage 08C was not started. Stage 07 browser, real-device, and deployment acceptance remain separately pending.
 
 ## Resume Command / Guidance
 

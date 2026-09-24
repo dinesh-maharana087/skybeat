@@ -1,3 +1,13 @@
+{% if active_view == "devices" %}
+{% set page_title = "Devices" %}
+{% set page_description = "Search, filter, and inspect the current fleet." %}
+{% elif active_view == "projects" %}
+{% set page_title = "Projects" %}
+{% set page_description = "Organize monitored devices by operational project." %}
+{% else %}
+{% set page_title = "Overview" %}
+{% set page_description = "Current server-authoritative fleet status and telemetry." %}
+{% endif %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -5,6 +15,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SkyBeat Operations</title>
     <link rel="stylesheet" href="/static/dashboard.css">
+    <link rel="stylesheet" href="/static/dashboard-shell.css">
   </head>
   <body data-dashboard-view="{{ active_view }}">
     <div class="app-shell">
@@ -16,11 +27,11 @@
             <p class="brand-subtitle">Operations console</p>
           </div>
         </div>
-        <button id="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">Collapse</button>
+        <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">Collapse</button>
         <nav class="sidebar-nav" aria-label="Dashboard sections">
-          <a href="/dashboard"{% if active_view == "overview" %} aria-current="page"{% endif %}>Overview</a>
-          <a href="/dashboard/devices"{% if active_view == "devices" %} aria-current="page"{% endif %}>Devices</a>
-          <a href="/dashboard/projects"{% if active_view == "projects" %} aria-current="page"{% endif %}>Projects</a>
+          <a href="/dashboard" data-nav-destination="overview"{% if active_view == "overview" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z"/></svg><span class="nav-label">Overview</span></a>
+          <a href="/dashboard/devices" data-nav-destination="devices"{% if active_view == "devices" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 12h8M8 17h5"/></svg><span class="nav-label">Devices</span></a>
+          <a href="/dashboard/projects" data-nav-destination="projects"{% if active_view == "projects" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M4 12h16M8 20v-4h8v4"/></svg><span class="nav-label">Projects</span></a>
         </nav>
         <p class="sidebar-footer">SkyBeat V1<br>Operational monitoring</p>
       </aside>
@@ -28,9 +39,9 @@
       <div id="dashboard-workspace" class="dashboard-workspace">
         <header class="site-header">
           <div>
-            <p class="eyebrow">SkyBeat monitoring</p>
-            <h1>Device operations</h1>
-            <p class="header-subtitle">Current server-authoritative fleet status and telemetry.</p>
+            <p class="eyebrow">SkyBeat device operations</p>
+            <h1 id="page-title">{{ page_title }}</h1>
+            <p id="page-description" class="header-subtitle">{{ page_description }}</p>
           </div>
           <div class="header-actions">
             <div class="live-status" aria-label="Dashboard freshness status">

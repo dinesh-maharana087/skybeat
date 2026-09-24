@@ -1,0 +1,11 @@
+/* Stage 08B shell additions consume the Stage 08A token hierarchy. */
+.app-shell { grid-template-columns: var(--sb-sidebar-width) minmax(0, 1fr); }
+.sidebar-toggle { align-self: flex-start; font-size: var(--sb-font-size-xs); }
+.sidebar-nav a { align-items: center; display: flex; gap: var(--sb-space-2); min-height: 2.5rem; }
+.nav-icon { fill: none; flex: 0 0 auto; height: 1rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.75; width: 1rem; }
+.sidebar-collapsed .nav-label, .sidebar-collapsed .brand-subtitle { display: none; }
+@media (max-width: 900px) {
+  .app-shell.sidebar-mobile-open .app-sidebar { box-shadow: var(--sb-shadow-md); display: flex; inset: 0 auto 0 0; max-width: 18rem; position: fixed; width: min(82vw, var(--sb-sidebar-width)); z-index: 4; }
+  .app-shell.sidebar-mobile-open::after { background: rgb(16 35 63 / 35%); content: ""; inset: 0; position: fixed; z-index: 3; }
+  .app-shell.sidebar-mobile-open .sidebar-nav { display: grid; width: 100%; }
+}
