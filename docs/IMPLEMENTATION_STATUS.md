@@ -1,9 +1,9 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-09-24
-Current stage: Stage 07 - Dashboard, Operational Visibility & Deployment Runbook
-Current milestone: Stage 07.6B - Operations Console UX Refinement
-Status: IMPLEMENTED / AWAITING BROWSER ACCEPTANCE. Overall Stage 07 remains in progress pending browser, real-device, and deployment acceptance.
+Current stage: Stage 08A - Design System Foundation
+Current milestone: Stage 08A - centralized dashboard visual tokens and reusable foundations
+Status: IMPLEMENTED / AWAITING BROWSER ACCEPTANCE AND BASELINE QUALITY REMEDIATION. Stage 07 remains in progress pending its separate browser, real-device, and deployment acceptance.
 
 ## Completed
 
@@ -38,10 +38,11 @@ Status: IMPLEMENTED / AWAITING BROWSER ACCEPTANCE. Overall Stage 07 remains in p
 - Added a local-development-only dashboard authentication bypass for browser acceptance: a fixed display-safe identity resolves through the existing dashboard page/API authorization boundary only when explicitly enabled; it is false by default and rejected outside development mode.
 - Implemented Stage 07.6 premium operations UI and authenticated canonical device management: project Create + Select, device enrollment with one-time credential display/copy/clear, selected-device project reassignment, and monitoring enable/disable confirmation. Existing availability, GPU, heartbeat, history, incident, Google OIDC, session, CSP, and read semantics remain unchanged.
 - Implemented Stage 07.6B operations-console refinement: authenticated Overview, Devices, and Projects routes share one semantic shell; Overview consumes a deterministic capped-20 canonical attention projection; Devices retains opaque keyset history, project deep links, bounded page sizes, keyboard column filters/chips, drawer/history and management workflows; and active-view polling remains visibility-aware, in-place, and non-overlapping.
+- Implemented Stage 08A design-system foundation: centralized primitive, semantic, and component `--sb-*` CSS tokens; shared surface/card, typography/technical-value, control/button, dense-table, status, drawer/dialog, focus, and reduced-motion foundations; tokenized native-SVG history palette; and source guards preserving existing Jinja, safe-DOM, polling, filter, pagination, drawer, dialog, and canonical-status behavior. No backend/API/schema/deployment behavior changed, and Stage 08B was not started.
 
 ## In Progress
 
-- Stage 07 remains IN PROGRESS. Stages 07.1 through 07.5 are accepted; Stages 07.6 and 07.6B are IMPLEMENTED / AWAITING BROWSER ACCEPTANCE. The separate final browser, real-device, and deployment acceptance checkpoint remains pending; Stage 08 is not started.
+- Stage 07 remains IN PROGRESS and unaccepted. Stages 07.6 and 07.6B retain their pending browser acceptance. Stage 08A implementation is complete but browser acceptance is unavailable and the current server mypy baseline reports three unrelated unused-ignore errors; no Stage 08B work is in progress.
 
 ## Verification Completed
 
@@ -76,6 +77,7 @@ Status: IMPLEMENTED / AWAITING BROWSER ACCEPTANCE. Overall Stage 07 remains in p
 - Development-auth-bypass regression: configuration/page/API/auth/read tests passed (67 passed); full server suite passed (283 passed, 35 environment-dependent skips, 0 failed). Ruff and formatting passed (74 files); strict mypy passed for 39 source files; Alembic remains sole head `a58c71d904ef`; deployment validation passed. The bypass adds no migration or monitoring/API semantic change.
 - Stage 07.6 focused dashboard page regression passed (27 passed, 3 upstream deprecation warnings). Final server suite passed (303 passed, 35 skipped, 0 failed): 33 skips require the unavailable isolated MySQL URL and 2 require unavailable Bash. Ruff check passed; formatting check passed (77 files); strict mypy passed for 41 source files; Alembic `heads`/`history` confirms sole head `a58c71d904ef`; deployment validation and `git diff --check` passed. The agent suite was not rerun because Stage 07.6 changes no agent code, heartbeat/shared agent contract, or deployment artifact.
 - Stage 07.6B final verification: focused dashboard/read/API/management suite passed (62 passed, 0 failed, 3 upstream deprecation warnings); complete server suite passed (309 passed, 35 skipped, 0 failed, 3 upstream deprecation warnings). The skips are exactly 33 isolated-MySQL-url-dependent tests and 2 Bash-unavailable deployment-artifact tests. Ruff check and format check passed (70 files); strict mypy passed for 41 source files. Alembic `heads`/`history` confirms existing sole head `a58c71d904ef`; deployment validation and `git diff --check` passed. No migration, database initialization, ACL change, production operation, commit, or push occurred.
+- Stage 08A focused dashboard-page regression: 36 passed, 0 failed; two existing FastAPI/Authlib deprecation warnings. Full server collection with the local agent package supplied: 313 passed, 33 MySQL-environment skips, and 2 unrelated Windows Bash path-translation failures in deployment-installer rejection tests. Server Ruff check passed; formatting check passed (70 files). Strict mypy ran across 41 source files and reported three pre-existing unused-ignore errors in `app/worker.py`, `app/cli.py`, and `app/main.py`; none are in Stage 08A files. `git diff --check` passed.
 
 ## Verification Pending
 
@@ -184,10 +186,11 @@ Status: IMPLEMENTED / AWAITING BROWSER ACCEPTANCE. Overall Stage 07 remains in p
 - Agent tests use controlled fixtures on Windows. No actual Linux systemd service, NVIDIA device, Caddy TLS endpoint or external network was exercised.
 - The retained isolated MySQL data files are not writable in this environment, preventing startup. Their ACLs and contents were not changed, and MySQL was not reset or reinitialized.
 - Docker CLI/Compose is unavailable on this Windows environment; no image build, container, proxy, volume, or Caddy runtime check was attempted through an alternative or destructive path.
+- No local dashboard listener was running on the standard development ports, and the retained MySQL data files remain unavailable; browser load/authentication/navigation/polling/console verification could not be run without changing protected local infrastructure.
 
 ## Next Action
 
-- Stage 07.6B is IMPLEMENTED / AWAITING BROWSER ACCEPTANCE. For local browser/UI acceptance only, set `SKYBEAT_ENV=development` and `SKYBEAT_DEV_AUTH_BYPASS=true` in the protected ignored local environment file, restart the local API, and confirm the prominent startup warning; disable it by setting the flag to `false` or removing it. Complete the Stage 07.6B manual list above. Do not begin Stage 08; retain `Local MySQL.session.sql` and leave the retained MySQL data directory untouched unless separately authorized.
+- Keep Stage 07 browser acceptance pending. For Stage 08A browser acceptance, when an isolated local dashboard environment is available, verify authenticated load, navigation, data rendering, filters, pagination, drawer/dialog workflows, polling, keyboard focus, reduced motion, responsive behavior, and no new console errors. Resolve or explicitly accept the unrelated Windows Bash path-translation and existing mypy unused-ignore baseline failures before claiming full verification. STOP: do not begin Stage 08B.
 
 ## Prior Stage Completion
 
@@ -212,6 +215,17 @@ Status: IMPLEMENTED / AWAITING BROWSER ACCEPTANCE. Overall Stage 07 remains in p
 - Known limitations: the documented local browser/UI acceptance, real-MySQL management mutation execution, Bash/systemd, Docker/Compose, Linux, Caddy, real hardware, and production integration remain environment-pending. No data or ACL was changed to make any check pass.
 - Next stage: do not begin Stage 08. Complete only the documented local Stage 07.6 browser/UI acceptance, then the separate final Stage 07 browser, real-device, and deployment acceptance checkpoint when its environment is available.
 - Worktree: uncommitted Stage 07.6 implementation/documentation/test changes; no commit was created by request.
+
+## Stage 08A Checkpoint
+
+- Stage: 08A - Design System Foundation.
+- Status: IMPLEMENTED / AWAITING BROWSER ACCEPTANCE AND BASELINE QUALITY REMEDIATION.
+- Files changed: `server/app/static/dashboard.css`, `server/app/static/dashboard.js`, `server/tests/test_dashboard_page.py`, the Stage 08A design/plan, and this checkpoint.
+- Migrations: none. No backend, API, authentication, route, database, deployment, or Caddy behavior changed.
+- Tests executed: focused dashboard page suite 36 passed; full server suite 313 passed, 33 MySQL-environment skips, 2 unrelated Windows Bash installer-path failures; Ruff check and formatting check passed; strict mypy reported three existing unused-ignore errors outside Stage 08A files; `git diff --check` passed.
+- Security implications: canonical status text remains visible alongside decorative dots/tints; all existing same-origin DOM-safe rendering, authentication, session, polling, and server-owned health semantics remain intact. No dependency, browser storage, unsafe DOM API, remote font/icon system, or remote operation capability was added.
+- Known limitations: no local listener/browser acceptance environment; existing Windows Bash path-translation failures; existing mypy unused-ignore baseline failures; retained real-MySQL and deployment limitations remain unchanged.
+- Next stage: STOP. Do not begin Stage 08B. Stage 07 remains separately pending browser, real-device, and deployment acceptance.
 
 ## Resume Command / Guidance
 

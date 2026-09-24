@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -320,7 +321,7 @@ def test_dashboard_history_is_responsive_and_excludes_unbounded_or_external_rend
     script = dashboard_script()
 
     assert ".history-chart" in styles
-    assert "max-width: 100%;" in styles
+    assert re.search(r"max-width:\s*100%;", styles)
     assert "window.setInterval" not in script
     assert "void refreshOpenHistory();" in script
     assert "await refreshOpenHistory();" not in script
@@ -365,8 +366,8 @@ def test_dashboard_detail_resets_its_title_before_a_new_canonical_request():
 def test_dashboard_detail_is_a_right_side_drawer_on_wide_screens():
     styles = dashboard_styles()
 
-    assert "@media (min-width: 1081px)" in styles
-    assert "position: fixed;" in styles
+    assert re.search(r"@media\s*\(min-width:\s*1081px\)", styles)
+    assert re.search(r"position:\s*fixed", styles)
 
 
 def test_dashboard_history_excludes_raw_payloads_canvas_and_raw_json():
@@ -395,7 +396,85 @@ def test_dashboard_visual_system_preserves_accessibility_and_responsive_behavior
     assert "prefers-reduced-motion" in styles
     assert "@media" in styles
     assert ":focus-visible" in styles
-    assert "position: sticky" in styles
+    assert re.search(r"position:\s*sticky", styles)
+
+
+def test_dashboard_stage08a_defines_layered_design_tokens():
+    styles = dashboard_styles()
+
+    for token in (
+        "--sb-color-slate-50",
+        "--sb-space-1",
+        "--sb-font-sans",
+        "--sb-bg-app",
+        "--sb-text-primary",
+        "--sb-primary",
+        "--sb-success",
+        "--sb-warning",
+        "--sb-danger",
+        "--sb-info",
+        "--sb-neutral",
+        "--sb-control-bg",
+        "--sb-button-primary-bg",
+        "--sb-table-header-bg",
+        "--sb-drawer-bg",
+    ):
+        assert token in styles
+
+    assert styles.index("--sb-color-slate-50") < styles.index("--sb-bg-app")
+    assert styles.index("--sb-bg-app") < styles.index("--sb-control-bg")
+
+
+def test_dashboard_stage08a_foundations_keep_status_text_focus_and_density():
+    styles = dashboard_styles()
+    script = dashboard_script()
+
+    assert ".status-pill::before" in styles
+    assert re.search(r'content:\s*""', styles)
+    assert ".status-online" in styles
+    assert ".status-unknown" in styles
+    assert "--sb-focus-ring" in styles
+    assert ":focus-visible" in styles
+    assert re.search(r"position:\s*sticky", styles)
+    assert re.search(r"overflow-x:\s*auto", styles)
+    assert 'status-${displayValue(value).toLowerCase().replaceAll("_", "-")}' in script
+
+
+def test_dashboard_stage08a_reuses_css_tokens_for_history_and_preserves_safe_dom():
+    styles = dashboard_styles()
+    script = dashboard_script()
+
+    for token in (
+        "--sb-history-series-1",
+        "--sb-history-series-2",
+        "--sb-history-series-3",
+        "--sb-history-series-4",
+    ):
+        assert token in styles
+    assert "const HISTORY_COLOR_TOKENS" in script
+    assert "function historyColor(index)" in script
+    assert "getComputedStyle(document.documentElement)" in script
+    for unsafe_api in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert unsafe_api not in script
+
+
+def test_dashboard_stage08a_keeps_existing_template_contract_and_native_controls():
+    template = dashboard_template()
+
+    for identifier in (
+        "app-sidebar",
+        "dashboard-workspace",
+        "project-filter",
+        "state-filter",
+        "gpu-state-filter",
+        "detail-panel",
+        "project-dialog",
+        "device-enroll-dialog",
+    ):
+        assert f'id="{identifier}"' in template
+    assert 'href="/dashboard"' in template
+    assert 'href="/dashboard/devices"' in template
+    assert 'href="/dashboard/projects"' in template
 
 
 def test_dashboard_display_helpers_keep_canonical_states_and_exact_time_accessibility():

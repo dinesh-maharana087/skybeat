@@ -6,7 +6,12 @@ const VISIBLE_REFRESH_MS = 15000;
 const HIDDEN_REFRESH_MS = 60000;
 const SEARCH_DEBOUNCE_MS = 250;
 const HISTORY_RANGES = ["1h", "6h", "24h", "7d"];
-const HISTORY_COLORS = ["#0b63ce", "#7a3ec8", "#007f6d", "#b54708"];
+const HISTORY_COLOR_TOKENS = [
+  "--sb-history-series-1",
+  "--sb-history-series-2",
+  "--sb-history-series-3",
+  "--sb-history-series-4",
+];
 const dashboardView = document.body.dataset.dashboardView;
 const SIDEBAR_PREFERENCE_KEY = "skybeat.sidebar.v1";
 const appShell = document.querySelector(".app-shell");
@@ -964,6 +969,12 @@ function historySeriesName(series) {
   return "GPU identity unavailable";
 }
 
+function historyColor(index) {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(HISTORY_COLOR_TOKENS[index % HISTORY_COLOR_TOKENS.length])
+    .trim();
+}
+
 function usableHistoryPoints(points) {
   return points.filter((point) => Number.isFinite(point.timestamp) && point.value !== null);
 }
@@ -1061,7 +1072,7 @@ function renderHistoryChart(title, units, series, percentage) {
   for (const [index, item] of series.entries()) {
     const usable = usableHistoryPoints(item.points);
     const path = historyLinePath(item.points, bounds, width, height, padding);
-    const color = HISTORY_COLORS[index % HISTORY_COLORS.length];
+    const color = historyColor(index);
     if (path && usable.length !== 1) {
       const line = createSvgElement("path");
       line.setAttribute("d", path);
@@ -1092,7 +1103,7 @@ function renderHistoryChart(title, units, series, percentage) {
       const legendItem = document.createElement("li");
       const marker = document.createElement("span");
       marker.className = "history-legend-marker";
-      marker.style.backgroundColor = HISTORY_COLORS[index % HISTORY_COLORS.length];
+      marker.style.backgroundColor = historyColor(index);
       legendItem.append(marker, element("span", item.label));
       legend.append(legendItem);
     }
