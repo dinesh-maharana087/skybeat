@@ -38,7 +38,11 @@ The API follows these principles:
 | ------ | -------------------------------------- | ----------------------------- | ---------------------------------- |
 | POST   | `/api/v1/heartbeats`                   | Device credential             | Submit one telemetry snapshot      |
 | GET    | `/api/v1/projects`                     | Browser session               | List projects and status summaries |
+| POST   | `/api/v1/projects`                     | Browser session + same-origin | Create one project                 |
 | GET    | `/api/v1/devices`                      | Browser session               | List device status                 |
+| POST   | `/api/v1/devices`                      | Browser session + same-origin | Enroll one device                  |
+| PATCH  | `/api/v1/devices/{device_uuid}/project` | Browser session + same-origin | Reassign one device                |
+| PATCH  | `/api/v1/devices/{device_uuid}/monitoring` | Browser session + same-origin | Enable or disable one device       |
 | GET    | `/api/v1/devices/{device_uuid}`        | Browser session               | Get one device's current status    |
 | GET    | `/api/v1/devices/{device_uuid}/alerts` | Browser session               | Device alert/delivery history      |
 | GET    | `/`                                    | Browser session               | Main Device Status page            |
@@ -1089,6 +1093,61 @@ This endpoint is read-only.
 
 ---
 
+# 36.0 Dashboard management mutations
+
+`POST /api/v1/projects`, `POST /api/v1/devices`,
+`PATCH /api/v1/devices/{device_uuid}/project`, and
+`PATCH /api/v1/devices/{device_uuid}/monitoring` require the existing authorized
+dashboard identity and the same-origin mutation boundary. Every response,
+including validation, authorization, origin, and success responses, has
+`Cache-Control: no-store`.
+
+`POST /api/v1/projects` accepts only a non-empty bounded canonical project name
+and delegates to `IdentityService.create_project()`. Its response is:
+
+```json
+{
+  "project": {
+    "project_id": "b71a9d41-3aa4-41aa-b27e-4a8e07a18c12",
+    "name": "StarAgri"
+  }
+}
+```
+
+`POST /api/v1/devices` accepts a bounded device name, canonical project UUID,
+explicit GPU-monitoring boolean, and expected GPU minimum count (0 through 64;
+disabled monitoring requires zero). It delegates to `IdentityService.enroll()`.
+Only its successful response includes the generated enrollment credential:
+
+```json
+{
+  "device": {
+    "device_id": "b71a9d41-3aa4-41aa-b27e-4a8e07a18c12",
+    "name": "gpu-node-01",
+    "project_id": "c71a9d41-3aa4-41aa-b27e-4a8e07a18c12",
+    "monitoring_enabled": true,
+    "gpu_monitoring_enabled": true,
+    "expected_gpu_min_count": 1
+  },
+  "credential": "sb1.<credential-id>.<secret>"
+}
+```
+
+The server generates that credential and stores only its digest. Clients must
+show it once over the authenticated response, must not place it in URLs,
+browser storage, logs, markup attributes, or history state, and must clear it
+when the enrollment surface closes. It never appears in dashboard read
+projections.
+
+`PATCH /api/v1/devices/{device_uuid}/project` accepts only a canonical project
+UUID and delegates to `IdentityService.move()`. `PATCH /api/v1/devices/{device_uuid}/monitoring`
+accepts only an explicit boolean and
+delegates to `IdentityService.set_enabled()`. Both return display-safe device
+projections. These operations do not alter heartbeat, availability, GPU,
+incident, event, notification, or history semantics.
+
+---
+
 # 36.1 GET /api/v1/dashboard/overview
 
 Authentication:
@@ -1100,6 +1159,10 @@ Returns a bounded current-state projection for the operational dashboard. `count
 `gpu_problem` counts effective GPU states other than `OK` and `NOT_MONITORED`. It does not create a separate GPU-health taxonomy.
 
 `projects` is ordered by project name and project UUID, contains at most 100 project summaries, and has `projects_truncated: true` only when additional projects exist. Every summary contains only a project ID, display name, and current availability counts. No device tree, credentials, session material, or notification data is returned.
+
+`attention` is a compact, server-side projection containing at most 20 unique devices. A device is included when its canonical availability is `OFFLINE`, `SUSPECT`, or `AWAITING_FIRST_HEARTBEAT`; when GPU monitoring is enabled and its effective GPU state is not `OK`; or when it has an active incident. Each item contains only `device_id`, `name`, `project` (`project_id` and `name`), canonical `state`, `gpu_health.effective`, `last_seen_at`, and boolean `has_active_incident`.
+
+Attention ordering is deterministic and presentation-only: canonical availability candidates appear as `OFFLINE`, then `SUSPECT`, then `AWAITING_FIRST_HEARTBEAT`; GPU- or incident-only candidates follow. Within each group, active-incident presence, no/oldest `last_seen_at`, project name, device name, and device UUID order the rows. A device appears once even when multiple predicates match. `has_active_incident` remains separate from device health: it is neither an availability/GPU state nor a severity, score, rank, or synthetic health classification. This fixed projection has no cursor and must not be reconstructed by downloading or merging the fleet client-side.
 
 ---
 

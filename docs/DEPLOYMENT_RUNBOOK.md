@@ -8,6 +8,35 @@ Stage 06 development validation used a Windows development/server environment, i
 
 Operator-supplied Stage 06 acceptance evidence recorded a successful Ubuntu GPU-agent heartbeat through Caddy, FastAPI, and MySQL. The device used an NVIDIA GeForce RTX 5080 with driver 595.84 and CUDA 13.2 reported by `nvidia-smi`; current device/latest/receipt/sample records showed ONLINE, GPU OK, CPU, memory, hostname, and GPU-summary telemetry. This evidence contains no credentials, tokens, private addresses, or raw telemetry.
 
+## Local dashboard visual acceptance
+
+This procedure is for local development only. It is not a production login
+mechanism and it does not replace Google OIDC. In a protected, ignored local
+environment file, set both values below, restart the local API, and confirm the
+prominent `DEVELOPMENT DASHBOARD AUTH BYPASS ENABLED` startup warning:
+
+```text
+SKYBEAT_ENV=development
+SKYBEAT_DEV_AUTH_BYPASS=true
+```
+
+Open the existing local dashboard origin and verify the sidebar/header/live
+freshness indicator, overview cards, projects, filters, inventory table, device
+drawer, GPU detail, history ranges, keyboard focus, Escape/close paths, and
+responsive presentation at desktop, tablet, and narrow widths. Create a project,
+then enroll a device and copy its one-time credential only into the protected
+agent environment file. Do not record the credential in screenshots, notes,
+shell history, URLs, browser storage, or logs. Close the enrollment dialog and
+confirm the credential is no longer displayed. Confirm project reassignment and
+enable/disable monitoring only through their explicit confirmation dialogs, then
+verify the canonical dashboard refreshes.
+
+Disable this local convenience by setting `SKYBEAT_DEV_AUTH_BYPASS=false` or
+removing it, then restarting the API. Production configuration rejects the
+bypass flag; when it is off, the existing Google OIDC and opaque-session flow
+remains required. Do not change retained MySQL ACLs/data, reset MySQL, or use
+this local procedure as a production deployment instruction.
+
 ## Server deployment
 
 ### Prerequisites

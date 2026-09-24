@@ -40,6 +40,21 @@ class DashboardUser:
     hosted_domain: str | None
 
 
+LOCAL_DEVELOPMENT_DASHBOARD_USER = DashboardUser(
+    google_sub="local-development", email="local-development@skybeat.invalid", hosted_domain=None
+)
+
+
+def resolve_dashboard_user(
+    settings: Settings, service: "DashboardAuthService", token: str | None
+) -> DashboardUser:
+    if settings.dev_auth_bypass:
+        return LOCAL_DEVELOPMENT_DASHBOARD_USER
+    if token is None:
+        raise SessionRejected("Dashboard session is invalid.")
+    return service.authenticate_session(token)
+
+
 class DashboardAuthService:
     def __init__(self, database: Database, settings: Settings, oidc_client: OIDCClient) -> None:
         self.database = database

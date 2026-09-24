@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     alert_sms_recipients: Annotated[tuple[str, ...], NoDecode] = ()
     allowed_emails: Annotated[tuple[str, ...], NoDecode] = ()
     allowed_domains: Annotated[tuple[str, ...], NoDecode] = ()
+    dev_auth_bypass: bool = False
     google_client_id: str | None = Field(default=None, min_length=1, max_length=255)
     google_client_secret: SecretStr | None = Field(default=None, repr=False)
     session_encryption_key: SecretStr | None = Field(default=None, repr=False)
@@ -184,6 +185,10 @@ class Settings(BaseSettings):
             raise ValueError("Offline threshold must exceed suspect threshold.")
         if not self.allowed_hosts or any("*" in host for host in self.allowed_hosts):
             raise ValueError("An explicit host allowlist is required.")
+        if self.dev_auth_bypass and self.env != "development":
+            raise ValueError(
+                "Development dashboard authentication bypass requires development mode."
+            )
         if self.env == "production":
             if url.scheme != "https" or url.hostname in {"localhost", "127.0.0.1", "testserver"}:
                 raise ValueError("Production requires an explicit HTTPS origin.")

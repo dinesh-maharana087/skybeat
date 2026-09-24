@@ -150,6 +150,38 @@ def test_dashboard_authorization_is_normalized_and_empty_policy_denies():
     assert not denied.dashboard_authorization_configured
 
 
+def test_development_dashboard_bypass_is_opt_in_and_rejected_outside_development():
+    default = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test"
+    )
+    enabled = Settings(
+        env="development",
+        database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_development",
+        dev_auth_bypass=True,
+    )
+    production = dict(
+        env="production",
+        database_url="mysql+pymysql://runtime:runtime-password@mysql/skybeat",
+        public_base_url="https://monitor.example.test",
+        allowed_hosts=["monitor.example.test"],
+        google_client_id="skybeat-client",
+        google_client_secret="google-client-secret",
+        session_encryption_key="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        dev_auth_bypass=True,
+    )
+
+    assert default.dev_auth_bypass is False
+    assert enabled.dev_auth_bypass is True
+    with pytest.raises(ValidationError):
+        Settings(
+            env="test",
+            database_url="mysql+pymysql://test:example@127.0.0.1/db",
+            dev_auth_bypass=True,
+        )
+    with pytest.raises(ValidationError):
+        Settings(**production)
+
+
 def test_production_dashboard_requires_oidc_and_session_secret_configuration():
     with pytest.raises(ValidationError):
         Settings(

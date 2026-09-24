@@ -229,3 +229,93 @@ def test_api_spec_documents_bounded_authenticated_stage07_read_endpoints():
     assert "GET /api/v1/incidents" in api_spec
     assert "range=1h|6h|24h|7d" in api_spec
     assert "maximum page size of 100" in api_spec
+
+
+def test_overview_attention_is_capped_and_preserves_canonical_state_fields(monkeypatch):
+    now = datetime(2026, 9, 24, 10, 0, tzinfo=UTC)
+    project = SimpleNamespace(public_id="e3e70682-c209-4cac-a29f-6fbed82c07cd", name="Ops")
+
+    def device(
+        number: int,
+        *,
+        state: str,
+        gpu_state: str = "OK",
+        last_seen_at: datetime | None = now,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            device_uuid=f"00000000-0000-4000-8000-{number:012d}",
+            name=f"node-{number:02d}",
+            availability_state=state,
+            gpu_monitoring_enabled=True,
+            gpu_effective_state=gpu_state,
+            last_seen_at=last_seen_at,
+        )
+
+    attention_rows = [
+        (device(1, state="OFFLINE", gpu_state="DRIVER_ERROR"), project, True),
+        (device(2, state="SUSPECT"), project, False),
+        (device(3, state="ONLINE", last_seen_at=None), project, False),
+        (device(4, state="ONLINE", gpu_state="GPU_MISSING"), project, False),
+        *[(device(number, state="OFFLINE"), project, False) for number in range(5, 22)],
+    ]
+
+    class Result:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def all(self):
+            return self.rows
+
+    class Session:
+        def __init__(self):
+            self.attention_statement = None
+
+        def scalar(self, statement):
+            return 21
+
+        def execute(self, statement):
+            rendered = str(statement)
+            if "GROUP BY" in rendered and "projects" not in rendered:
+                return Result([])
+            if "GROUP BY" in rendered:
+                return Result([])
+            self.attention_statement = statement
+            return Result(attention_rows)
+
+    class Database:
+        def __init__(self):
+            self.session = Session()
+
+        @contextmanager
+        def transaction(self):
+            yield self.session
+
+    database = Database()
+    monkeypatch.setattr(read, "database_utc", lambda session: now)
+
+    payload = read.DashboardReadService(database).overview()
+
+    attention = payload["attention"]
+    assert len(attention) == 20
+    assert [item["device_id"] for item in attention].count(
+        "00000000-0000-4000-8000-000000000001"
+    ) == 1
+    assert [item["state"] for item in attention[:4]] == [
+        "OFFLINE",
+        "SUSPECT",
+        "AWAITING_FIRST_HEARTBEAT",
+        "ONLINE",
+    ]
+    assert set(attention[0]) == {
+        "device_id",
+        "name",
+        "project",
+        "state",
+        "gpu_health",
+        "last_seen_at",
+        "has_active_incident",
+    }
+    assert attention[0]["gpu_health"] == {"effective": "DRIVER_ERROR"}
+    assert "severity" not in attention[0]
+    assert "reason" not in attention[0]
+    assert database.session.attention_statement._limit_clause.value == read.ATTENTION_LIMIT

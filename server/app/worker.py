@@ -97,7 +97,9 @@ def run_loop(
 
 
 def main() -> None:
-    settings = Settings()
+    # BaseSettings obtains required values from the protected runtime environment.
+    # The pydantic mypy plugin cannot model that source for a required field.
+    settings = Settings()  # type: ignore[call-arg]
     database = Database(settings)
     providers = build_notification_providers(settings)
     stop = Event()

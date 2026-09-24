@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, exists, func, or_, select
 
 from app.db import Database, database_utc
 from app.models import (
@@ -27,6 +27,7 @@ CURSOR_VERSION = 1
 HISTORY_RAW_CAP = 5_000
 HISTORY_POINT_CAP = 240
 HISTORY_GPU_SERIES_CAP = 64
+ATTENTION_LIMIT = 20
 GPU_STATES = {
     "OK",
     "GPU_MISSING",
@@ -297,6 +298,21 @@ def effective_gpu_state(device: Device) -> str:
     return "NOT_MONITORED" if not device.gpu_monitoring_enabled else device.gpu_effective_state
 
 
+def _attention_view(
+    device: Device, project: Project, has_active_incident: bool
+) -> dict[str, object]:
+    """Project an existing canonical attention candidate without classifying its health."""
+    return {
+        "device_id": device.device_uuid,
+        "name": device.name,
+        "project": {"project_id": project.public_id, "name": project.name},
+        "state": _state(device),
+        "gpu_health": {"effective": effective_gpu_state(device)},
+        "last_seen_at": _timestamp(device.last_seen_at),
+        "has_active_incident": has_active_incident,
+    }
+
+
 def _incident_view(incident: Incident, device: Device, project: Project) -> dict[str, object]:
     return {
         "incident_id": incident.incident_uuid,
@@ -508,6 +524,50 @@ class DashboardReadService:
                         },
                     }
                 )
+            active_incident_exists = exists(
+                select(Incident.id).where(
+                    Incident.device_id == Device.id,
+                    Incident.closed_at.is_(None),
+                )
+            )
+            attention_state_order = case(
+                (state_expression == "OFFLINE", 0),
+                (state_expression == "SUSPECT", 1),
+                (state_expression == "AWAITING_FIRST_HEARTBEAT", 2),
+                else_=3,
+            )
+            attention_rows = session.execute(
+                select(
+                    Device,
+                    Project,
+                    active_incident_exists.label("has_active_incident"),
+                )
+                .join(Project, Device.project_id == Project.id)
+                .where(
+                    or_(
+                        state_expression.in_(("OFFLINE", "SUSPECT", "AWAITING_FIRST_HEARTBEAT")),
+                        and_(
+                            Device.gpu_monitoring_enabled.is_(True),
+                            Device.gpu_effective_state != "OK",
+                        ),
+                        active_incident_exists,
+                    )
+                )
+                .order_by(
+                    attention_state_order,
+                    case((active_incident_exists, 0), else_=1),
+                    case((Device.last_seen_at.is_(None), 0), else_=1),
+                    Device.last_seen_at,
+                    Project.name,
+                    Device.name,
+                    Device.device_uuid,
+                )
+                .limit(ATTENTION_LIMIT)
+            ).all()
+            attention = [
+                _attention_view(device, project, bool(has_active_incident))
+                for device, project, has_active_incident in attention_rows[:ATTENTION_LIMIT]
+            ]
             return {
                 "counts": {
                     "total": total,
@@ -520,6 +580,7 @@ class DashboardReadService:
                 },
                 "projects": project_items,
                 "projects_truncated": len(project_rows) > 100,
+                "attention": attention,
                 "server_time": _timestamp(now),
             }
 

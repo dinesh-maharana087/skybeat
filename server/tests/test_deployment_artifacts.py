@@ -61,6 +61,15 @@ def test_stage07_runbook_documents_safe_private_ca_and_agent_installation():
     assert "sudo bash ./scripts/install-agent.sh ./agent /secure/path/agent.env" in runbook
 
 
+def test_stage076_runbook_labels_dashboard_bypass_local_only_and_credential_safe():
+    runbook = (ROOT / "docs" / "DEPLOYMENT_RUNBOOK.md").read_text(encoding="utf-8")
+
+    assert "SKYBEAT_DEV_AUTH_BYPASS=true" in runbook
+    assert "local development only" in runbook.lower()
+    assert "production configuration rejects" in runbook.lower()
+    assert "do not record the credential" in runbook.lower()
+
+
 def test_active_agent_unit_uses_standardized_path_and_least_privilege():
     unit = (ROOT / "deployment" / "systemd" / "skybeat-agent.service").read_text(encoding="utf-8")
 

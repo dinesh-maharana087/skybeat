@@ -20,6 +20,7 @@ from app.api.health import router as health_router
 from app.api.heartbeats import PerDeviceRateLimiter
 from app.api.heartbeats import router as heartbeats_router
 from app.config import Settings
+from app.dashboard.management import DashboardManagementService
 from app.dashboard.oidc import GoogleOIDCClient, OIDCClient
 from app.dashboard.read import DashboardReadService
 from app.dashboard.service import DashboardAuthService
@@ -35,13 +36,17 @@ def create_app(
     database: Database | None = None,
     oidc_client: OIDCClient | None = None,
 ) -> FastAPI:
-    config = settings if settings is not None else Settings()
+    # BaseSettings obtains required values from the protected runtime environment.
+    # The pydantic mypy plugin cannot model that source for a required field.
+    config = settings if settings is not None else Settings()  # type: ignore[call-arg]
     url = config.database_url.get_secret_value()
     configure_logging(config.log_level, [url, make_url(url).password or ""])
     db = database if database is not None else Database(config)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if config.dev_auth_bypass:
+            logger.warning("DEVELOPMENT DASHBOARD AUTH BYPASS ENABLED")
         logger.info("API started", extra={"event_type": "startup"})
         try:
             yield
@@ -73,6 +78,7 @@ def create_app(
         ),
     )
     app.state.dashboard_read_service = DashboardReadService(db)
+    app.state.dashboard_management_service_factory = DashboardManagementService
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.allowed_hosts)
     app.mount(
         "/static",
@@ -91,7 +97,7 @@ def create_app(
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
         )
-        if request.method == "GET" and request.url.path.startswith("/api/v1/"):
+        if request.url.path.startswith("/api/v1/"):
             response.headers["Cache-Control"] = "no-store"
         return response
 

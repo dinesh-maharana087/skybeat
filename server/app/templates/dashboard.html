@@ -3,148 +3,273 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SkyBeat Device Status</title>
+    <title>SkyBeat Operations</title>
     <link rel="stylesheet" href="/static/dashboard.css">
   </head>
-  <body>
-    <header class="site-header">
-      <div>
-        <p class="eyebrow">SkyBeat</p>
-        <h1>Device Status</h1>
-      </div>
-      <div class="account-actions">
-        <p id="identity">{{ user_email }}</p>
-        <button id="logout" type="button">Log out</button>
-      </div>
-    </header>
-    <main>
-      <section class="refresh-meta" aria-label="Dashboard refresh status">
-        <p id="last-refresh" aria-live="polite">Last successful refresh: not yet available.</p>
-        <p id="dashboard-stale-warning" role="status" hidden>
-          Dashboard data may be stale — refresh failed.
-        </p>
-      </section>
-
-      <section aria-labelledby="overview-heading">
-        <div class="section-heading">
+  <body data-dashboard-view="{{ active_view }}">
+    <div class="app-shell">
+      <aside id="app-sidebar" class="app-sidebar" aria-label="Dashboard navigation">
+        <div class="brand-lockup">
+          <p class="brand-mark" aria-hidden="true">SB</p>
           <div>
-            <p class="eyebrow">Current state</p>
-            <h2 id="overview-heading">Fleet overview</h2>
-          </div>
-          <p id="overview-status" aria-live="polite">Loading overview…</p>
-        </div>
-        <div id="overview-cards" class="overview-cards" aria-label="Current device overview"></div>
-        <p id="awaiting-first-heartbeat" class="secondary-count"></p>
-      </section>
-
-      <section id="project-summary" aria-labelledby="project-summary-heading">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Organisation</p>
-            <h2 id="project-summary-heading">Projects</h2>
+            <p class="brand-name">SkyBeat</p>
+            <p class="brand-subtitle">Operations console</p>
           </div>
         </div>
-        <div id="project-summary-content"></div>
-      </section>
-
-      <section aria-labelledby="device-status-heading">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Operations</p>
-            <h2 id="device-status-heading">Devices</h2>
-          </div>
-          <p id="refresh-status" aria-live="polite">Loading current device status…</p>
-        </div>
-
-        <form id="filters" class="controls" novalidate>
-          <label for="project-filter">Project
-            <select id="project-filter" name="project_id">
-              <option value="">All projects</option>
-            </select>
-          </label>
-          <label for="state-filter">Availability
-            <select id="state-filter" name="state">
-              <option value="">All availability states</option>
-              <option value="ONLINE">ONLINE</option>
-              <option value="SUSPECT">SUSPECT</option>
-              <option value="OFFLINE">OFFLINE</option>
-              <option value="AWAITING_FIRST_HEARTBEAT">AWAITING_FIRST_HEARTBEAT</option>
-            </select>
-          </label>
-          <label for="gpu-state-filter">GPU state
-            <select id="gpu-state-filter" name="gpu_state">
-              <option value="">All GPU states</option>
-              <option value="OK">OK</option>
-              <option value="GPU_MISSING">GPU_MISSING</option>
-              <option value="NVIDIA_SMI_FAILED">NVIDIA_SMI_FAILED</option>
-              <option value="DRIVER_ERROR">DRIVER_ERROR</option>
-              <option value="UNKNOWN">UNKNOWN</option>
-              <option value="NOT_MONITORED">NOT_MONITORED</option>
-            </select>
-          </label>
-          <label for="search">Search
-            <input id="search" name="search" maxlength="128" autocomplete="off" placeholder="Device or hostname">
-          </label>
-          <label class="checkbox-control" for="include-disabled">
-            <input id="include-disabled" name="include_disabled" type="checkbox">
-            Include disabled devices
-          </label>
-          <div class="filter-actions">
-            <button type="submit">Apply filters</button>
-            <button id="reset-filters" type="button">Reset filters</button>
-          </div>
-        </form>
-
-        <section class="device-table-region" aria-label="Current device status table">
-          <div id="devices" aria-live="polite"></div>
-          <p id="device-empty" role="status" hidden></p>
-          <p id="device-error" role="alert" hidden></p>
-          <button id="load-more" type="button" hidden>Load more devices</button>
-        </section>
-      </section>
-
-      <aside id="detail-panel" class="detail-panel" role="complementary" aria-labelledby="detail-title" hidden>
-        <div class="detail-panel-header">
-          <div>
-            <p class="eyebrow">Selected device</p>
-            <h2 id="detail-title" tabindex="-1">Device detail</h2>
-          </div>
-          <button id="detail-close" type="button">Close detail</button>
-        </div>
-        <p id="detail-status" aria-live="polite"></p>
-        <button id="detail-retry" type="button" hidden>Retry detail</button>
-        <div id="detail-content">
-          <section aria-labelledby="detail-identity-heading">
-            <h3 id="detail-identity-heading">Identity</h3>
-            <dl id="detail-identity"></dl>
-          </section>
-          <section aria-labelledby="detail-freshness-heading">
-            <h3 id="detail-freshness-heading">Freshness</h3>
-            <dl id="detail-freshness"></dl>
-          </section>
-          <section aria-labelledby="detail-system-heading">
-            <h3 id="detail-system-heading">Host and system</h3>
-            <dl id="detail-system"></dl>
-          </section>
-          <section aria-labelledby="detail-storage-heading">
-            <h3 id="detail-storage-heading">Storage</h3>
-            <div id="detail-storage"></div>
-          </section>
-          <section aria-labelledby="detail-gpus-heading">
-            <h3 id="detail-gpus-heading">Observed GPUs</h3>
-            <div id="detail-gpus"></div>
-          </section>
-          <section aria-labelledby="detail-policy-heading">
-            <h3 id="detail-policy-heading">Expected GPU configuration</h3>
-            <dl id="detail-policy"></dl>
-          </section>
-          <section aria-labelledby="detail-incidents-heading">
-            <h3 id="detail-incidents-heading">Recent incidents</h3>
-            <div id="detail-incidents"></div>
-          </section>
-        </div>
+        <button id="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">Collapse</button>
+        <nav class="sidebar-nav" aria-label="Dashboard sections">
+          <a href="/dashboard"{% if active_view == "overview" %} aria-current="page"{% endif %}>Overview</a>
+          <a href="/dashboard/devices"{% if active_view == "devices" %} aria-current="page"{% endif %}>Devices</a>
+          <a href="/dashboard/projects"{% if active_view == "projects" %} aria-current="page"{% endif %}>Projects</a>
+        </nav>
+        <p class="sidebar-footer">SkyBeat V1<br>Operational monitoring</p>
       </aside>
-    </main>
+
+      <div id="dashboard-workspace" class="dashboard-workspace">
+        <header class="site-header">
+          <div>
+            <p class="eyebrow">SkyBeat monitoring</p>
+            <h1>Device operations</h1>
+            <p class="header-subtitle">Current server-authoritative fleet status and telemetry.</p>
+          </div>
+          <div class="header-actions">
+            <div class="live-status" aria-label="Dashboard freshness status">
+              <span class="live-status-dot" aria-hidden="true"></span>
+              <p id="last-refresh" aria-live="polite">Last successful refresh: not yet available.</p>
+            </div>
+            <div class="account-actions">
+              <p id="identity">{{ user_email }}</p>
+              <button id="logout" type="button">Log out</button>
+            </div>
+          </div>
+        </header>
+
+        <main>
+          <section class="refresh-meta" aria-label="Dashboard refresh status">
+            <p id="dashboard-stale-warning" role="status" hidden>
+              Dashboard data may be stale — refresh failed.
+            </p>
+          </section>
+
+          {% if active_view == "overview" %}
+          <section aria-labelledby="overview-heading">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Current state</p>
+                <h2 id="overview-heading">Fleet overview</h2>
+              </div>
+              <p id="overview-status" aria-live="polite">Loading overview…</p>
+            </div>
+            <div id="overview-cards" class="overview-cards" aria-label="Current device overview"></div>
+            <div id="overview-health-meter" class="health-meter" role="img" aria-label="0 / 0 devices online">
+              <span id="overview-health-meter-fill"></span>
+            </div>
+            <p id="overview-health-meter-label" class="health-meter-label">0 / 0 devices online</p>
+            <p id="awaiting-first-heartbeat" class="secondary-count"></p>
+            <section class="attention-section" aria-labelledby="attention-heading">
+              <div class="section-heading"><h3 id="attention-heading">Needs attention</h3><a href="/dashboard/devices">Open devices</a></div>
+              <div id="overview-attention" aria-live="polite"></div>
+            </section>
+            <section class="attention-section" aria-labelledby="overview-incidents-heading">
+              <div class="section-heading"><h3 id="overview-incidents-heading">Recent incidents</h3></div>
+              <div id="overview-incidents" aria-live="polite"></div>
+            </section>
+          </section>
+          {% endif %}
+
+          {% if active_view == "overview" or active_view == "projects" %}
+          <section id="project-summary" aria-labelledby="projects-heading">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Organisation</p>
+                <h2 id="projects-heading">Projects</h2>
+              </div>
+              <button id="new-project" type="button">+ New Project</button>
+            </div>
+            <div id="project-summary-content"></div>
+          </section>
+          {% endif %}
+
+          {% if active_view == "devices" %}
+          <section aria-labelledby="devices-heading">
+            <div class="section-heading inventory-heading">
+              <div>
+                <p class="eyebrow">Operations</p>
+                <h2 id="devices-heading">Device inventory</h2>
+              </div>
+              <div class="inventory-actions">
+                <p id="refresh-status" aria-live="polite">Loading current device status…</p>
+                <button id="add-device" type="button">+ Add Device</button>
+              </div>
+            </div>
+
+            <form id="filters" class="controls" novalidate>
+              <div class="filter-source" aria-hidden="true">
+              <label for="project-filter">Project
+                <select id="project-filter" name="project_id"><option value="">All projects</option></select>
+              </label>
+              <label for="state-filter">Availability
+                <select id="state-filter" name="state">
+                  <option value="">All availability states</option>
+                  <option value="ONLINE">ONLINE</option>
+                  <option value="SUSPECT">SUSPECT</option>
+                  <option value="OFFLINE">OFFLINE</option>
+                  <option value="AWAITING_FIRST_HEARTBEAT">AWAITING_FIRST_HEARTBEAT</option>
+                </select>
+              </label>
+              <label for="gpu-state-filter">GPU state
+                <select id="gpu-state-filter" name="gpu_state">
+                  <option value="">All GPU states</option>
+                  <option value="OK">OK</option>
+                  <option value="GPU_MISSING">GPU_MISSING</option>
+                  <option value="NVIDIA_SMI_FAILED">NVIDIA_SMI_FAILED</option>
+                  <option value="DRIVER_ERROR">DRIVER_ERROR</option>
+                  <option value="UNKNOWN">UNKNOWN</option>
+                  <option value="NOT_MONITORED">NOT_MONITORED</option>
+                </select>
+              </label>
+              </div>
+              <label for="search">Search
+                <input id="search" name="search" maxlength="128" autocomplete="off" placeholder="Device or hostname">
+              </label>
+              <label for="page-size">Rows per page
+                <select id="page-size" name="page_size">
+                  <option value="25">25</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+              <label class="checkbox-control" for="include-disabled">
+                <input id="include-disabled" name="include_disabled" type="checkbox">
+                Include disabled devices
+              </label>
+              <div class="filter-actions">
+                <button type="submit">Apply filters</button>
+                <button id="clear-device-filters" type="button">Clear all</button>
+                <button id="reset-filters" type="button" hidden>Reset filters</button>
+              </div>
+            </form>
+            <div id="active-filters" class="active-filters" aria-live="polite"></div>
+
+            <section class="device-table-region" aria-label="Current device status table">
+              <div id="devices" aria-live="polite"></div>
+              <p id="device-empty" role="status" hidden></p>
+              <p id="device-error" role="alert" hidden></p>
+              <div class="page-controls">
+                <button id="previous-page" type="button" disabled>Previous page</button>
+                <p id="page-context" aria-live="polite">Page 1</p>
+                <button id="load-more" type="button" hidden>Next page</button>
+              </div>
+            </section>
+          </section>
+
+          <aside id="detail-panel" class="detail-panel" role="complementary" aria-labelledby="detail-title" hidden>
+            <div class="detail-panel-header">
+              <div><p class="eyebrow">Selected device</p><h2 id="detail-title" tabindex="-1">Device detail</h2></div>
+              <button id="detail-close" type="button">Close detail</button>
+            </div>
+            <p id="detail-status" aria-live="polite"></p>
+            <div id="detail-management-actions" class="detail-management-actions" hidden>
+              <button id="detail-change-project" type="button">Change project</button>
+              <button id="detail-toggle-monitoring" type="button">Enable or disable monitoring</button>
+            </div>
+            <button id="detail-retry" type="button" hidden>Retry detail</button>
+            <div id="detail-content">
+              <section aria-labelledby="detail-identity-heading"><h3 id="detail-identity-heading">Identity</h3><dl id="detail-identity"></dl></section>
+              <section aria-labelledby="detail-freshness-heading"><h3 id="detail-freshness-heading">Freshness</h3><dl id="detail-freshness"></dl></section>
+              <section aria-labelledby="detail-system-heading"><h3 id="detail-system-heading">Host and system</h3><dl id="detail-system"></dl></section>
+              <section aria-labelledby="detail-storage-heading"><h3 id="detail-storage-heading">Storage</h3><div id="detail-storage"></div></section>
+              <section aria-labelledby="detail-gpus-heading"><h3 id="detail-gpus-heading">Observed GPUs</h3><div id="detail-gpus"></div></section>
+              <section aria-labelledby="detail-policy-heading"><h3 id="detail-policy-heading">Expected GPU configuration</h3><dl id="detail-policy"></dl></section>
+              <section aria-labelledby="detail-incidents-heading"><h3 id="detail-incidents-heading">Recent incidents</h3><div id="detail-incidents"></div></section>
+              <section aria-labelledby="history-heading">
+                <h3 id="history-heading">Telemetry history</h3>
+                <div id="history-range-controls" role="group" aria-label="Telemetry history range">
+                  <button type="button" data-history-range="1h" aria-pressed="true">1h</button>
+                  <button type="button" data-history-range="6h" aria-pressed="false">6h</button>
+                  <button type="button" data-history-range="24h" aria-pressed="false">24h</button>
+                  <button type="button" data-history-range="7d" aria-pressed="false">7d</button>
+                </div>
+                <p id="history-status" aria-live="polite"></p>
+                <button id="history-retry" type="button" hidden>Retry history</button>
+                <p id="history-truncation" hidden></p>
+                <div id="history-content"></div>
+              </section>
+            </div>
+          </aside>
+          {% endif %}
+
+          {% if active_view == "devices" or active_view == "projects" %}
+          <dialog id="project-dialog" aria-labelledby="project-dialog-title">
+            <form id="project-form" class="management-form" novalidate>
+              <div class="dialog-heading">
+                <div><p class="eyebrow">Organisation</p><h2 id="project-dialog-title">New project</h2></div>
+                <button id="project-close" type="button" aria-label="Close new project dialog">Close</button>
+              </div>
+              <label for="project-name">Project name
+                <input id="project-name" name="name" maxlength="128" autocomplete="off" required>
+              </label>
+              <p id="project-status" role="status" aria-live="polite"></p>
+              <div class="dialog-actions"><button id="project-submit" type="submit">Create project</button><button id="project-cancel" type="button">Cancel</button></div>
+            </form>
+          </dialog>
+          {% endif %}
+
+          {% if active_view == "devices" %}
+          <dialog id="device-enroll-dialog" aria-labelledby="device-enroll-title">
+            <form id="device-enroll-form" class="management-form" novalidate>
+              <div class="dialog-heading">
+                <div><p class="eyebrow">Enrollment</p><h2 id="device-enroll-title">Add device</h2></div>
+                <button id="device-enroll-close" type="button" aria-label="Close add device dialog">Close</button>
+              </div>
+              <label for="enroll-name">Device name
+                <input id="enroll-name" name="name" maxlength="128" autocomplete="off" required>
+              </label>
+              <label for="enroll-project">Project
+                <select id="enroll-project" name="project_id" required><option value="">Select a project</option></select>
+              </label>
+              <button id="new-project-from-enroll" type="button">+ New Project</button>
+              <label class="checkbox-control" for="enroll-gpu-enabled">
+                <input id="enroll-gpu-enabled" name="gpu_monitoring_enabled" type="checkbox" checked>
+                Monitor GPUs on this device
+              </label>
+              <label for="enroll-gpu-count">Minimum expected GPUs
+                <input id="enroll-gpu-count" name="expected_gpu_min_count" type="number" min="0" max="64" value="1" required>
+              </label>
+              <p id="enrollment-status" role="status" aria-live="polite"></p>
+              <div id="enrollment-credential-panel" hidden>
+                <p class="credential-warning">Copy this enrollment credential now. It will not be shown again.</p>
+                <code id="enrollment-credential"></code>
+                <button id="copy-enrollment-credential" type="button" disabled>Copy credential</button>
+              </div>
+              <div class="dialog-actions"><button id="enroll-submit" type="submit">Enroll device</button><button id="enroll-cancel" type="button">Cancel</button></div>
+            </form>
+          </dialog>
+
+          <dialog id="move-device-dialog" aria-labelledby="move-device-title">
+            <form id="move-device-form" class="management-form" novalidate>
+              <div class="dialog-heading"><div><p class="eyebrow">Device management</p><h2 id="move-device-title">Change project</h2></div><button id="move-device-close" type="button" aria-label="Close change project dialog">Close</button></div>
+              <p id="move-device-description"></p>
+              <label for="move-device-project">New project
+                <select id="move-device-project" name="project_id" required><option value="">Select a project</option></select>
+              </label>
+              <p id="move-device-status" role="status" aria-live="polite"></p>
+              <div class="dialog-actions"><button id="move-device-submit" type="submit">Confirm project change</button><button id="move-device-cancel" type="button">Cancel</button></div>
+            </form>
+          </dialog>
+
+          <dialog id="monitoring-dialog" aria-labelledby="monitoring-dialog-title">
+            <form id="monitoring-form" class="management-form" novalidate>
+              <div class="dialog-heading"><div><p class="eyebrow">Device management</p><h2 id="monitoring-dialog-title">Change monitoring</h2></div><button id="monitoring-close" type="button" aria-label="Close monitoring dialog">Close</button></div>
+              <p id="monitoring-description"></p>
+              <p id="monitoring-status" role="status" aria-live="polite"></p>
+              <div class="dialog-actions"><button id="monitoring-submit" type="submit">Confirm change</button><button id="monitoring-cancel" type="button">Cancel</button></div>
+            </form>
+          </dialog>
+          {% endif %}
+        </main>
+      </div>
+    </div>
     <script src="/static/dashboard.js" defer></script>
   </body>
 </html>

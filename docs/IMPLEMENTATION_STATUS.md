@@ -1,9 +1,9 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-09-23
+Last updated: 2026-09-24
 Current stage: Stage 07 - Dashboard, Operational Visibility & Deployment Runbook
-Current milestone: Stage 07.4 - Operational Device Detail
-Status: IN PROGRESS. Stage 07.4 is COMPLETE / ACCEPTED; Stage 07.5 history visualization has not started.
+Current milestone: Stage 07.6B - Operations Console UX Refinement
+Status: IMPLEMENTED / AWAITING BROWSER ACCEPTANCE. Overall Stage 07 remains in progress pending browser, real-device, and deployment acceptance.
 
 ## Completed
 
@@ -34,10 +34,14 @@ Status: IN PROGRESS. Stage 07.4 is COMPLETE / ACCEPTED; Stage 07.5 history visua
 - Completed Stage 07.2 bounded dashboard read APIs: canonical overview counts, effective-GPU filtered device keyset pagination, display-safe device/detail additions, durable incident projections, and capped server-side heartbeat history. No monitoring lifecycle or schema behavior changed.
 - Completed Stage 07.3 operational dashboard UI: server-rendered semantic overview/project/filter/table sections, Stage 07.2-backed safe DOM rendering, opaque keyset pagination, non-overlapping visibility-aware polling, explicit refresh-stale/partial-error states, and responsive accessible presentation. Stage 07.2 API semantics remain unchanged.
 - Completed Stage 07.4 operational device detail: bounded server-side per-device incident filtering; an accessible, responsive canonical-detail drawer; safe structured rendering of identity, freshness, system, storage, GPU inventory, expected policy, and recent incidents; request abort/generation race control; and retained stale detail on refresh failure. It uses 20 recent incidents without changing the endpoint default or maximum.
+- Completed Stage 07.5 bounded history visualization: canonical fixed-range history requests in the existing drawer; native-SVG CPU, memory, GPU-utilization, and GPU-temperature charts; distinct UUID/index GPU series; compact textual summaries; null-gap/zero preservation; truncation notices; and device/range abort-generation race protection.
+- Added a local-development-only dashboard authentication bypass for browser acceptance: a fixed display-safe identity resolves through the existing dashboard page/API authorization boundary only when explicitly enabled; it is false by default and rejected outside development mode.
+- Implemented Stage 07.6 premium operations UI and authenticated canonical device management: project Create + Select, device enrollment with one-time credential display/copy/clear, selected-device project reassignment, and monitoring enable/disable confirmation. Existing availability, GPU, heartbeat, history, incident, Google OIDC, session, CSP, and read semantics remain unchanged.
+- Implemented Stage 07.6B operations-console refinement: authenticated Overview, Devices, and Projects routes share one semantic shell; Overview consumes a deterministic capped-20 canonical attention projection; Devices retains opaque keyset history, project deep links, bounded page sizes, keyboard column filters/chips, drawer/history and management workflows; and active-view polling remains visibility-aware, in-place, and non-overlapping.
 
 ## In Progress
 
-- Stage 07 remains IN PROGRESS. Stages 07.1 through 07.4 are complete. Stage 07.5 history visualization remains explicitly not started.
+- Stage 07 remains IN PROGRESS. Stages 07.1 through 07.5 are accepted; Stages 07.6 and 07.6B are IMPLEMENTED / AWAITING BROWSER ACCEPTANCE. The separate final browser, real-device, and deployment acceptance checkpoint remains pending; Stage 08 is not started.
 
 ## Verification Completed
 
@@ -68,6 +72,10 @@ Status: IN PROGRESS. Stage 07.4 is COMPLETE / ACCEPTED; Stage 07.5 history visua
 - Stage 07.2 focused dashboard read/API/page tests passed (19 passed). Full server suite passed (264 passed, 35 skipped, 0 failed): 33 skips require the unavailable isolated MySQL URL and 2 require unavailable Bash. Full agent suite passed (64 passed, 0 skipped, 0 failed). Server Ruff/format passed (74 files) and strict mypy passed for 39 source files; agent Ruff/format passed (19 files) and strict mypy passed for 11 source files. Alembic `heads`/`history` confirms sole head `a58c71d904ef`; deployment validator and `git diff --check` passed.
 - Stage 07.3 focused dashboard page/UI plus Stage 07.2 API/read regression tests: 23 passed. Final server suite: 268 passed, 35 skipped, 0 failed; 33 skips require the unavailable isolated MySQL URL and 2 require unavailable Bash. Server Ruff, formatting, and strict mypy passed for 39 source files; Alembic `heads`/`history` confirms sole head `a58c71d904ef`; deployment validation and `git diff --check` passed. The agent suite was not rerun because this stage changed only server dashboard template/static/test assets and no agent code, heartbeat contract, shared API schema, or deployment artifact.
 - Stage 07.4 focused dashboard page/API/read regression tests: 30 passed, 0 failed (three upstream FastAPI/Starlette/Authlib deprecation warnings only). Final server suite: 275 passed, 35 skipped, 0 failed; 33 skips require the unavailable isolated MySQL URL and 2 require unavailable Bash. Ruff check passed; formatting check passed (74 files); strict mypy passed for 39 source files; Alembic `heads`/`history` confirms sole head `a58c71d904ef`; deployment validation and `git diff --check` passed. The agent suite was not rerun because this stage changed only dashboard server/read/template/static/test/documentation files and no agent code, heartbeat contract, or deployment artifact.
+- Stage 07.5 focused dashboard page/API/read regression tests: 35 passed, 0 failed (three upstream FastAPI/Starlette/Authlib deprecation warnings only). Final server suite: 280 passed, 35 skipped, 0 failed; 33 skips require the unavailable isolated MySQL URL and 2 require unavailable Bash. Ruff check passed; formatting check passed (74 files); strict mypy passed for 39 source files; Alembic `heads`/`history` confirms sole head `a58c71d904ef`; deployment validation and `git diff --check` passed. The agent suite was not rerun because this stage changed only dashboard template/static/test/documentation files and no agent code, heartbeat contract, shared agent contract, or deployment artifact.
+- Development-auth-bypass regression: configuration/page/API/auth/read tests passed (67 passed); full server suite passed (283 passed, 35 environment-dependent skips, 0 failed). Ruff and formatting passed (74 files); strict mypy passed for 39 source files; Alembic remains sole head `a58c71d904ef`; deployment validation passed. The bypass adds no migration or monitoring/API semantic change.
+- Stage 07.6 focused dashboard page regression passed (27 passed, 3 upstream deprecation warnings). Final server suite passed (303 passed, 35 skipped, 0 failed): 33 skips require the unavailable isolated MySQL URL and 2 require unavailable Bash. Ruff check passed; formatting check passed (77 files); strict mypy passed for 41 source files; Alembic `heads`/`history` confirms sole head `a58c71d904ef`; deployment validation and `git diff --check` passed. The agent suite was not rerun because Stage 07.6 changes no agent code, heartbeat/shared agent contract, or deployment artifact.
+- Stage 07.6B final verification: focused dashboard/read/API/management suite passed (62 passed, 0 failed, 3 upstream deprecation warnings); complete server suite passed (309 passed, 35 skipped, 0 failed, 3 upstream deprecation warnings). The skips are exactly 33 isolated-MySQL-url-dependent tests and 2 Bash-unavailable deployment-artifact tests. Ruff check and format check passed (70 files); strict mypy passed for 41 source files. Alembic `heads`/`history` confirms existing sole head `a58c71d904ef`; deployment validation and `git diff --check` passed. No migration, database initialization, ACL change, production operation, commit, or push occurred.
 
 ## Verification Pending
 
@@ -81,6 +89,18 @@ Status: IN PROGRESS. Stage 07.4 is COMPLETE / ACCEPTED; Stage 07.5 history visua
 - Stage 07.2 real-MySQL query execution for overview aggregation, keyset pagination, incident ordering, and bounded heartbeat-history reads remains environment-pending because the retained isolated MySQL data files are not writable. No ACL, data, initialization, or reset action was taken.
 - Stage 07.3 browser-level interaction validation remains environment-pending because this Windows environment has no browser/JavaScript runtime test harness. Static page/UI tests cover the existing repository testing model; no browser framework was added solely for this stage.
 - Stage 07.4 browser-level drawer interaction, responsive-layout, and real-MySQL filtered-query execution remain environment-pending because this Windows environment has no browser/JavaScript runtime harness and the retained isolated MySQL data files are not writable. Static and service-level tests cover the implemented bounded/read-only contract; no browser framework, ACL, data, initialization, or reset action was added.
+- Stage 07.5 browser-level SVG rendering, range/device switch race behavior, responsive layout, and real-MySQL history-query execution remain environment-pending because this Windows environment has no browser/JavaScript runtime harness and the retained isolated MySQL data files are not writable. Static page tests cover the bounded request/safety contract; no browser framework, ACL, data, initialization, or reset action was added.
+- Stage 07.6 local browser/UI acceptance remains pending: verify the app shell at the documented widths, keyboard/focus/reduced-motion behavior, project creation and canonical refresh, enrollment credential copy-and-clear, project reassignment, monitoring confirmation, and the existing detail/history flow. Real-MySQL management mutation execution is likewise pending because the retained isolated MySQL data files are not writable. No ACL, data, initialization, or reset action was taken.
+- Stage 07.6B browser acceptance remains pending because no browser/JavaScript runtime is installed locally; static page-source tests do not substitute for browser execution. Real-MySQL execution of the capped attention query is also pending because `SKYBEAT_TEST_DATABASE_URL` is unavailable; no data, ACL, initialization, or reset action was taken.
+
+  1. Sign in and verify `/` lands on `/dashboard`; verify all three nav routes and active state.
+  2. Collapse/expand the sidebar, reload, and verify only the visual preference persists; verify narrow overlay keyboard/focus behavior.
+  3. Inspect Overview metric meter, capped attention ordering, compact projects, incidents, live and stale states.
+  4. On Devices, use search and every column filter by keyboard; verify chips/Clear all and project links reset cursors safely.
+  5. Move to a later keyset page, wait for auto-refresh, and verify page position, filters, scroll, drawer, and history remain intact.
+  6. Verify Add Device, one-time credential copy/close clearing, New Project, project reassignment, and enable/disable confirmation.
+  7. Check desktop and narrow layouts, sticky device header, horizontal table use, focus visibility, and reduced-motion behavior.
+  8. Capture requested screenshots before accepting Stage 07.6B; leave overall Stage 07 open.
 
 ## Files Changed
 
@@ -97,6 +117,10 @@ Status: IN PROGRESS. Stage 07.4 is COMPLETE / ACCEPTED; Stage 07.5 history visua
 - Stage 07.2: `server/app/dashboard/read.py`, `server/app/api/dashboard.py`, dashboard read/API tests, `docs/API_SPEC.md`, and this checkpoint.
 - Stage 07.3: `server/app/templates/dashboard.html`, `server/app/static/dashboard.js`, `server/app/static/dashboard.css`, focused dashboard page tests, and this checkpoint.
 - Stage 07.4: `server/app/dashboard/read.py`, `server/app/api/dashboard.py`, `server/app/templates/dashboard.html`, `server/app/static/dashboard.js`, `server/app/static/dashboard.css`, dashboard API/read/page tests, `docs/API_SPEC.md`, and this checkpoint.
+- Stage 07.5: `server/app/templates/dashboard.html`, `server/app/static/dashboard.js`, `server/app/static/dashboard.css`, focused dashboard page tests, the Stage 07.5 implementation plan, and this checkpoint.
+- Development auth bypass: `server/app/config.py`, `server/app/dashboard/service.py`, dashboard page/API authorization dependencies, `server/app/main.py`, `.env.example`, `deployment/production.env.example`, configuration/dashboard tests, and this checkpoint.
+- Stage 07.6: `server/app/dashboard/management.py`, `server/app/schemas/dashboard_management.py`, `server/app/api/auth.py`, `server/app/api/dashboard.py`, `server/app/main.py`, dashboard template/static CSS/JavaScript, dashboard management/API/page/deployment-artifact tests, `docs/API_SPEC.md`, `docs/DEPLOYMENT_RUNBOOK.md`, the Stage 07.6 design/plan, and this checkpoint.
+- Stage 07.6B: `server/app/dashboard/read.py`, `server/app/api/dashboard_page.py`, dashboard template/static CSS/JavaScript, dashboard read/API/page tests, `docs/API_SPEC.md`, the Stage 07.6B design/plan, and this checkpoint. The strict-mypy runtime-settings boundary is documented at existing API/worker/CLI process entry points.
 
 ## Migrations Applied/Tested
 
@@ -110,6 +134,10 @@ Status: IN PROGRESS. Stage 07.4 is COMPLETE / ACCEPTED; Stage 07.5 history visua
 - Stage 07.2 adds no schema change or Alembic revision; it uses the existing `heartbeat_samples(device_id, received_at)` index and `a58c71d904ef` remains the verified sole head.
 - Stage 07.3 adds no schema change or Alembic revision; `a58c71d904ef` remains the verified sole head.
 - Stage 07.4 adds no schema change or Alembic revision; `a58c71d904ef` remains the verified sole head.
+- Stage 07.5 adds no schema change or Alembic revision; it retains the Stage 07.2 history bounds and `a58c71d904ef` remains the verified sole head.
+- The development auth bypass adds no schema change or Alembic revision; it retains the existing monitoring and read API semantics.
+- Stage 07.6 adds no schema change or Alembic revision; `a58c71d904ef` remains the verified sole head.
+- Stage 07.6B adds no schema change or Alembic revision; `a58c71d904ef` remains the verified sole head.
 - No production database was accessed. No downgrade, drop, reset or destructive database action occurred.
 
 ## Known Issues
@@ -127,6 +155,9 @@ Status: IN PROGRESS. Stage 07.4 is COMPLETE / ACCEPTED; Stage 07.5 history visua
 - No Stage 07.2 software acceptance blockers remain. Real-MySQL execution is environment-pending; Stage 07 remains in progress pending explicitly deferred dashboard UI work.
 - No Stage 07.3 software acceptance blockers remain. Browser-level interaction testing is environment-pending; Stage 07 remains in progress pending explicitly deferred device detail and history visualization work.
 - No Stage 07.4 software acceptance blockers remain. Browser-level drawer interaction and real-MySQL execution are environment-pending; Stage 07 remains in progress pending explicitly deferred Stage 07.5 history visualization.
+- No Stage 07.5 software acceptance blockers remain. Browser-level SVG interaction and real-MySQL history execution are environment-pending; overall Stage 07 remains in progress pending its separate final browser, real-device, and deployment acceptance checkpoint. Stage 08 is not started.
+- No Stage 07.6 executable software blocker remains. Local browser/UI acceptance and real-MySQL management mutation execution are environment-pending; Stage 07 remains in progress and Stage 08 is not started.
+- No Stage 07.6B executable software blocker remains. Browser acceptance and isolated real-MySQL attention-query execution are environment-pending; Stage 07 remains in progress and Stage 08 is not started.
 
 ## Security Notes
 
@@ -140,6 +171,10 @@ Status: IN PROGRESS. Stage 07.4 is COMPLETE / ACCEPTED; Stage 07.5 history visua
 - Stage 07.2 endpoints require the existing dashboard session dependency, use no-store responses, validate bounded inputs/cursors, expose projections rather than ORM records, and omit credentials, sessions, token digests, notification destinations, and provider data.
 - Stage 07.3 preserves same-origin requests, no-store API behavior, opaque cursors, text-only DOM insertion, restrictive CSP compatibility, and browser-session isolation. It does not put credentials/session data into browser storage or derive monitoring states in JavaScript.
 - Stage 07.4 validates the optional canonical incident UUID server-side and filters before pagination; it preserves dashboard authorization/no-store responses and exposes only existing incident projections. The drawer uses same-origin requests, `AbortController` plus request generations, `textContent`/DOM construction only, no browser credential storage, and no client-derived availability or GPU state.
+- Stage 07.5 consumes only the existing authenticated/no-store bounded history projection for the selected device and range. It constructs native SVG through DOM APIs, retains null gaps rather than fabricating zero, preserves server GPU identities, and adds no external script, chart library, raw heartbeat access, browser credential storage, or client-derived health state.
+- The development bypass is opt-in through `SKYBEAT_DEV_AUTH_BYPASS=true` only with `SKYBEAT_ENV=development`; startup logs `DEVELOPMENT DASHBOARD AUTH BYPASS ENABLED`. It produces no session, Google token, credential, browser storage value, or database record, and production/test configurations reject it before startup.
+- Stage 07.6 mutations retain the existing dashboard identity and same-origin comparison, validate strict bounded inputs, return no-store display-safe projections, and reuse `IdentityService` rather than duplicating project/device lifecycle rules. The generated enrollment credential is returned only once, is rendered/copied only through an explicit user action, and is cleared from the dialog and in-memory state on dismiss or reopen; no credential is stored in browser storage or added to a URL.
+- Stage 07.6B attention is generated exclusively from existing canonical availability, effective GPU, and incident records, capped at 20 server-side rows, and does not expose or construct severity, reason, score, rank, or synthetic health. `has_active_incident` is an inclusion/display boolean only, separate from device health. Dynamic UI content uses DOM construction and text content; no unsafe HTML API, browser credential storage, WebSocket, SSE, offset pagination, migration, or remote dependency was introduced. The sole local preference key is `skybeat.sidebar.v1`.
 
 ## Environment Limitations
 
@@ -152,20 +187,32 @@ Status: IN PROGRESS. Stage 07.4 is COMPLETE / ACCEPTED; Stage 07.5 history visua
 
 ## Next Action
 
-- Stage 07.4 is COMPLETE / ACCEPTED. Do not begin Stage 07.5 history visualization without separate authorization; preserve `Local MySQL.session.sql` and leave the retained MySQL data directory untouched unless separately authorized.
+- Stage 07.6B is IMPLEMENTED / AWAITING BROWSER ACCEPTANCE. For local browser/UI acceptance only, set `SKYBEAT_ENV=development` and `SKYBEAT_DEV_AUTH_BYPASS=true` in the protected ignored local environment file, restart the local API, and confirm the prominent startup warning; disable it by setting the flag to `false` or removing it. Complete the Stage 07.6B manual list above. Do not begin Stage 08; retain `Local MySQL.session.sql` and leave the retained MySQL data directory untouched unless separately authorized.
 
-## Latest Stage Completion
+## Prior Stage Completion
 
-- Stage: 07.4 - Operational Device Detail.
+- Stage: 07.5 - Bounded History Visualization.
 - Status: COMPLETE / ACCEPTED.
-- Files changed: bounded incident read/API extension, dashboard template/static drawer, API/read/page tests, API specification, and this checkpoint. Existing availability/GPU/heartbeat/incident lifecycle and database schema behavior were not changed.
-- Migrations: no Stage 07.4 revision is required. `a58c71d904ef` remains the existing sole Alembic head; no database operation occurred.
-- Tests executed: focused Stage 07.4 suite 30 passed; full server suite 275 passed, 35 environment-dependent skips; Ruff check, format check, strict mypy, Alembic heads/history, deployment validator, and diff check passed. Agent verification was not rerun because this stage changed no agent/shared-contract/deployment file.
-- Security implications: server-authoritative availability/GPU values remain text-only DOM output; the optional incident filter is authenticated, validated, bounded, and applied before pagination. No browser storage, unsafe dynamic HTML, external script, session/credential exposure, chart/history endpoint, or Stage 07.5 implementation was added.
-- Known limitations: real-MySQL execution, Bash/systemd, Docker/Compose, Linux, Caddy, real hardware, browser-level UI interaction execution, and production integration remain environment-pending as separately documented. No data or ACL was changed to make any check pass.
-- Next stage: Stage 07.5 history visualization is explicitly not started and requires separate authorization.
-- Worktree: uncommitted Stage 07.4 implementation/documentation/test changes; no commit was created by request.
+- Files changed: dashboard history drawer shell, bounded history lifecycle/native-SVG/text-summary rendering, responsive CSS, focused page tests, implementation plan, and this checkpoint. The Stage 07.2 history API/bounds, availability/GPU/heartbeat/incident lifecycle, and database schema behavior were not changed.
+- Migrations: no Stage 07.5 revision is required. `a58c71d904ef` remains the existing sole Alembic head; no database operation occurred.
+- Tests executed: focused Stage 07.5 plus Stage 07.2–07.4 regression suite 35 passed; full server suite 280 passed, 35 environment-dependent skips; Ruff check, format check, strict mypy, Alembic heads/history, deployment validator, and diff check passed. Agent verification was not rerun because this stage changed no agent/shared-contract/deployment file.
+- Security implications: history requests remain authenticated, same-origin, no-store API reads with server-owned bounds. The browser uses DOM/SVG APIs and text-only strings, preserves missing data, has no browser storage/unsafe HTML/external script/chart library/raw heartbeat access, and adds no health inference.
+- Known limitations: real-MySQL execution, Bash/systemd, Docker/Compose, Linux, Caddy, real hardware, browser-level history interaction/layout execution, and production integration remain environment-pending as separately documented. No data or ACL was changed to make any check pass.
+- Next stage: no Stage 08 work. Overall Stage 07 remains in progress until the separately required browser, real-device, and deployment acceptance checkpoint is completed.
+- Worktree: uncommitted Stage 07.5 implementation/documentation/test changes; no commit was created by request.
+
+## Latest Stage Checkpoint
+
+- Stage: 07.6 - Premium Operations UI & Device Management.
+- Status: IMPLEMENTED / AWAITING VISUAL ACCEPTANCE.
+- Files changed: authenticated canonical project/device management adapter and routes; dashboard app shell, dialogs, responsive styling, and safe transient workflows; API/runbook documentation; focused tests; Stage 07.6 design/plan; and this checkpoint. Existing monitoring semantics and schema behavior were not changed.
+- Migrations: no Stage 07.6 revision is required. `a58c71d904ef` remains the existing sole Alembic head; no database operation occurred.
+- Tests executed: final focused dashboard page regression 27 passed; full server suite 303 passed, 35 environment-dependent skips; Ruff check, format check, strict mypy, Alembic heads/history, deployment validator, and diff check passed. Agent verification was not rerun because this stage changed no agent/shared-contract/deployment file.
+- Security implications: all mutations retain dashboard authorization and same-origin protection. One-time enrollment credentials are transient, text-only, explicitly copied, and cleared on dismiss; there is no unsafe HTML, browser credential storage, new authentication mechanism, raw telemetry route, or remote administration capability.
+- Known limitations: the documented local browser/UI acceptance, real-MySQL management mutation execution, Bash/systemd, Docker/Compose, Linux, Caddy, real hardware, and production integration remain environment-pending. No data or ACL was changed to make any check pass.
+- Next stage: do not begin Stage 08. Complete only the documented local Stage 07.6 browser/UI acceptance, then the separate final Stage 07 browser, real-device, and deployment acceptance checkpoint when its environment is available.
+- Worktree: uncommitted Stage 07.6 implementation/documentation/test changes; no commit was created by request.
 
 ## Resume Command / Guidance
 
-Stage 07.4 is accepted. Stop before Stage 07.5 unless the user supplies separate authorization. Any production operation remains separately gated.
+Stage 07.6 is implemented, not accepted. Resume with the documented local browser/UI acceptance using the opt-in development bypass, then the separate final Stage 07 browser, real-device, and deployment acceptance checkpoint when separately authorized and the required environment is available. Any production operation remains separately gated.

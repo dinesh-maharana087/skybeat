@@ -227,7 +227,9 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exit_status:
         return 0 if exit_status.code == 0 else 2
     try:
-        settings = Settings()
+        # BaseSettings obtains required values from the protected runtime environment.
+        # The pydantic mypy plugin cannot model that source for a required field.
+        settings = Settings()  # type: ignore[call-arg]
     except (ValidationError, ValueError):
         print("Invalid SkyBeat configuration; review the protected environment.", file=sys.stderr)
         return 1

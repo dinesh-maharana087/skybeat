@@ -52,7 +52,7 @@ def _secure_cookie(response: Response, key: str, value: str, max_age: int) -> No
     )
 
 
-def _same_origin(request: Request) -> bool:
+def same_origin(request: Request) -> bool:
     origin = request.headers.get("origin")
     referer = request.headers.get("referer")
     expected = request.app.state.settings.public_base_url.rstrip("/")
@@ -120,7 +120,7 @@ async def google_callback(
 
 @router.post("/logout", status_code=204)
 async def logout(request: Request) -> Response:
-    if not _same_origin(request):
+    if not same_origin(request):
         raise HTTPException(
             status_code=403,
             detail="Logout origin is invalid.",
