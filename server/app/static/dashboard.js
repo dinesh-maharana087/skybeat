@@ -25,6 +25,10 @@ const lastRefresh = document.getElementById("last-refresh");
 const staleWarning = document.getElementById("dashboard-stale-warning");
 const overviewCards = document.getElementById("overview-cards");
 const overviewStatus = document.getElementById("overview-status");
+const overviewLoading = document.getElementById("overview-loading");
+const overviewError = document.getElementById("overview-error");
+const overviewSummaryStatus = document.getElementById("overview-summary-status");
+const overviewGpuSummary = document.getElementById("overview-gpu-summary");
 const awaitingFirstHeartbeat = document.getElementById("awaiting-first-heartbeat");
 const overviewHealthMeter = document.getElementById("overview-health-meter");
 const overviewHealthMeterFill = document.getElementById("overview-health-meter-fill");
@@ -310,17 +314,23 @@ function renderOverview(payload) {
     ["Total Devices", counts.total],
     ["Online", counts.online],
     ["Suspect", counts.suspect],
+    ["Awaiting First Heartbeat", counts.awaiting_first_heartbeat],
     ["Offline", counts.offline],
     ["GPU Problems", counts.gpu_problem],
     ["Active Incidents", counts.active_incident],
   ];
   const nodes = cards.map(([label, value]) => {
     const card = document.createElement("article");
-    card.className = "overview-card";
+    card.className = `overview-card overview-card--${label.toLowerCase().replaceAll(" ", "-")}`;
     card.append(element("h3", label), element("p", displayValue(value)));
     return card;
   });
   overviewCards?.replaceChildren(...nodes);
+  if (overviewLoading !== null) overviewLoading.hidden = true;
+  if (overviewError !== null) overviewError.hidden = true;
+  if (overviewSummaryStatus !== null) {
+    overviewSummaryStatus.textContent = counts.total === 0 ? "No devices are currently enrolled." : "Current canonical fleet state.";
+  }
   const total = typeof counts.total === "number" && counts.total > 0 ? counts.total : 0;
   const online = typeof counts.online === "number" && counts.online > 0 ? counts.online : 0;
   const percentage = total === 0 ? 0 : Math.round((online / total) * 100);
@@ -333,12 +343,30 @@ function renderOverview(payload) {
       counts.awaiting_first_heartbeat
     )}`;
   }
+  renderGpuSummary(payload);
   if (overviewStatus !== null) {
     overviewStatus.textContent = `Overview updated ${formatRelativeTime(payload.server_time)}`;
     setExactTimestamp(overviewStatus, payload.server_time);
   }
   renderAttention(payload.attention);
   renderProjects(payload.projects, payload.projects_truncated === true);
+}
+
+function renderGpuSummary(payload) {
+  if (overviewGpuSummary === null) return;
+  const gpuProblems = payload.counts?.gpu_problem;
+  const summary = document.createElement("p");
+  if (typeof gpuProblems !== "number") {
+    summary.append("GPU aggregate is unavailable.");
+  } else if (gpuProblems === 0) {
+    summary.append("No GPU problems are currently reported.");
+  } else {
+    summary.append(
+      element("strong", `${gpuProblems} device${gpuProblems === 1 ? "" : "s"}`),
+      " require GPU attention."
+    );
+  }
+  overviewGpuSummary.replaceChildren(summary);
 }
 
 function renderAttention(items) {
@@ -352,12 +380,21 @@ function renderAttention(items) {
   list.className = "attention-list";
   for (const item of attentionItems) {
     const row = document.createElement("li");
+    const inspect = element("button", "Inspect device");
+    inspect.type = "button";
+    inspect.ariaLabel = `Inspect ${displayValue(item.name)}`;
+    inspect.addEventListener("click", () => openDetail(item.device_id, inspect));
+    const projectContext = element("span", `Project: ${displayValue(item.project?.name)}`);
+    projectContext.className = "attention-project";
+    const lastSeen = timestampNode(item.last_seen_at);
+    lastSeen.className = "attention-last-seen";
     row.append(
       element("strong", displayValue(item.name)),
       statusPill(item.state),
       statusPill(item.gpu_health?.effective),
-      element("span", displayValue(item.project?.name)),
-      timestampNode(item.last_seen_at)
+      projectContext,
+      lastSeen,
+      inspect
     );
     if (item.has_active_incident === true) row.append(element("span", "Active incident"));
     list.append(row);
@@ -652,7 +689,7 @@ function markDashboardStale() {
 
 function markDashboardFresh(serverTime) {
   lastSuccessfulRefresh = serverTime;
-  lastRefresh.textContent = `Live updates - updated ${formatRelativeTime(serverTime)}.`;
+  lastRefresh.textContent = `Last successful refresh: ${formatRelativeTime(serverTime)}.`;
   setExactTimestamp(lastRefresh, serverTime);
   setVisible(staleWarning, false);
 }
@@ -765,11 +802,26 @@ async function refreshOverviewView() {
     if (overviewResult.status === "fulfilled") renderOverview(overviewResult.value);
     if (incidentsResult.status === "fulfilled") renderRecentIncidents(incidentsResult.value.items);
     if (overviewResult.status !== "fulfilled" || incidentsResult.status !== "fulfilled") {
+      if (overviewResult.status !== "fulfilled") {
+        if (overviewLoading !== null) overviewLoading.hidden = true;
+        if (overviewError !== null) {
+          overviewError.textContent = "Overview data could not be loaded. Existing data may be stale.";
+          overviewError.hidden = false;
+        }
+      } else if (overviewError !== null) {
+        overviewError.textContent = "Recent incident data could not be loaded. Overview data remains current.";
+        overviewError.hidden = false;
+      }
       markDashboardStale();
       return;
     }
     markDashboardFresh(overviewResult.value.server_time);
   } catch (_) {
+    if (overviewLoading !== null) overviewLoading.hidden = true;
+    if (overviewError !== null) {
+      overviewError.textContent = "Overview data could not be loaded. Existing data may be stale.";
+      overviewError.hidden = false;
+    }
     markDashboardStale();
   } finally {
     refreshing = false;

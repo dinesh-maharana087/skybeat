@@ -410,6 +410,79 @@ def test_dashboard_stage08b_shell_has_labelled_icon_navigation_and_page_context(
     assert '.sidebar-nav a[aria-current="page"]' in styles
 
 
+def test_dashboard_stage08c_overview_contract_preserves_canonical_refresh_and_detail_flow():
+    template = dashboard_template()
+    script = dashboard_script()
+
+    for identifier in (
+        "overview-summary-status",
+        "overview-gpu-summary",
+        "overview-loading",
+        "overview-error",
+        "overview-attention",
+    ):
+        assert f'id="{identifier}"' in template
+    assert "function renderGpuSummary(payload)" in script
+    assert "openDetail(item.device_id" in script
+    assert "payload.attention" in script
+    assert "requestOverview()" in script
+    for unsafe_api in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert unsafe_api not in script
+
+
+def test_dashboard_stage08c_overview_keeps_each_canonical_device_state_and_refresh_truthful():
+    script = dashboard_script()
+
+    # Removing any canonical device state from the operational summary would
+    # hide a condition that the server already owns and reports.
+    for label in ("Online", "Suspect", "Offline", "Awaiting First Heartbeat"):
+        assert f'["{label}", counts.' in script
+    assert "Last successful refresh:" in script
+    assert "attentionItems.sort" not in script
+
+
+def test_dashboard_stage08c_uses_tokenized_state_hierarchy_without_reclassifying_gpu_data():
+    script = dashboard_script()
+    styles = dashboard_shell_styles()
+
+    # Canonical labels drive presentation; the browser must not turn a numeric
+    # GPU aggregate into a made-up health state or reorder server attention.
+    assert 'overview-card--${label.toLowerCase().replaceAll(" ", "-")}' in script
+    assert "statusPill(gpuProblems" not in script
+    for selector in (
+        ".overview-card--online",
+        ".overview-card--suspect",
+        ".overview-card--offline",
+        ".overview-card--awaiting-first-heartbeat",
+        ".attention-project",
+    ):
+        assert selector in styles
+
+
+def test_dashboard_stage08c_summary_grid_accommodates_all_canonical_state_cards():
+    styles = dashboard_styles() + dashboard_shell_styles()
+
+    assert "grid-template-columns: repeat(auto-fit, minmax(8.2rem, 1fr))" in styles
+
+
+def test_dashboard_stage08c_exposes_accessible_loading_empty_and_error_feedback():
+    template = dashboard_template()
+    script = dashboard_script()
+
+    assert 'id="overview-loading" class="overview-feedback" aria-live="polite"' in template
+    assert 'id="overview-error" class="overview-feedback" role="alert" hidden' in template
+    for message in (
+        "No devices are currently enrolled.",
+        "No devices currently require attention.",
+        "No recent incidents.",
+        "Overview data could not be loaded. Existing data may be stale.",
+        "Recent incident data could not be loaded. Overview data remains current.",
+    ):
+        assert message in script
+    assert "inspect.ariaLabel = `Inspect ${displayValue(item.name)}`" in script
+    assert "statusPill(item.gpu_health?.effective)" in script
+
+
 def test_dashboard_visual_system_preserves_accessibility_and_responsive_behavior():
     styles = dashboard_styles()
 

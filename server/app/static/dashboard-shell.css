@@ -3,6 +3,17 @@
 .sidebar-toggle { align-self: flex-start; font-size: var(--sb-font-size-xs); }
 .sidebar-nav a { align-items: center; display: flex; gap: var(--sb-space-2); min-height: 2.5rem; }
 .nav-icon { fill: none; flex: 0 0 auto; height: 1rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.75; width: 1rem; }
+.overview-feedback, .overview-summary-status { color: var(--sb-text-muted); font-size: var(--sb-font-size-sm); margin-bottom: var(--sb-space-2); }
+#overview-error { background: var(--sb-danger-soft); border-left: .25rem solid var(--sb-danger); color: var(--sb-danger); padding: var(--sb-space-2) var(--sb-space-3); }
+.overview-card--online { border-top-color: var(--sb-success); }
+.overview-card--suspect { border-top-color: var(--sb-warning); }
+.overview-card--offline { border-top-color: var(--sb-danger); }
+.overview-card--awaiting-first-heartbeat { border-top-color: var(--sb-info); }
+.overview-cards { grid-template-columns: repeat(auto-fit, minmax(8.2rem, 1fr)); }
+.overview-gpu-section { background: var(--sb-bg-surface); border: 1px solid var(--sb-border); border-radius: var(--sb-radius-lg); margin-top: var(--sb-space-4); padding: var(--sb-space-3); }
+.overview-gpu-summary p { align-items: center; display: flex; flex-wrap: wrap; gap: var(--sb-space-2); }
+.attention-project, .attention-last-seen { color: var(--sb-text-muted); font-size: var(--sb-font-size-sm); }
+.attention-list button { margin-left: auto; }
 .sidebar-collapsed .nav-label, .sidebar-collapsed .brand-subtitle { display: none; }
 @media (max-width: 900px) {
   .app-shell.sidebar-mobile-open .app-sidebar { box-shadow: var(--sb-shadow-md); display: flex; inset: 0 auto 0 0; max-width: 18rem; position: fixed; width: min(82vw, var(--sb-sidebar-width)); z-index: 4; }
