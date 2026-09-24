@@ -14,9 +14,28 @@
 .overview-gpu-summary p { align-items: center; display: flex; flex-wrap: wrap; gap: var(--sb-space-2); }
 .attention-project, .attention-last-seen { color: var(--sb-text-muted); font-size: var(--sb-font-size-sm); }
 .attention-list button { margin-left: auto; }
+.devices-workspace-summary { background: var(--sb-bg-surface); border: 1px solid var(--sb-border); border-radius: var(--sb-radius-lg); box-shadow: var(--sb-shadow-sm); padding: var(--sb-space-3); }
+.devices-summary-heading { align-items: center; display: flex; gap: var(--sb-space-3); justify-content: space-between; margin-bottom: var(--sb-space-3); }
+.devices-summary-heading > p, .devices-result-context, .device-loading { color: var(--sb-text-muted); font-size: var(--sb-font-size-sm); }
+.devices-summary-cards { display: grid; gap: var(--sb-space-2); grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); }
+.devices-summary-card { border-left: .22rem solid var(--sb-border-strong); display: grid; gap: var(--sb-space-1); min-width: 0; padding: var(--sb-space-2); }
+.devices-summary-card strong { font-size: var(--sb-font-size-lg); font-variant-numeric: tabular-nums; }
+.devices-summary-card span { color: var(--sb-text-muted); font-size: var(--sb-font-size-xs); font-weight: 700; }
+.devices-summary-card--online { border-left-color: var(--sb-success); }
+.devices-summary-card--suspect { border-left-color: var(--sb-warning); }
+.devices-summary-card--offline { border-left-color: var(--sb-danger); }
+.devices-summary-card--awaiting-first-heartbeat { border-left-color: var(--sb-info); }
+.device-identity { display: grid; gap: var(--sb-space-1); min-width: 13rem; }
+.device-identity__name { font-weight: 750; justify-self: start; }
+.device-identity__hostname { color: var(--sb-text-secondary); font-size: var(--sb-font-size-sm); }
+.device-identity__uuid { color: var(--sb-text-muted); font-size: var(--sb-font-size-xs); }
+.device-row--attention td:first-child { box-shadow: inset .2rem 0 0 var(--sb-warning); }
+.device-row--attention:has(.status-offline) td:first-child, .device-row--attention:has(.status-driver-error) td:first-child, .device-row--attention:has(.status-gpu-missing) td:first-child, .device-row--attention:has(.status-nvidia-smi-failed) td:first-child { box-shadow: inset .2rem 0 0 var(--sb-danger); }
+.device-loading, .devices-result-context { margin: 0 0 var(--sb-space-2); }
 .sidebar-collapsed .nav-label, .sidebar-collapsed .brand-subtitle { display: none; }
 @media (max-width: 900px) {
   .app-shell.sidebar-mobile-open .app-sidebar { box-shadow: var(--sb-shadow-md); display: flex; inset: 0 auto 0 0; max-width: 18rem; position: fixed; width: min(82vw, var(--sb-sidebar-width)); z-index: 4; }
   .app-shell.sidebar-mobile-open::after { background: rgb(16 35 63 / 35%); content: ""; inset: 0; position: fixed; z-index: 3; }
   .app-shell.sidebar-mobile-open .sidebar-nav { display: grid; width: 100%; }
+  .devices-summary-heading { align-items: flex-start; flex-direction: column; }
 }

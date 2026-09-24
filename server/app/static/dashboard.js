@@ -20,6 +20,10 @@ const sidebarToggle = document.getElementById("sidebar-toggle");
 const devices = document.getElementById("devices");
 const deviceEmpty = document.getElementById("device-empty");
 const deviceError = document.getElementById("device-error");
+const deviceLoading = document.getElementById("device-loading");
+const devicesResultContext = document.getElementById("devices-result-context");
+const devicesSummaryCards = document.getElementById("devices-summary-cards");
+const devicesSummaryStatus = document.getElementById("devices-summary-status");
 const refreshStatus = document.getElementById("refresh-status");
 const lastRefresh = document.getElementById("last-refresh");
 const staleWarning = document.getElementById("dashboard-stale-warning");
@@ -369,6 +373,36 @@ function renderGpuSummary(payload) {
   overviewGpuSummary.replaceChildren(summary);
 }
 
+function renderDeviceWorkspaceSummary(payload) {
+  const counts = payload.counts ?? {};
+  overviewTotal = typeof counts.total === "number" ? counts.total : null;
+  const cards = [
+    ["Total", counts.total],
+    ["Online", counts.online],
+    ["Suspect", counts.suspect],
+    ["Offline", counts.offline],
+    ["Awaiting First Heartbeat", counts.awaiting_first_heartbeat],
+  ];
+  if (devicesSummaryCards !== null) {
+    const nodes = cards.map(([label, value]) => {
+      const card = document.createElement("span");
+      card.className = `devices-summary-card devices-summary-card--${label.toLowerCase().replaceAll(" ", "-")}`;
+      card.append(element("strong", displayValue(value)), element("span", label));
+      return card;
+    });
+    devicesSummaryCards.replaceChildren(...nodes);
+  }
+  if (devicesSummaryStatus !== null) {
+    devicesSummaryStatus.textContent = "Canonical fleet availability from the server.";
+  }
+}
+
+function showDeviceWorkspaceSummaryError() {
+  if (devicesSummaryStatus !== null) {
+    devicesSummaryStatus.textContent = "Fleet summary could not be refreshed. Existing summary may be stale.";
+  }
+}
+
 function renderAttention(items) {
   if (overviewAttention === null) return;
   const attentionItems = Array.isArray(items) ? items : [];
@@ -487,27 +521,14 @@ async function refreshCanonicalDashboard() {
 function tableHeader() {
   const table = document.createElement("table");
   table.id = "device-status-table";
-  const headers = [
-    "Project",
-    "Device",
-    "Hostname",
-    "Availability",
-    "Last Seen",
-    "CPU",
-    "Memory",
-    "GPU Health",
-    "GPU Count",
-    "Primary IP",
-    "Agent Version",
-    "Latest Telemetry",
-  ];
+  const headers = ["Project", "Device / Host", "Availability", "GPU State", "Last Seen", "CPU", "Memory", "GPU Count", "Network", "Agent", "Latest telemetry", "Action"];
   const row = document.createElement("tr");
   for (const name of headers) {
     const cell = document.createElement("th");
     const filterName = {
       Project: "project_id",
       Availability: "state",
-      "GPU Health": "gpu_state",
+      "GPU State": "gpu_state",
     }[name];
     if (filterName) {
       const button = element("button", `${name} ▾`);
@@ -554,6 +575,30 @@ function applyDeviceFilter(name, value) {
   void reloadDevices();
 }
 
+function clearDeviceFilter(name) {
+  if (name === "project_id" && projectFilter !== null) {
+    projectFilter.value = "";
+    requestedProjectId = null;
+  }
+  if (name === "state" && stateFilter !== null) stateFilter.value = "";
+  if (name === "gpu_state" && gpuStateFilter !== null) gpuStateFilter.value = "";
+  if (name === "search" && search !== null) search.value = "";
+  if (name === "include_disabled" && includeDisabled !== null) includeDisabled.checked = false;
+  resetDevicePagination();
+  void reloadDevices();
+}
+
+function deviceFiltersAreActive() {
+  return Boolean(
+    projectFilter?.value ||
+      requestedProjectId ||
+      stateFilter?.value ||
+      gpuStateFilter?.value ||
+      search?.value.trim() ||
+      includeDisabled?.checked
+  );
+}
+
 function clearDeviceFilters() {
   filters.reset();
   requestedProjectId = null;
@@ -598,15 +643,24 @@ function openFilterPopover(name, owner) {
 function deviceRow(item) {
   const row = document.createElement("tr");
   if (item.telemetry_stale === true) row.classList.add("telemetry-stale");
+  const gpuState = displayValue(item.gpu_health?.effective);
+  if (["SUSPECT", "OFFLINE"].includes(item.state) || !["OK", "NOT_MONITORED", "—"].includes(gpuState)) {
+    row.classList.add("device-row--attention");
+  }
   row.append(element("td", displayValue(item.project?.name)));
   const deviceCell = document.createElement("td");
+  deviceCell.className = "device-identity";
   const detailButton = element("button", displayValue(item.name));
   detailButton.type = "button";
   detailButton.ariaLabel = `View details for ${displayValue(item.name)}`;
+  detailButton.className = "device-identity__name";
   detailButton.addEventListener("click", () => openDetail(item.device_id, detailButton));
-  deviceCell.append(detailButton);
+  const hostname = element("span", displayValue(item.hostname));
+  hostname.className = "device-identity__hostname";
+  const uuid = element("code", displayValue(item.device_id));
+  uuid.className = "device-identity__uuid";
+  deviceCell.append(detailButton, hostname, uuid);
   row.append(deviceCell);
-  row.append(element("td", displayValue(item.hostname)));
   const availability = document.createElement("td");
   availability.append(statusPill(item.state));
   row.append(availability);
@@ -616,7 +670,7 @@ function deviceRow(item) {
   row.append(element("td", formatPercent(item.cpu?.utilization_percent)));
   row.append(element("td", formatPercent(item.memory?.utilization_percent)));
   const gpuHealth = document.createElement("td");
-  gpuHealth.append(statusPill(item.gpu_health?.effective));
+  gpuHealth.append(statusPill(gpuState));
   row.append(gpuHealth);
   row.append(element("td", displayValue(item.gpu_count)));
   row.append(element("td", displayValue(item.primary_ip)));
@@ -624,6 +678,13 @@ function deviceRow(item) {
   const latestTelemetry = document.createElement("td");
   latestTelemetry.append(timestampNode(item.latest_received_at));
   row.append(latestTelemetry);
+  const action = document.createElement("td");
+  const inspect = element("button", "Inspect device");
+  inspect.type = "button";
+  inspect.ariaLabel = `Inspect ${displayValue(item.name)}`;
+  inspect.addEventListener("click", () => openDetail(item.device_id, inspect));
+  action.append(inspect);
+  row.append(action);
   return row;
 }
 
@@ -632,11 +693,12 @@ function renderDevices(items, { append = false } = {}) {
   const scrollTop = devices.scrollTop;
   let table = append ? document.getElementById("device-status-table") : null;
   if (!append) devices.replaceChildren();
+  setVisible(deviceLoading, false);
   if (!deviceItems.length && !append) {
     const noDevices = overviewTotal === 0;
     deviceEmpty.textContent = noDevices
       ? "No devices have been enrolled."
-      : "No devices match the current filters.";
+      : "No devices match the current search or filters.";
     setVisible(deviceEmpty, true);
     return;
   }
@@ -663,6 +725,8 @@ function renderActiveFilters() {
     ["Project", projectFilter?.selectedOptions[0]?.textContent, "project_id"],
     ["Availability", stateFilter?.value, "state"],
     ["GPU Health", gpuStateFilter?.value, "gpu_state"],
+    ["Search", search?.value.trim(), "search"],
+    ["Disabled devices", includeDisabled?.checked ? "Included" : "", "include_disabled"],
   ];
   for (const [label, value, name] of values) {
     if (!value || value === "All projects") continue;
@@ -670,10 +734,11 @@ function renderActiveFilters() {
     chip.type = "button";
     chip.ariaLabel = `Remove ${label} filter`;
     chip.addEventListener("click", () => {
-      applyDeviceFilter(name, "");
+      clearDeviceFilter(name);
     });
     activeFilters.append(chip);
   }
+  setVisible(resetFilters, deviceFiltersAreActive());
 }
 
 function showDeviceError() {
@@ -700,6 +765,10 @@ function applyDevicePayload(payload, { append = false } = {}) {
   nextCursor = typeof payload.next_cursor === "string" ? payload.next_cursor : null;
   updateLoadMore();
   renderActiveFilters();
+  if (devicesResultContext !== null) {
+    const count = Array.isArray(payload.items) ? payload.items.length : 0;
+    devicesResultContext.textContent = `Showing ${count} device${count === 1 ? "" : "s"} on this page${deviceFiltersAreActive() ? " for the current search or filters." : "."}`;
+  }
   refreshStatus.textContent = `Device list updated ${displayValue(payload.server_time)}`;
 }
 
@@ -707,17 +776,26 @@ async function reloadDevices() {
   if (refreshing || loadingDevices) return;
   loadingDevices = true;
   resetDevicePagination();
-  devices.replaceChildren();
   clearDeviceMessages();
+  setVisible(deviceLoading, true);
   updateLoadMore();
   refreshStatus.textContent = "Loading current device status…";
   try {
-    applyDevicePayload(await requestDevices(currentCursor()));
+    const [devicesResult, overviewResult] = await Promise.allSettled([
+      requestDevices(currentCursor()),
+      requestOverview(),
+    ]);
+    if (devicesResult.status === "fulfilled") applyDevicePayload(devicesResult.value);
+    else showDeviceError();
+    if (overviewResult.status === "fulfilled") renderDeviceWorkspaceSummary(overviewResult.value);
+    else showDeviceWorkspaceSummaryError();
+    if (devicesResult.status !== "fulfilled" || overviewResult.status !== "fulfilled") markDashboardStale();
   } catch (_) {
     showDeviceError();
     markDashboardStale();
   } finally {
     loadingDevices = false;
+    setVisible(deviceLoading, false);
     updateLoadMore();
   }
 }
@@ -728,6 +806,7 @@ async function nextDevicePage() {
   cursorHistory.push(nextCursor);
   pageIndex += 1;
   loadingDevices = true;
+  setVisible(deviceLoading, true);
   updateLoadMore();
   try {
     applyDevicePayload(await requestDevices(currentCursor()));
@@ -736,6 +815,7 @@ async function nextDevicePage() {
     markDashboardStale();
   } finally {
     loadingDevices = false;
+    setVisible(deviceLoading, false);
     updateLoadMore();
   }
 }
@@ -744,6 +824,7 @@ async function previousDevicePage() {
   if (loadingDevices || pageIndex === 0) return;
   pageIndex -= 1;
   loadingDevices = true;
+  setVisible(deviceLoading, true);
   try {
     applyDevicePayload(await requestDevices(currentCursor()));
   } catch (_) {
@@ -751,6 +832,7 @@ async function previousDevicePage() {
     markDashboardStale();
   } finally {
     loadingDevices = false;
+    setVisible(deviceLoading, false);
     updateLoadMore();
   }
 }
@@ -770,18 +852,21 @@ async function refreshDashboard() {
   const refreshPageIndex = pageIndex;
   refreshStatus.textContent = "Refreshing dashboard…";
   try {
-    const [projectsResult, devicesResult] = await Promise.allSettled([
+    const [projectsResult, devicesResult, overviewResult] = await Promise.allSettled([
       requestProjects(),
       requestDevices(refreshCursor),
+      requestOverview(),
     ]);
     const projectsSucceeded = projectsResult.status === "fulfilled";
     const devicesSucceeded = devicesResult.status === "fulfilled";
     if (projectsSucceeded) renderProjects(projectsResult.value.items, false);
+    if (overviewResult.status === "fulfilled") renderDeviceWorkspaceSummary(overviewResult.value);
+    else showDeviceWorkspaceSummaryError();
     if (devicesSucceeded && currentCursor() === refreshCursor && pageIndex === refreshPageIndex) {
       applyDevicePayload(devicesResult.value);
     }
     else showDeviceError();
-    if (projectsSucceeded && devicesSucceeded) {
+    if (projectsSucceeded && devicesSucceeded && overviewResult.status === "fulfilled") {
       markDashboardFresh(devicesResult.value.server_time);
       await refreshOpenDetail();
     } else markDashboardStale();

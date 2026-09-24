@@ -113,13 +113,24 @@
             <div class="section-heading inventory-heading">
               <div>
                 <p class="eyebrow">Operations</p>
-                <h2 id="devices-heading">Device inventory</h2>
+                <h2 id="devices-heading">Devices</h2>
               </div>
               <div class="inventory-actions">
                 <p id="refresh-status" aria-live="polite">Loading current device status…</p>
                 <button id="add-device" type="button">+ Add Device</button>
               </div>
             </div>
+
+            <section id="devices-workspace-summary" class="devices-workspace-summary" aria-labelledby="devices-summary-heading">
+              <div class="devices-summary-heading">
+                <div>
+                  <p class="eyebrow">Fleet context</p>
+                  <h3 id="devices-summary-heading">Inventory state</h3>
+                </div>
+                <p id="devices-summary-status" aria-live="polite">Loading fleet summary…</p>
+              </div>
+              <div id="devices-summary-cards" class="devices-summary-cards" aria-label="Canonical fleet availability summary"></div>
+            </section>
 
             <form id="filters" class="controls" novalidate>
               <div class="filter-source" aria-hidden="true">
@@ -148,7 +159,7 @@
               </label>
               </div>
               <label for="search">Search
-                <input id="search" name="search" maxlength="128" autocomplete="off" placeholder="Device or hostname">
+                <input id="search" name="search" maxlength="128" autocomplete="off" placeholder="Name, hostname, or UUID">
               </label>
               <label for="page-size">Rows per page
                 <select id="page-size" name="page_size">
@@ -170,6 +181,8 @@
             <div id="active-filters" class="active-filters" aria-live="polite"></div>
 
             <section class="device-table-region" aria-label="Current device status table">
+              <p id="device-loading" class="device-loading" role="status" aria-live="polite">Loading current device inventory…</p>
+              <p id="devices-result-context" class="devices-result-context" aria-live="polite"></p>
               <div id="devices" aria-live="polite"></div>
               <p id="device-empty" role="status" hidden></p>
               <p id="device-error" role="alert" hidden></p>

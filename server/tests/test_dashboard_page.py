@@ -222,7 +222,7 @@ def test_dashboard_active_view_refresh_preserves_current_page_and_reports_stalen
     assert "document.hidden ? 60000 : 15000" in script
     assert "requestDevices(currentCursor())" in script
     assert "Promise.allSettled" in script
-    assert "Live updates - updated" in script
+    assert "Last successful refresh:" in script
     assert "Data stale - last updated" in script
     assert "WebSocket" not in script
     assert "EventSource" not in script
@@ -481,6 +481,58 @@ def test_dashboard_stage08c_exposes_accessible_loading_empty_and_error_feedback(
         assert message in script
     assert "inspect.ariaLabel = `Inspect ${displayValue(item.name)}`" in script
     assert "statusPill(item.gpu_health?.effective)" in script
+
+
+def test_dashboard_stage08d_devices_workspace_reuses_canonical_inventory_contracts():
+    template = dashboard_template()
+    script = dashboard_script()
+    styles = dashboard_shell_styles()
+
+    for identifier in (
+        "devices-workspace-summary",
+        "devices-summary-cards",
+        "devices-summary-status",
+        "device-loading",
+        "devices-result-context",
+        "active-filters",
+        "clear-device-filters",
+        "reset-filters",
+    ):
+        assert f'id="{identifier}"' in template
+    assert 'placeholder="Name, hostname, or UUID"' in template
+    assert "function renderDeviceWorkspaceSummary(payload)" in script
+    assert "requestOverview()" in script
+    assert "function deviceFiltersAreActive()" in script
+    assert "function clearDeviceFilter(name)" in script
+    assert "No devices have been enrolled." in script
+    assert "No devices match the current search or filters." in script
+    assert "Unable to refresh the device list. Displayed device data was retained." in script
+    assert 'const headers = ["Project", "Device / Host", "Availability", "GPU State"' in script
+    assert "device-identity__uuid" in script
+    assert "Inspect device" in script
+    for selector in (
+        ".devices-workspace-summary",
+        ".devices-summary-cards",
+        ".device-identity",
+        ".device-row--attention",
+        ".device-loading",
+    ):
+        assert selector in styles
+    for unsafe_api in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert unsafe_api not in script
+
+
+def test_dashboard_stage08d_preserves_one_polling_lifecycle_and_opaque_pagination():
+    script = dashboard_script()
+
+    assert script.count("function scheduleRefresh()") == 1
+    assert script.count("window.setTimeout(refreshActiveView") == 1
+    assert "const refreshCursor = currentCursor();" in script
+    assert "const refreshPageIndex = pageIndex;" in script
+    assert "currentCursor() === refreshCursor && pageIndex === refreshPageIndex" in script
+    assert 'query.set("cursor", cursor)' in script
+    assert "pageIndex += 1" in script
+    assert "pageIndex -= 1" in script
 
 
 def test_dashboard_visual_system_preserves_accessibility_and_responsive_behavior():
