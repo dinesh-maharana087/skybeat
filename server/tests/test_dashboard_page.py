@@ -765,3 +765,41 @@ def test_dashboard_stage08e_keeps_canonical_evidence_history_and_safe_detail_rac
     assert "function renderHistory(payload)" in script
     for unsafe_api in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
         assert unsafe_api not in script
+
+
+def test_dashboard_stage08f_sidebar_uses_icon_toggle_and_collapsed_navigation_tooltips():
+    template = dashboard_template()
+    script = dashboard_script()
+    styles = dashboard_styles() + dashboard_shell_styles()
+
+    assert 'id="sidebar-toggle-label"' in template
+    assert "sidebar-toggle-icon--collapse" in template
+    assert "sidebar-toggle-icon--expand" in template
+    for label in ("Overview", "Devices", "Projects"):
+        assert f'data-tooltip="{label}"' in template
+    assert "function setSidebarTogglePresentation(collapsed)" in script
+    assert 'sidebarToggle.classList.toggle("is-collapsed", collapsed)' in script
+    assert (
+        'setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);' in script
+    )
+    assert ".sidebar-collapsed .sidebar-nav a::after" in styles
+    assert ".sidebar-toggle.is-collapsed .sidebar-toggle-icon--expand" in styles
+    assert "transition: grid-template-columns .18s ease" in styles
+
+
+def test_dashboard_stage08f_polishes_the_existing_add_device_enrollment_dialog():
+    template = dashboard_template()
+    script = dashboard_script()
+    styles = dashboard_styles() + dashboard_shell_styles()
+
+    assert 'class="dialog-close"' in template
+    assert 'class="dialog-description"' in template
+    assert 'class="sb-button--primary"' in template
+    assert 'class="sb-button--secondary"' in template
+    assert 'class="sb-button--ghost"' in template
+    assert 'requestDashboardMutation("/api/v1/devices", "POST"' in script
+    assert "await refreshCanonicalDashboard();" in script
+    assert "enrollmentSubmissionInFlight" in script
+    assert ".dialog-close" in styles
+    assert ".dialog-description" in styles
+    assert ".dialog-actions" in styles

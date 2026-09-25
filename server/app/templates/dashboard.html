@@ -27,11 +27,15 @@
             <p class="brand-subtitle">Operations console</p>
           </div>
         </div>
-        <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">Collapse</button>
+        <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">
+          <svg class="sidebar-toggle-icon sidebar-toggle-icon--collapse" aria-hidden="true" viewBox="0 0 24 24"><path d="m14 5-7 7 7 7"/></svg>
+          <svg class="sidebar-toggle-icon sidebar-toggle-icon--expand" aria-hidden="true" viewBox="0 0 24 24"><path d="m10 5 7 7-7 7"/></svg>
+          <span id="sidebar-toggle-label" class="visually-hidden">Collapse sidebar</span>
+        </button>
         <nav class="sidebar-nav" aria-label="Dashboard sections">
-          <a href="/dashboard" data-nav-destination="overview"{% if active_view == "overview" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z"/></svg><span class="nav-label">Overview</span></a>
-          <a href="/dashboard/devices" data-nav-destination="devices"{% if active_view == "devices" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 12h8M8 17h5"/></svg><span class="nav-label">Devices</span></a>
-          <a href="/dashboard/projects" data-nav-destination="projects"{% if active_view == "projects" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M4 12h16M8 20v-4h8v4"/></svg><span class="nav-label">Projects</span></a>
+          <a href="/dashboard" data-nav-destination="overview" data-tooltip="Overview"{% if active_view == "overview" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z"/></svg><span class="nav-label">Overview</span></a>
+          <a href="/dashboard/devices" data-nav-destination="devices" data-tooltip="Devices"{% if active_view == "devices" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 12h8M8 17h5"/></svg><span class="nav-label">Devices</span></a>
+          <a href="/dashboard/projects" data-nav-destination="projects" data-tooltip="Projects"{% if active_view == "projects" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M4 12h16M8 20v-4h8v4"/></svg><span class="nav-label">Projects</span></a>
         </nav>
         <p class="sidebar-footer">SkyBeat V1<br>Operational monitoring</p>
       </aside>
@@ -102,7 +106,7 @@
                 <p class="eyebrow">Organisation</p>
                 <h2 id="projects-heading">Projects</h2>
               </div>
-              <button id="new-project" type="button">+ New Project</button>
+              <button id="new-project" class="sb-button--primary" type="button">+ New Project</button>
             </div>
             <div id="project-summary-content"></div>
           </section>
@@ -117,7 +121,7 @@
               </div>
               <div class="inventory-actions">
                 <p id="refresh-status" aria-live="polite">Loading current device status…</p>
-                <button id="add-device" type="button">+ Add Device</button>
+                <button id="add-device" class="sb-button--primary" type="button">+ Add Device</button>
               </div>
             </div>
 
@@ -173,9 +177,9 @@
                 Include disabled devices
               </label>
               <div class="filter-actions">
-                <button type="submit">Apply filters</button>
-                <button id="clear-device-filters" type="button">Clear all</button>
-                <button id="reset-filters" type="button" hidden>Reset filters</button>
+                <button class="sb-button--secondary" type="submit">Apply filters</button>
+                <button id="clear-device-filters" class="sb-button--ghost" type="button">Clear all</button>
+                <button id="reset-filters" class="sb-button--ghost" type="button" hidden>Reset filters</button>
               </div>
             </form>
             <div id="active-filters" class="active-filters" aria-live="polite"></div>
@@ -187,9 +191,9 @@
               <p id="device-empty" role="status" hidden></p>
               <p id="device-error" role="alert" hidden></p>
               <div class="page-controls">
-                <button id="previous-page" type="button" disabled>Previous page</button>
+                <button id="previous-page" class="sb-button--secondary" type="button" disabled>Previous page</button>
                 <p id="page-context" aria-live="polite">Page 1</p>
-                <button id="load-more" type="button" hidden>Next page</button>
+                <button id="load-more" class="sb-button--secondary" type="button" hidden>Next page</button>
               </div>
             </section>
           </section>
@@ -244,13 +248,14 @@
             <form id="project-form" class="management-form" novalidate>
               <div class="dialog-heading">
                 <div><p class="eyebrow">Organisation</p><h2 id="project-dialog-title">New project</h2></div>
-                <button id="project-close" type="button" aria-label="Close new project dialog">Close</button>
+                <button id="project-close" class="dialog-close" type="button" aria-label="Close new project dialog"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
               </div>
+              <p class="dialog-description">Create a project to organize monitored devices.</p>
               <label for="project-name">Project name
                 <input id="project-name" name="name" maxlength="128" autocomplete="off" required>
               </label>
               <p id="project-status" role="status" aria-live="polite"></p>
-              <div class="dialog-actions"><button id="project-submit" type="submit">Create project</button><button id="project-cancel" type="button">Cancel</button></div>
+              <div class="dialog-actions"><button id="project-submit" class="sb-button--primary" type="submit">Create project</button><button id="project-cancel" class="sb-button--secondary" type="button">Cancel</button></div>
             </form>
           </dialog>
           {% endif %}
@@ -260,15 +265,16 @@
             <form id="device-enroll-form" class="management-form" novalidate>
               <div class="dialog-heading">
                 <div><p class="eyebrow">Enrollment</p><h2 id="device-enroll-title">Add device</h2></div>
-                <button id="device-enroll-close" type="button" aria-label="Close add device dialog">Close</button>
+                <button id="device-enroll-close" class="dialog-close" type="button" aria-label="Close add device dialog"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
               </div>
+              <p class="dialog-description">Create the device record, then copy its one-time enrollment credential.</p>
               <label for="enroll-name">Device name
                 <input id="enroll-name" name="name" maxlength="128" autocomplete="off" required>
               </label>
               <label for="enroll-project">Project
                 <select id="enroll-project" name="project_id" required><option value="">Select a project</option></select>
               </label>
-              <button id="new-project-from-enroll" type="button">+ New Project</button>
+              <button id="new-project-from-enroll" class="sb-button--ghost" type="button">+ New Project</button>
               <label class="checkbox-control" for="enroll-gpu-enabled">
                 <input id="enroll-gpu-enabled" name="gpu_monitoring_enabled" type="checkbox" checked>
                 Monitor GPUs on this device
@@ -282,28 +288,28 @@
                 <code id="enrollment-credential"></code>
                 <button id="copy-enrollment-credential" type="button" disabled>Copy credential</button>
               </div>
-              <div class="dialog-actions"><button id="enroll-submit" type="submit">Enroll device</button><button id="enroll-cancel" type="button">Cancel</button></div>
+              <div class="dialog-actions"><button id="enroll-submit" class="sb-button--primary" type="submit">Enroll device</button><button id="enroll-cancel" class="sb-button--secondary" type="button">Cancel</button></div>
             </form>
           </dialog>
 
           <dialog id="move-device-dialog" aria-labelledby="move-device-title">
             <form id="move-device-form" class="management-form" novalidate>
-              <div class="dialog-heading"><div><p class="eyebrow">Device management</p><h2 id="move-device-title">Change project</h2></div><button id="move-device-close" type="button" aria-label="Close change project dialog">Close</button></div>
+              <div class="dialog-heading"><div><p class="eyebrow">Device management</p><h2 id="move-device-title">Change project</h2></div><button id="move-device-close" class="dialog-close" type="button" aria-label="Close change project dialog"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
               <p id="move-device-description"></p>
               <label for="move-device-project">New project
                 <select id="move-device-project" name="project_id" required><option value="">Select a project</option></select>
               </label>
               <p id="move-device-status" role="status" aria-live="polite"></p>
-              <div class="dialog-actions"><button id="move-device-submit" type="submit">Confirm project change</button><button id="move-device-cancel" type="button">Cancel</button></div>
+              <div class="dialog-actions"><button id="move-device-submit" class="sb-button--primary" type="submit">Confirm project change</button><button id="move-device-cancel" class="sb-button--secondary" type="button">Cancel</button></div>
             </form>
           </dialog>
 
           <dialog id="monitoring-dialog" aria-labelledby="monitoring-dialog-title">
             <form id="monitoring-form" class="management-form" novalidate>
-              <div class="dialog-heading"><div><p class="eyebrow">Device management</p><h2 id="monitoring-dialog-title">Change monitoring</h2></div><button id="monitoring-close" type="button" aria-label="Close monitoring dialog">Close</button></div>
+              <div class="dialog-heading"><div><p class="eyebrow">Device management</p><h2 id="monitoring-dialog-title">Change monitoring</h2></div><button id="monitoring-close" class="dialog-close" type="button" aria-label="Close monitoring dialog"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
               <p id="monitoring-description"></p>
               <p id="monitoring-status" role="status" aria-live="polite"></p>
-              <div class="dialog-actions"><button id="monitoring-submit" type="submit">Confirm change</button><button id="monitoring-cancel" type="button">Cancel</button></div>
+              <div class="dialog-actions"><button id="monitoring-submit" class="sb-button--primary" type="submit">Confirm change</button><button id="monitoring-cancel" class="sb-button--secondary" type="button">Cancel</button></div>
             </form>
           </dialog>
           {% endif %}

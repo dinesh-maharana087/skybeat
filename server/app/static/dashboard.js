@@ -16,6 +16,7 @@ const dashboardView = document.body.dataset.dashboardView;
 const SIDEBAR_PREFERENCE_KEY = "skybeat.sidebar.v1";
 const appShell = document.querySelector(".app-shell");
 const sidebarToggle = document.getElementById("sidebar-toggle");
+const sidebarToggleLabel = document.getElementById("sidebar-toggle-label");
 
 const devices = document.getElementById("devices");
 const deviceEmpty = document.getElementById("device-empty");
@@ -215,24 +216,25 @@ function resetDevicePagination() {
   nextCursor = null;
 }
 
+function setSidebarTogglePresentation(collapsed) {
+  if (sidebarToggle === null) return;
+  const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  sidebarToggle.classList.toggle("is-collapsed", collapsed);
+  sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+  sidebarToggle.setAttribute("aria-label", label);
+  sidebarToggle.title = label;
+  if (sidebarToggleLabel !== null) sidebarToggleLabel.textContent = label;
+}
+
 function setSidebarCollapsed(collapsed) {
   const isMobile = window.matchMedia("(max-width: 900px)").matches;
+  setSidebarTogglePresentation(collapsed);
   if (isMobile) {
     appShell?.classList.toggle("sidebar-mobile-open", !collapsed);
-    sidebarToggle?.setAttribute("aria-expanded", String(!collapsed));
-    if (sidebarToggle !== null) {
-      sidebarToggle.textContent = collapsed ? "Open navigation" : "Close navigation";
-      sidebarToggle.setAttribute("aria-label", collapsed ? "Open navigation" : "Close navigation");
-    }
     return;
   }
   appShell?.classList.remove("sidebar-mobile-open");
   appShell?.classList.toggle("sidebar-collapsed", collapsed);
-  sidebarToggle?.setAttribute("aria-expanded", String(!collapsed));
-  if (sidebarToggle !== null) {
-    sidebarToggle.textContent = collapsed ? "Expand" : "Collapse";
-    sidebarToggle.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
-  }
   localStorage.setItem(SIDEBAR_PREFERENCE_KEY, collapsed ? "collapsed" : "expanded");
 }
 
@@ -1840,6 +1842,7 @@ if (projectIdFromUrl !== null && CANONICAL_UUID.test(projectIdFromUrl)) {
 }
 const sidebarPreference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
 if (sidebarPreference === "collapsed") setSidebarCollapsed(true);
+else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);
 sidebarToggle?.addEventListener("click", () => {
   toggleSidebar();
 });
@@ -1966,5 +1969,6 @@ refreshActiveView();
   });
   const preference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
   if (preference === "collapsed") setSidebarCollapsed(true);
+  else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);
   refreshActiveView();
 }
