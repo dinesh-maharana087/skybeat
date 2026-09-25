@@ -26,6 +26,7 @@ from app.dashboard.read import DashboardReadService
 from app.dashboard.service import DashboardAuthService
 from app.db import Database
 from app.logging import configure_logging
+from app.users.service import UserService
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def create_app(
 ) -> FastAPI:
     # BaseSettings obtains required values from the protected runtime environment.
     # The pydantic mypy plugin cannot model that source for a required field.
-    config = settings if settings is not None else Settings()  # type: ignore[call-arg]
+    config = settings if settings is not None else Settings()
     url = config.database_url.get_secret_value()
     configure_logging(config.log_level, [url, make_url(url).password or ""])
     db = database if database is not None else Database(config)
@@ -79,6 +80,7 @@ def create_app(
     )
     app.state.dashboard_read_service = DashboardReadService(db)
     app.state.dashboard_management_service_factory = DashboardManagementService
+    app.state.user_service_factory = UserService
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.allowed_hosts)
     app.mount(
         "/static",

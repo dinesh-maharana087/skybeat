@@ -4,6 +4,9 @@
 {% elif active_view == "projects" %}
 {% set page_title = "Projects" %}
 {% set page_description = "Organize monitored devices by operational project." %}
+{% elif active_view == "users" %}
+{% set page_title = "Users" %}
+{% set page_description = "Manage provisioned dashboard access and roles." %}
 {% else %}
 {% set page_title = "Overview" %}
 {% set page_description = "Current server-authoritative fleet status and telemetry." %}
@@ -17,7 +20,7 @@
     <link rel="stylesheet" href="/static/dashboard.css">
     <link rel="stylesheet" href="/static/dashboard-shell.css">
   </head>
-  <body data-dashboard-view="{{ active_view }}">
+  <body data-dashboard-view="{{ active_view }}" data-dashboard-role="{{ user_role }}" data-can-manage="{{ 'true' if can_manage else 'false' }}">
     <div class="app-shell">
       <aside id="app-sidebar" class="app-sidebar" aria-label="Dashboard navigation">
         <div class="brand-lockup">
@@ -36,6 +39,9 @@
           <a href="/dashboard" data-nav-destination="overview" data-tooltip="Overview"{% if active_view == "overview" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z"/></svg><span class="nav-label">Overview</span></a>
           <a href="/dashboard/devices" data-nav-destination="devices" data-tooltip="Devices"{% if active_view == "devices" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 12h8M8 17h5"/></svg><span class="nav-label">Devices</span></a>
           <a href="/dashboard/projects" data-nav-destination="projects" data-tooltip="Projects"{% if active_view == "projects" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M4 12h16M8 20v-4h8v4"/></svg><span class="nav-label">Projects</span></a>
+          {% if can_manage %}
+          <a href="/dashboard/users" data-nav-destination="users" data-tooltip="Users"{% if active_view == "users" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-label">Users</span></a>
+          {% endif %}
         </nav>
         <footer class="sidebar-footer">
           <span class="sidebar-footer-product">SkyBeat V1<br>Operational monitoring</span>
@@ -112,7 +118,7 @@
                 <p class="eyebrow">Organisation</p>
                 <h2 id="projects-heading">Projects</h2>
               </div>
-              <button id="new-project" class="sb-button--primary" type="button">+ New Project</button>
+              {% if can_manage %}<button id="new-project" class="sb-button--primary" type="button">+ New Project</button>{% endif %}
             </div>
             <div id="project-summary-content"></div>
           </section>
@@ -127,7 +133,7 @@
               </div>
               <div class="inventory-actions">
                 <p id="refresh-status" aria-live="polite">Loading current device status…</p>
-                <button id="add-device" class="sb-button--primary" type="button">+ Add Device</button>
+                {% if can_manage %}<button id="add-device" class="sb-button--primary" type="button">+ Add Device</button>{% endif %}
               </div>
             </div>
 
@@ -204,6 +210,30 @@
             </section>
           </section>
 
+          {% endif %}
+
+          {% if active_view == "users" %}
+          <section class="users-section" aria-labelledby="users-heading">
+            <div class="section-heading">
+              <div><p class="eyebrow">Access control</p><h2 id="users-heading">Dashboard users</h2></div>
+              <button id="new-user" class="sb-button--primary" type="button">+ Add User</button>
+            </div>
+            <p id="users-status" aria-live="polite">Loading provisioned users…</p>
+            <div class="users-table-region"><table class="users-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Updated</th><th><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="users-table-body"></tbody></table></div>
+            <p id="users-empty" hidden>No dashboard users have been provisioned.</p>
+          </section>
+
+          <dialog id="user-dialog" aria-labelledby="user-dialog-title">
+            <form id="user-form" class="management-form" novalidate>
+              <div class="dialog-heading"><div><p class="eyebrow">Access control</p><h2 id="user-dialog-title">Add dashboard user</h2></div><button id="user-close" class="dialog-close" type="button" aria-label="Close user dialog"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+              <label for="user-name">Name <input id="user-name" name="display_name" maxlength="128" autocomplete="name"></label>
+              <label for="user-email">Google email <input id="user-email" name="email" type="email" maxlength="320" autocomplete="email" required></label>
+              <label for="user-role">Role <select id="user-role" name="role">{% if user_role == "OWNER" %}<option value="ADMIN">Admin</option>{% endif %}<option value="USER">User</option></select></label>
+              <label class="checkbox-control" for="user-active"><input id="user-active" name="is_active" type="checkbox" checked> Account active</label>
+              <p id="user-form-status" role="status" aria-live="polite"></p>
+              <div class="dialog-actions"><button id="user-submit" class="sb-button--primary" type="submit">Save user</button><button id="user-cancel" class="sb-button--secondary" type="button">Cancel</button></div>
+            </form>
+          </dialog>
           {% endif %}
 
           {% if active_view == "devices" or active_view == "overview" %}

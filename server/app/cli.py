@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.config import Settings
 from app.db import Database
 from app.devices.service import GPUPolicy, IdentityError, IdentityService
+from app.users.service import OwnerAlreadyConfigured, UserService
 
 
 class CommandError(ValueError):
@@ -116,6 +117,8 @@ def _parser() -> SafeParser:
     enroll.add_argument("--name", type=_name, required=True)
     enroll.add_argument("--expires-at", type=_expiry)
     _add_gpu_arguments(enroll)
+    owner_bootstrap = commands.add_parser("owner-bootstrap", allow_abbrev=False)
+    owner_bootstrap.add_argument("--email", required=True)
     for command in (
         "device-show",
         "device-rename",
@@ -229,19 +232,29 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # BaseSettings obtains required values from the protected runtime environment.
         # The pydantic mypy plugin cannot model that source for a required field.
-        settings = Settings()  # type: ignore[call-arg]
+        settings = Settings()
     except (ValidationError, ValueError):
         print("Invalid SkyBeat configuration; review the protected environment.", file=sys.stderr)
         return 1
     try:
         database = Database(settings)
         try:
-            service = IdentityService(database, actor=arguments.actor)
-            output = _dispatch(service, arguments)
+            if arguments.command == "owner-bootstrap":
+                owner_result = UserService(database, actor=arguments.actor).bootstrap_owner(
+                    arguments.email
+                )
+                output = {
+                    "email": owner_result.user.email,
+                    "role": "OWNER",
+                    "already_configured": owner_result.already_configured,
+                }
+            else:
+                service = IdentityService(database, actor=arguments.actor)
+                output = _dispatch(service, arguments)
             print(json.dumps(output, ensure_ascii=True, allow_nan=False))
         finally:
             database.dispose()
-    except IdentityError:
+    except (IdentityError, OwnerAlreadyConfigured):
         print("Administrative operation rejected; check identifiers and policy.", file=sys.stderr)
         return 1
     except SQLAlchemyError:

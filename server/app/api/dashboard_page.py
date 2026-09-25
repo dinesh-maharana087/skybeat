@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -14,12 +14,13 @@ from app.dashboard.service import (
     SessionRejected,
     resolve_dashboard_user,
 )
+from app.users.service import UserRole
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
 
 
-DashboardView = Literal["overview", "devices", "projects"]
+DashboardView = Literal["overview", "devices", "projects", "users"]
 
 
 async def _dashboard_user(request: Request) -> DashboardUser | Response | None:
@@ -43,7 +44,14 @@ async def render_dashboard_view(request: Request, active_view: DashboardView) ->
     if isinstance(user, Response):
         return user
     dashboard_response = templates.TemplateResponse(
-        request, "dashboard.html", {"user_email": user.email, "active_view": active_view}
+        request,
+        "dashboard.html",
+        {
+            "user_email": user.email,
+            "user_role": user.role.value,
+            "can_manage": user.role in {UserRole.OWNER, UserRole.ADMIN},
+            "active_view": active_view,
+        },
     )
     dashboard_response.headers["Cache-Control"] = "no-store"
     return dashboard_response
@@ -72,3 +80,19 @@ async def dashboard_devices(request: Request) -> Response:
 @router.get("/dashboard/projects")
 async def dashboard_projects(request: Request) -> Response:
     return await render_dashboard_view(request, "projects")
+
+
+@router.get("/dashboard/users")
+async def dashboard_users(request: Request) -> Response:
+    user = await _dashboard_user(request)
+    if user is None:
+        return RedirectResponse("/auth/google/login", status_code=303)
+    if isinstance(user, Response):
+        return user
+    if user.role not in {UserRole.OWNER, UserRole.ADMIN}:
+        raise HTTPException(
+            status_code=403,
+            detail="Dashboard permission is denied.",
+            headers={"Cache-Control": "no-store"},
+        )
+    return await render_dashboard_view(request, "users")

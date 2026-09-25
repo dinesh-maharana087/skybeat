@@ -67,6 +67,11 @@
 .sidebar-collapsed .sidebar-nav { display: grid; justify-items: stretch; width: 100%; }
 .sidebar-collapsed .sidebar-nav a { justify-content: center; padding-inline: var(--sb-space-2); }
 .sidebar-collapsed .sidebar-footer { display: none; }
+.users-table-region { overflow-x: auto; }
+.users-table { border-collapse: collapse; width: 100%; }
+.users-table th, .users-table td { border-bottom: 1px solid var(--sb-border); padding: var(--sb-space-3); text-align: left; vertical-align: middle; }
+.users-table th { color: var(--sb-text-secondary); font-size: var(--sb-font-size-xs); letter-spacing: .03em; text-transform: uppercase; }
+.users-table td:last-child { text-align: right; }
 .overview-card, .overview-gpu-section, .attention-section, #project-summary, .devices-workspace-summary, .controls, .device-table-region { box-shadow: var(--sb-shadow-sm); }
 .overview-card { min-height: 7rem; padding: var(--sb-space-4); }
 .overview-card p { font-size: clamp(1.7rem, 2.25vw, 2.1rem); margin-top: var(--sb-space-3); }

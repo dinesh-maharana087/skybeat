@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from app.api.auth import same_origin
+from app.dashboard.authorization import requires
 from app.dashboard.management import (
     DashboardManagementService,
     enrollment_credential_value,
@@ -21,12 +22,21 @@ from app.dashboard.service import (
 )
 from app.db import Database
 from app.devices.service import Conflict, IdentityError, NotFound
+from app.models import ApplicationUser
 from app.schemas.dashboard_management import (
     DeviceEnrollRequest,
     DeviceMonitoringUpdateRequest,
     DeviceProjectUpdateRequest,
     ProjectCreateRequest,
     canonical_uuid,
+)
+from app.schemas.users import UserCreateRequest, UserUpdateRequest
+from app.users.service import (
+    UserConflict,
+    UserPermissionDenied,
+    UserRole,
+    UserService,
+    authorize_user_change,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -48,6 +58,12 @@ async def dashboard_user(request: Request) -> DashboardUser:
 
 
 DashboardUserDependency = Annotated[DashboardUser, Depends(dashboard_user)]
+ManagementUserDependency = Annotated[
+    DashboardUser, Depends(requires(dashboard_user, UserRole.OWNER, UserRole.ADMIN))
+]
+UserAdminDependency = Annotated[
+    DashboardUser, Depends(requires(dashboard_user, UserRole.OWNER, UserRole.ADMIN))
+]
 
 
 def _management_service(request: Request, user: DashboardUser) -> DashboardManagementService:
@@ -56,6 +72,23 @@ def _management_service(request: Request, user: DashboardUser) -> DashboardManag
         request.app.state.dashboard_management_service_factory,
     )
     return factory(request.app.state.database, user.email)
+
+
+def _user_service(request: Request, user: DashboardUser) -> UserService:
+    factory = cast(Callable[..., UserService], request.app.state.user_service_factory)
+    return factory(request.app.state.database, actor=user.email, actor_role=user.role)
+
+
+def _user_projection(user: ApplicationUser) -> dict[str, object]:
+    return {
+        "user_id": user.id,
+        "name": user.display_name,
+        "email": user.email,
+        "role": user.role,
+        "active": user.is_active,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+    }
 
 
 def _require_same_origin(request: Request) -> None:
@@ -96,7 +129,7 @@ async def projects(request: Request, _: DashboardUserDependency) -> JSONResponse
 
 @router.post("/projects")
 async def create_project(
-    request: Request, payload: ProjectCreateRequest, user: DashboardUserDependency
+    request: Request, payload: ProjectCreateRequest, user: ManagementUserDependency
 ) -> JSONResponse:
     _require_same_origin(request)
     try:
@@ -112,6 +145,79 @@ async def dashboard_overview(request: Request, _: DashboardUserDependency) -> JS
     service: DashboardReadService = request.app.state.dashboard_read_service
     payload = await asyncio.to_thread(service.overview)
     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/users")
+async def users(request: Request, user: UserAdminDependency) -> JSONResponse:
+    items = await asyncio.to_thread(_user_service(request, user).list_users)
+    return JSONResponse(
+        {"items": [_user_projection(item) for item in items]}, headers={"Cache-Control": "no-store"}
+    )
+
+
+@router.post("/users")
+async def create_user(
+    request: Request, payload: UserCreateRequest, user: UserAdminDependency
+) -> JSONResponse:
+    _require_same_origin(request)
+    try:
+        authorize_user_change(user.role, requested_role=payload.role)
+        created = await asyncio.to_thread(
+            _user_service(request, user).create_user,
+            email=payload.email,
+            display_name=payload.display_name,
+            role=payload.role,
+        )
+    except UserPermissionDenied as error:
+        raise HTTPException(
+            status_code=403,
+            detail="Dashboard permission is denied.",
+            headers={"Cache-Control": "no-store"},
+        ) from error
+    except UserConflict as error:
+        raise HTTPException(
+            status_code=409,
+            detail="User change conflicts with policy.",
+            headers={"Cache-Control": "no-store"},
+        ) from error
+    return JSONResponse({"user": _user_projection(created)}, headers={"Cache-Control": "no-store"})
+
+
+@router.patch("/users/{user_id}")
+async def update_user(
+    request: Request,
+    user_id: int,
+    payload: UserUpdateRequest,
+    user: UserAdminDependency,
+) -> JSONResponse:
+    _require_same_origin(request)
+    if user_id < 1:
+        raise HTTPException(
+            status_code=422,
+            detail="User identifier is invalid.",
+            headers={"Cache-Control": "no-store"},
+        )
+    try:
+        updated = await asyncio.to_thread(
+            _user_service(request, user).update_user,
+            user_id,
+            display_name=payload.display_name,
+            role=payload.role,
+            is_active=payload.is_active,
+        )
+    except UserPermissionDenied as error:
+        raise HTTPException(
+            status_code=403,
+            detail="Dashboard permission is denied.",
+            headers={"Cache-Control": "no-store"},
+        ) from error
+    except UserConflict as error:
+        raise HTTPException(
+            status_code=409,
+            detail="User change conflicts with policy.",
+            headers={"Cache-Control": "no-store"},
+        ) from error
+    return JSONResponse({"user": _user_projection(updated)}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/devices")
@@ -145,7 +251,7 @@ async def devices(
 
 @router.post("/devices")
 async def enroll_device(
-    request: Request, payload: DeviceEnrollRequest, user: DashboardUserDependency
+    request: Request, payload: DeviceEnrollRequest, user: ManagementUserDependency
 ) -> JSONResponse:
     _require_same_origin(request)
     try:
@@ -166,7 +272,7 @@ async def move_device(
     request: Request,
     device_uuid: str,
     payload: DeviceProjectUpdateRequest,
-    user: DashboardUserDependency,
+    user: ManagementUserDependency,
 ) -> JSONResponse:
     _require_same_origin(request)
     try:
@@ -189,7 +295,7 @@ async def set_device_monitoring(
     request: Request,
     device_uuid: str,
     payload: DeviceMonitoringUpdateRequest,
-    user: DashboardUserDependency,
+    user: ManagementUserDependency,
 ) -> JSONResponse:
     _require_same_origin(request)
     try:

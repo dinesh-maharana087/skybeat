@@ -45,6 +45,9 @@ The API follows these principles:
 | PATCH  | `/api/v1/devices/{device_uuid}/monitoring` | Browser session + same-origin | Enable or disable one device       |
 | GET    | `/api/v1/devices/{device_uuid}`        | Browser session               | Get one device's current status    |
 | GET    | `/api/v1/devices/{device_uuid}/alerts` | Browser session               | Device alert/delivery history      |
+| GET    | `/api/v1/users`                        | OWNER or ADMIN session        | List provisioned dashboard users   |
+| POST   | `/api/v1/users`                        | OWNER or ADMIN + same-origin  | Provision Admin/User as authorized  |
+| PATCH  | `/api/v1/users/{user_id}`              | OWNER or ADMIN + same-origin  | Update Admin/User as authorized     |
 | GET    | `/`                                    | Browser session               | Main Device Status page            |
 | GET    | `/auth/google/login`                   | Public/rate-limited           | Start Google authentication        |
 | GET    | `/auth/google/callback`                | OAuth transaction             | Complete authentication            |
@@ -107,6 +110,29 @@ Google OIDC followed by an application session.
 A browser session cannot submit agent heartbeats.
 
 A device credential cannot access dashboard APIs.
+
+## Dashboard roles
+
+Google OIDC proves identity and the configured email/domain policy is an admission
+gate. A separate durable application-user record supplies the role on every
+authenticated request; an admitted Google identity with no active durable record
+is denied.
+
+| Role | Access |
+| --- | --- |
+| OWNER | Full dashboard, device/project mutations, and Admin/User administration. |
+| ADMIN | Dashboard and device/project mutations; may administer only User accounts. |
+| USER | Read-only dashboard, devices, projects, incidents, and diagnostics. |
+
+`POST /api/v1/projects`, `POST /api/v1/devices`, and device-management PATCH
+endpoints require OWNER or ADMIN. Users endpoints reject an unauthorized actor or
+target with `403`; checks run server-side before management services execute.
+
+There is no browser/API Owner assignment, Owner mutation, or ownership transfer.
+The sole Owner is established locally with `skybeat-admin --actor <operator>
+owner-bootstrap --email <owner-google-email>` after the database migration. A
+repeat for that same normalized email is successful and reports
+`already_configured: true`; a different email is rejected.
 
 ---
 

@@ -9,7 +9,8 @@ from app.config import Settings
 from app.dashboard.auth import VerifiedIdentity
 from app.dashboard.service import DashboardAuthService, SessionRejected
 from app.db import database_utc
-from app.models import AdminSession
+from app.models import AdminSession, ApplicationUser
+from app.users.service import UserRole
 
 pytestmark = pytest.mark.mysql
 
@@ -40,6 +41,19 @@ def auth_service(mysql_database, mysql_settings, identity):
         session_encryption_key=Fernet.generate_key().decode("ascii"),
     )
     oidc = FakeOIDC(VerifiedIdentity("google-sub", "ops@example.test", True, None))
+    with mysql_database.transaction() as session:
+        now = database_utc(session)
+        session.add(
+            ApplicationUser(
+                email="ops@example.test",
+                display_name="Ops Owner",
+                google_sub=None,
+                role=UserRole.OWNER.value,
+                is_active=True,
+                created_at=now,
+                updated_at=now,
+            )
+        )
     return DashboardAuthService(mysql_database, config, oidc), oidc
 
 
@@ -60,6 +74,7 @@ def test_authorized_google_identity_receives_opaque_session(
     user = service.authenticate_session(token)
 
     assert user.email == "ops@example.test"
+    assert user.role is UserRole.OWNER
     assert oidc.last_nonce is not None
     with mysql_database.transaction() as session:
         stored = session.scalar(select(AdminSession))
@@ -132,5 +147,38 @@ def test_expired_logout_and_allowlist_removal_revoke_dashboard_access(
         stored = session.scalar(select(AdminSession).order_by(AdminSession.id.desc()))
         assert stored is not None
         stored.expires_at = database_utc(session) - timedelta(seconds=1)
+    with pytest.raises(SessionRejected):
+        service.authenticate_session(token)
+
+
+def test_session_uses_current_durable_role_and_rejects_disabled_user(
+    mysql_database, mysql_settings, identity
+):
+    service, _ = auth_service(mysql_database, mysql_settings, identity)
+    login = asyncio.run(service.begin_login("https://monitor.example.test/auth/google/callback"))
+    token = asyncio.run(
+        service.complete_login(
+            state=login.state,
+            code="authorization-code",
+            browser_binding=login.browser_binding,
+            redirect_uri="https://monitor.example.test/auth/google/callback",
+        )
+    )
+    with mysql_database.transaction() as session:
+        user = session.scalar(
+            select(ApplicationUser).where(ApplicationUser.email == "ops@example.test")
+        )
+        assert user is not None
+        user.role = UserRole.USER.value
+
+    assert service.authenticate_session(token).role is UserRole.USER
+
+    with mysql_database.transaction() as session:
+        user = session.scalar(
+            select(ApplicationUser).where(ApplicationUser.email == "ops@example.test")
+        )
+        assert user is not None
+        user.is_active = False
+
     with pytest.raises(SessionRejected):
         service.authenticate_session(token)

@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -291,6 +292,101 @@ def test_dashboard_management_routes_require_the_existing_dashboard_user_and_no_
         response = client.post("/api/v1/projects", json={"name": "GPU Lab"})
 
     assert response.status_code == 401
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_user_role_cannot_create_a_project_even_with_a_direct_api_request():
+    from app.users.service import UserRole
+
+    class UserSession:
+        def authenticate_session(self, token):
+            return DashboardUser(
+                "google-user", "user@example.test", None, user_id=7, role=UserRole.USER
+            )
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = UserSession()
+    app.state.dashboard_management_service_factory = lambda database, actor: (_ for _ in ()).throw(
+        AssertionError("management must not run")
+    )
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        response = client.post("/api/v1/projects", json={"name": "Forged control"})
+
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize(
+    ("role", "method", "path", "payload", "expected"),
+    [
+        ("OWNER", "post", "/api/v1/users", {"email": "admin@example.test", "role": "ADMIN"}, 200),
+        ("ADMIN", "post", "/api/v1/users", {"email": "user@example.test", "role": "USER"}, 200),
+        ("ADMIN", "post", "/api/v1/users", {"email": "admin@example.test", "role": "ADMIN"}, 403),
+        ("USER", "post", "/api/v1/users", {"email": "user@example.test", "role": "USER"}, 403),
+        ("USER", "patch", "/api/v1/users/12", {"is_active": False}, 403),
+    ],
+)
+def test_user_management_api_enforces_role_matrix_for_direct_requests(
+    role, method, path, payload, expected
+):
+    from app.users.service import UserRole
+
+    class Session:
+        def authenticate_session(self, token):
+            return DashboardUser(
+                "google-user", f"{role.lower()}@example.test", None, 7, UserRole(role)
+            )
+
+    class Users:
+        def create_user(self, **kwargs):
+            return type(
+                "User",
+                (),
+                {
+                    "id": 12,
+                    "display_name": None,
+                    "email": kwargs["email"],
+                    "role": kwargs["role"].value,
+                    "is_active": True,
+                    "created_at": None,
+                    "updated_at": None,
+                },
+            )()
+
+        def update_user(self, user_id, **kwargs):
+            return type(
+                "User",
+                (),
+                {
+                    "id": user_id,
+                    "display_name": None,
+                    "email": "user@example.test",
+                    "role": "USER",
+                    "is_active": False,
+                    "created_at": None,
+                    "updated_at": None,
+                },
+            )()
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Session()
+    app.state.user_service_factory = lambda *args, **kwargs: Users()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        response = getattr(client, method)(path, json=payload)
+
+    assert response.status_code == expected, response.text
     assert response.headers["cache-control"] == "no-store"
 
 

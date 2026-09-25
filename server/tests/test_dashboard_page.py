@@ -105,6 +105,73 @@ def test_dashboard_shell_serves_the_company_logo_on_every_dashboard_view():
     assert logo.headers["content-type"] == "image/png"
 
 
+def test_owner_users_page_renders_role_aware_user_management_controls():
+    class Authenticated:
+        def authenticate_session(self, token):
+            return DashboardUser("google-owner", "owner@example.test", None)
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Authenticated()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        response = client.get("/dashboard/users")
+
+    assert response.status_code == 200
+    assert 'data-dashboard-view="users"' in response.text
+    assert 'href="/dashboard/users"' in response.text
+    assert 'id="new-user"' in response.text
+    assert 'id="users-table-body"' in response.text
+
+
+def test_admin_users_page_can_only_offer_user_role_creation():
+    from app.users.service import UserRole
+
+    class Authenticated:
+        def authenticate_session(self, token):
+            return DashboardUser("google-admin", "admin@example.test", None, 3, UserRole.ADMIN)
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Authenticated()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        response = client.get("/dashboard/users")
+
+    assert response.status_code == 200
+    assert '<option value="USER">User</option>' in response.text
+    assert '<option value="ADMIN">Admin</option>' not in response.text
+
+
+def test_user_role_cannot_open_users_page_and_does_not_receive_management_controls():
+    from app.users.service import UserRole
+
+    class Authenticated:
+        def authenticate_session(self, token):
+            return DashboardUser("google-user", "user@example.test", None, 4, UserRole.USER)
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Authenticated()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        users = client.get("/dashboard/users")
+        overview = client.get("/dashboard")
+        devices = client.get("/dashboard/devices")
+
+    assert users.status_code == 403
+    assert users.headers["cache-control"] == "no-store"
+    assert 'href="/dashboard/users"' not in overview.text
+    assert 'id="new-project"' not in overview.text
+    assert 'id="add-device"' not in devices.text
+
+
 def test_development_dashboard_bypass_renders_a_fixed_local_identity_without_a_session():
     class StartupWarningCapture(logging.Handler):
         def __init__(self):

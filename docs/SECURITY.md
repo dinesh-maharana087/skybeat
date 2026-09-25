@@ -568,6 +568,25 @@ Do not rely on the OAuth request's domain hint as proof.
 
 Explicit email allowlisting remains the simplest and safest initial V1 configuration.
 
+## Durable roles and Owner safety
+
+Google authentication and the configured admission policy do not themselves grant
+an application capability. An active, normalized-email application-user record is
+also required, and its durable OWNER, ADMIN, or USER role is resolved on each
+authenticated request. Disabling an account or changing its role therefore takes
+effect for an existing session on its next request.
+
+The installation has exactly one Owner, enforced by the database. It is created
+only through the restricted local `skybeat-admin ... owner-bootstrap` command,
+which is idempotent for that Owner email. The dashboard and users API cannot
+create, change, disable, delete, transfer, or otherwise assign Owner authority.
+Owner transfer is deliberately deferred to a separately reviewed recovery
+procedure.
+
+ADMIN may create, update, enable, or disable USER accounts only. OWNER may manage
+ADMIN and USER accounts. USER is read-only. These rules are enforced by reusable
+server dependencies and the user service; hiding controls is not authorization.
+
 ---
 
 # 20. Dashboard User Identity

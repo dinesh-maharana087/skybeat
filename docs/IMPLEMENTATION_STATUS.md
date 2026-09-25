@@ -1,10 +1,10 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-09-25
-Current stage: Stage 07 - Dashboard, Operational Visibility & Deployment Runbook (browser acceptance remains pending)
-Current UI stage: Stage 08H - Final Dashboard Shell Polish + Branding
-Current milestone: Stage 08H verified sidebar branding and company-logo shell treatment
-Status: IMPLEMENTED / EXECUTABLE AND BROWSER VERIFICATION COMPLETE. Stage 07 remains in progress pending its separate real-device and deployment acceptance.
+Current stage: Stage 09 - User Management + Role-Based Access Control
+Current UI stage: Stage 09 - User Management + Role-Based Access Control
+Current milestone: Stage 09 implementation and executable verification complete
+Status: IMPLEMENTED. Server-side RBAC, durable user provisioning, Owner safety, and the role-aware Users dashboard are complete. Stage 10 remains out of scope.
 
 ## Completed
 
@@ -46,10 +46,11 @@ Status: IMPLEMENTED / EXECUTABLE AND BROWSER VERIFICATION COMPLETE. Stage 07 rem
 - Implemented Stage 08F dashboard polish: a compact native-SVG sidebar toggle with persisted expanded/collapsed states and accessible icon tooltips, a unified restrained operations-console visual hierarchy across panels/filters/actions/dialogs/drawer, responsive spacing, and a polished existing Add Device enrollment dialog. The existing authenticated `POST /api/v1/devices` workflow, validation, duplicate-submit guard, one-time credential handling, and dashboard refresh remain unchanged; no backend behavior changed.
 - Implemented Stage 08G dashboard functional hardening: successful existing device enrollment now remains truthfully successful if a later inventory refresh/render fails. The one-time credential stays visible, with an explicit stale-inventory notice. Repaired the blocking Devices initializer crash caused by binding the absent Overview/Projects `#new-project` control, and made the Overview `#new-project` control render its required project dialog. No route, backend, API, schema, migration, agent, deployment, or monitoring behavior changed.
 - Implemented Stage 08H final dashboard shell polish: the collapsed rail now has an explicit icon-only SkyBeat brand composition, centered navigation/toggle alignment, retained navigation tooltips, and no horizontal overflow. The existing `assert_logo.png` asset is a subtle expanded-footer `Powered by Assert AI` treatment and is hidden with the footer when collapsed. No API, database, telemetry, agent, authentication, enrollment, or business functionality changed.
+- Implemented Stage 09 RBAC: an additive `application_users` migration with database-enforced sole Owner; local idempotent Owner bootstrap; Google OIDC plus configured admission policy plus active durable-user resolution on every request; reusable server-side role dependencies; audited user list/create/update APIs; and a role-aware Users dashboard. OWNER manages ADMIN/USER, ADMIN manages USER only, and USER is read-only. Owner mutation/assignment/transfer is unavailable through browser/API.
 
 ## In Progress
 
-- Stage 07 remains IN PROGRESS and unaccepted pending its separate real-device and deployment acceptance. Stage 08H shell/branding verification is complete; no subsequent stage has started.
+- No active implementation milestone. Do not begin Stage 10 without explicit authorization.
 
 ## Verification Completed
 
@@ -338,6 +339,18 @@ Status: IMPLEMENTED / EXECUTABLE AND BROWSER VERIFICATION COMPLETE. Stage 07 rem
 - Known limitations: the two full-suite installer failures are the existing Windows Bash path-translation defect; MySQL-dependent tests remain skipped without an isolated MySQL URL. Overall Stage 07 real-device and deployment acceptance remain pending.
 - Next stage: STOP. Do not begin Stage 09.
 
+## Stage 09 Checkpoint
+
+- Stage: 09 - User Management + Role-Based Access Control.
+- Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE.
+- Files changed: durable user model/service/schema/migration; dashboard auth, API/page dependencies and CLI; Users template/DOM/CSS; user/RBAC/MySQL/page/API tests; API, security, deployment, and status documentation.
+- Migration: `b31d2ef4a1c9_stage09_application_users` is the sole Alembic head. It creates `application_users` with normalized unique email, optional Google subject binding, active status, created/updated timestamps, role constraints, and a computed unique Owner guard.
+- Security: Google OIDC still proves identity and the configured allowlist/domain remains an admission gate. An active durable user record and the current persisted role are resolved under lock for every session request, so role downgrade or disable takes effect without relying on stale session claims. Browser/API attempts to administer Owner or exceed the actor-target role matrix receive 403; project/device mutations require OWNER or ADMIN.
+- Tests executed: Stage 09 focused user/CLI/API/page suite 115 passed; JavaScript syntax check passed; server Ruff check/format passed; strict server mypy passed for 45 source files; Alembic reports sole head `b31d2ef4a1c9`; `git diff --check` passed. The focused tests cover OWNER, ADMIN, USER, and unauthenticated endpoint/page behavior, including forged direct USER requests.
+- Environment limitations: real-MySQL tests, including the Stage 09 durable-session regression, are skipped because no isolated `SKYBEAT_TEST_DATABASE_URL` is available. The normal full server command cannot collect `test_heartbeat_agent_integration.py` because the server-only environment lacks the agent's locked `psutil` dependency; installing it was blocked by the approval service usage limit. The available server regression (excluding that uncollectable test) had 353 passed and 33 MySQL skips, with two unrelated Windows Bash path-translation installer failures. Agent regression could not run with `uv --frozen` because `agent/uv.lock` is absent; no application dependency or lockfile was changed. Browser acceptance is represented by TestClient role/page coverage and JavaScript runtime/syntax checks; no production or protected local MySQL/browser environment was altered.
+- Known limitations: real MySQL migration/transaction behavior and an interactive three-role browser session remain environment-pending. Owner transfer/recovery is intentionally deferred; no Owner browser/API mutation exists.
+- Next action: STOP. Do not create a commit and do not begin Stage 10 without explicit authorization.
+
 ## Resume Command / Guidance
 
-Read AGENTS.md, docs/IMPLEMENTATION_PLAN.md, this file, and inspect the current Git diff before continuing. Stage 08H is complete; retain the separate Stage 07 real-device and deployment acceptance checkpoint, and do not begin Stage 09 without explicit authorization.
+Read AGENTS.md, docs/IMPLEMENTATION_PLAN.md, this file, and inspect the current Git diff before continuing. Stage 09 is complete; retain the Stage 07/08 environment limitations, do not create a commit, and do not begin Stage 10 without explicit authorization.

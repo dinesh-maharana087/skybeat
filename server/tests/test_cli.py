@@ -27,6 +27,25 @@ def run(cli, *arguments):
     return cli.module.main(["--actor", "local-operator", *arguments])
 
 
+def test_owner_bootstrap_uses_the_restricted_local_user_service(cli, monkeypatch, capsys):
+    owner_service = MagicMock()
+    owner_service.bootstrap_owner.return_value = SimpleNamespace(
+        user=SimpleNamespace(email="owner@example.test"), already_configured=False
+    )
+    monkeypatch.setattr(cli.module, "UserService", MagicMock(return_value=owner_service))
+
+    result = run(cli, "owner-bootstrap", "--email", "Owner@Example.TEST")
+
+    assert result == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "email": "owner@example.test",
+        "role": "OWNER",
+        "already_configured": False,
+    }
+    cli.module.UserService.assert_called_once_with(cli.database, actor="local-operator")
+    owner_service.bootstrap_owner.assert_called_once_with("Owner@Example.TEST")
+
+
 def test_enroll_exposes_new_token_only_in_deliberate_output(cli, capsys):
     device_id, project_id, credential_id = (str(uuid4()) for _ in range(3))
     token = "test-only-secret-output"

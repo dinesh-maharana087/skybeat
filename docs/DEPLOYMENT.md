@@ -927,6 +927,19 @@ SKYBEAT_ADMIN_DOMAIN_ALLOWLIST
 
 An empty authorization policy must deny access.
 
+After applying the application-user migration, establish the sole Owner locally
+before its first Google login. Use a protected shell on the API host and retain an
+accountable local operator label in the audit record:
+
+```text
+skybeat-admin --actor <operator> owner-bootstrap --email <owner-google-email>
+```
+
+The command normalizes the email, is idempotent for that same Owner, and rejects a
+different Owner. The account must also satisfy `SKYBEAT_ALLOWED_EMAILS` and/or
+`SKYBEAT_ALLOWED_DOMAINS`; Google authentication alone never provisions access.
+Do not attempt to create or transfer Owner authority through the dashboard/API.
+
 ---
 
 # 32. Google Redirect

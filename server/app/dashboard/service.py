@@ -2,16 +2,18 @@
 
 import secrets
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.dashboard.auth import AuthorizationPolicy, VerifiedIdentity, session_token_digest
 from app.dashboard.oidc import OIDCClient, OIDCError
 from app.db import Database, database_utc
-from app.models import AdminSession, OAuthTransaction
+from app.models import AdminSession, ApplicationUser, OAuthTransaction
+from app.users.service import UserRole, normalize_email
 
 OAUTH_TRANSACTION_LIFETIME = timedelta(minutes=10)
 SESSION_ABSOLUTE_LIFETIME = timedelta(hours=8)
@@ -38,10 +40,15 @@ class DashboardUser:
     google_sub: str
     email: str
     hosted_domain: str | None
+    user_id: int = 0
+    role: UserRole = UserRole.OWNER
 
 
 LOCAL_DEVELOPMENT_DASHBOARD_USER = DashboardUser(
-    google_sub="local-development", email="local-development@skybeat.invalid", hosted_domain=None
+    google_sub="local-development",
+    email="local-development@skybeat.invalid",
+    hosted_domain=None,
+    role=UserRole.OWNER,
 )
 
 
@@ -95,6 +102,7 @@ class DashboardAuthService:
             raise DashboardAuthError("Google authentication failed.") from error
         if not self.policy.allows(identity):
             raise SessionRejected("Dashboard access is not authorized.")
+        self._resolve_application_user(identity)
         return self._issue_session(identity)
 
     def authenticate_session(self, token: str) -> DashboardUser:
@@ -124,7 +132,7 @@ class DashboardAuthService:
                 stored.revoked_at = now
                 raise SessionRejected("Dashboard access is no longer authorized.")
             stored.last_used_at = now
-            return DashboardUser(identity.google_sub, identity.email, identity.hosted_domain)
+            return self._resolve_application_user_in_session(session, identity, now)
 
     def logout(self, token: str) -> None:
         if not token or len(token) > 256:
@@ -216,3 +224,32 @@ class DashboardAuthService:
                 )
             )
         return token
+
+    def _resolve_application_user(self, identity: VerifiedIdentity) -> DashboardUser:
+        with self.database.transaction() as session:
+            return self._resolve_application_user_in_session(
+                session, identity, database_utc(session)
+            )
+
+    def _resolve_application_user_in_session(
+        self, session: Session, identity: VerifiedIdentity, now: datetime
+    ) -> DashboardUser:
+        user = session.scalar(
+            select(ApplicationUser)
+            .where(ApplicationUser.email == normalize_email(identity.email))
+            .with_for_update()
+        )
+        if user is None or not user.is_active:
+            raise SessionRejected("Dashboard access has not been provisioned.")
+        if user.google_sub is not None and not secrets.compare_digest(
+            user.google_sub, identity.google_sub
+        ):
+            raise SessionRejected("Dashboard identity does not match the provisioned account.")
+        if user.google_sub is None:
+            user.google_sub = identity.google_sub
+            user.updated_at = now
+        try:
+            role = UserRole(user.role)
+        except ValueError as error:
+            raise SessionRejected("Dashboard role is invalid.") from error
+        return DashboardUser(identity.google_sub, user.email, identity.hosted_domain, user.id, role)

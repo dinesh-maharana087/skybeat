@@ -2,11 +2,35 @@
 
 from datetime import datetime
 
-from sqlalchemy import Index, LargeBinary, String
+from sqlalchemy import Boolean, CheckConstraint, Computed, Index, LargeBinary, String
 from sqlalchemy.dialects.mysql import BIGINT, BINARY, DATETIME
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import TABLE_OPTIONS, Base
+
+
+class ApplicationUser(Base):
+    """Durable application authorization identity, separate from Google OIDC sessions."""
+
+    __tablename__ = "application_users"
+    __table_args__ = (
+        CheckConstraint("role IN ('OWNER', 'ADMIN', 'USER')", name="role"),
+        CheckConstraint("owner_guard IS NULL OR owner_guard = 1", name="owner_guard"),
+        Index("ix_application_users_role", "role"),
+        TABLE_OPTIONS,
+    )
+
+    id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True)
+    display_name: Mapped[str | None] = mapped_column(String(128))
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True)
+    role: Mapped[str] = mapped_column(String(16))
+    is_active: Mapped[bool] = mapped_column(Boolean(name="active", create_constraint=True))
+    owner_guard: Mapped[int | None] = mapped_column(
+        Computed("CASE WHEN role = 'OWNER' THEN 1 ELSE NULL END", persisted=True), unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
 
 
 class AdminSession(Base):

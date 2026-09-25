@@ -13,6 +13,8 @@ const HISTORY_COLOR_TOKENS = [
   "--sb-history-series-4",
 ];
 const dashboardView = document.body.dataset.dashboardView;
+const dashboardRole = document.body.dataset.dashboardRole;
+const canManage = document.body.dataset.canManage === "true";
 const SIDEBAR_PREFERENCE_KEY = "skybeat.sidebar.v1";
 const appShell = document.querySelector(".app-shell");
 const sidebarToggle = document.getElementById("sidebar-toggle");
@@ -113,6 +115,20 @@ const monitoringForm = document.getElementById("monitoring-form");
 const monitoringDescription = document.getElementById("monitoring-description");
 const monitoringStatus = document.getElementById("monitoring-status");
 const monitoringSubmit = document.getElementById("monitoring-submit");
+const usersTableBody = document.getElementById("users-table-body");
+const usersStatus = document.getElementById("users-status");
+const usersEmpty = document.getElementById("users-empty");
+const newUser = document.getElementById("new-user");
+const userDialog = document.getElementById("user-dialog");
+const userForm = document.getElementById("user-form");
+const userName = document.getElementById("user-name");
+const userEmail = document.getElementById("user-email");
+const userRole = document.getElementById("user-role");
+const userActive = document.getElementById("user-active");
+const userFormStatus = document.getElementById("user-form-status");
+const userSubmit = document.getElementById("user-submit");
+const userClose = document.getElementById("user-close");
+const userCancel = document.getElementById("user-cancel");
 
 let refreshTimer = null;
 let searchTimer = null;
@@ -123,6 +139,7 @@ let cursorHistory = [null];
 let pageIndex = 0;
 let lastSuccessfulRefresh = null;
 let overviewTotal = null;
+let editingUserId = null;
 let selectedDeviceId = null;
 let detailGeneration = 0;
 let detailAbortController = null;
@@ -292,6 +309,12 @@ async function requestDevices(cursor = null) {
 async function requestProjects() {
   const response = await fetch("/api/v1/projects", { credentials: "same-origin" });
   if (!response.ok) throw new Error("project request failed");
+  return response.json();
+}
+
+async function requestUsers() {
+  const response = await fetch("/api/v1/users", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("users request failed");
   return response.json();
 }
 
@@ -937,9 +960,109 @@ async function refreshProjectsView() {
   }
 }
 
+function canEditUser(user) {
+  if (user.role === "OWNER") return false;
+  return dashboardRole === "OWNER" || (dashboardRole === "ADMIN" && user.role === "USER");
+}
+
+function renderUsers(items) {
+  usersTableBody.replaceChildren();
+  for (const user of items) {
+    const row = document.createElement("tr");
+    row.append(
+      element("td", user.name || "—"),
+      element("td", user.email),
+      (() => { const cell = document.createElement("td"); cell.append(statusPill(user.role)); return cell; })(),
+      (() => { const cell = document.createElement("td"); cell.append(statusPill(user.active ? "ACTIVE" : "DISABLED")); return cell; })(),
+      (() => { const cell = document.createElement("td"); cell.append(timestampNode(user.created_at)); return cell; })(),
+      (() => { const cell = document.createElement("td"); cell.append(timestampNode(user.updated_at)); return cell; })(),
+    );
+    const action = document.createElement("td");
+    if (canEditUser(user)) {
+      const button = element("button", "Edit");
+      button.type = "button";
+      button.className = "sb-button--secondary";
+      button.addEventListener("click", () => openUserDialog(user));
+      action.append(button);
+    } else {
+      action.textContent = "—";
+    }
+    row.append(action);
+    usersTableBody.append(row);
+  }
+  setVisible(usersEmpty, items.length === 0);
+}
+
+async function refreshUsersView() {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    const result = await requestUsers();
+    renderUsers(result.items);
+    usersStatus.textContent = `${result.items.length} provisioned user${result.items.length === 1 ? "" : "s"}.`;
+    markDashboardFresh(null);
+  } catch (_) {
+    usersStatus.textContent = "Users could not be loaded. Existing data may be stale.";
+    markDashboardStale();
+  } finally {
+    refreshing = false;
+  }
+}
+
+function openUserDialog(user = null) {
+  editingUserId = user?.user_id ?? null;
+  userForm.reset();
+  userFormStatus.textContent = "";
+  userEmail.disabled = user !== null;
+  userEmail.required = user === null;
+  document.getElementById("user-dialog-title").textContent = user === null ? "Add dashboard user" : "Edit dashboard user";
+  userSubmit.textContent = user === null ? "Create user" : "Save changes";
+  if (user !== null) {
+    userName.value = user.name || "";
+    userEmail.value = user.email;
+    userRole.value = user.role;
+    userActive.checked = user.active;
+  }
+  userDialog.showModal();
+  userName.focus();
+}
+
+function closeUserDialog() {
+  userDialog.close();
+  editingUserId = null;
+}
+
+async function submitUser() {
+  const payload = {
+    display_name: userName.value.trim() || null,
+    role: userRole.value,
+    is_active: userActive.checked,
+  };
+  if (editingUserId === null) payload.email = userEmail.value.trim();
+  if (editingUserId === null && !payload.email) {
+    userFormStatus.textContent = "Enter a Google email address.";
+    return;
+  }
+  userSubmit.disabled = true;
+  try {
+    await requestDashboardMutation(
+      editingUserId === null ? "/api/v1/users" : `/api/v1/users/${editingUserId}`,
+      editingUserId === null ? "POST" : "PATCH",
+      payload,
+    );
+    closeUserDialog();
+    await refreshUsersView();
+  } catch (_) {
+    userFormStatus.textContent = "The user change was not accepted. Review the account and role.";
+  } finally {
+    userSubmit.disabled = false;
+  }
+}
+
 async function refreshActiveView() {
   if (dashboardView === "devices") return refreshDashboard();
   if (dashboardView === "projects") return refreshProjectsView();
+  if (dashboardView === "users") return refreshUsersView();
   return refreshOverviewView();
 }
 
@@ -1091,7 +1214,7 @@ async function requestDeviceIncidents(deviceId, signal) {
 
 function renderDetail(device) {
   currentDetail = device;
-  detailManagementActions.hidden = dashboardView !== "devices";
+  detailManagementActions.hidden = dashboardView !== "devices" || !canManage;
   detailTitle.textContent = `Device detail: ${displayValue(device.name)}`;
   renderDetailIdentitySummary(device);
   renderDetailStateSummary(device);
@@ -1894,8 +2017,8 @@ devices.addEventListener("click", (event) => {
     applyDeviceFilter(name, value);
   }
 });
-addDevice.addEventListener("click", () => openEnrollmentDialog());
-newProjectFromEnroll.addEventListener("click", () => {
+addDevice?.addEventListener("click", () => openEnrollmentDialog());
+newProjectFromEnroll?.addEventListener("click", () => {
   pendingEnrollmentDraft = enrollmentDraft();
   deviceEnrollDialog.close();
   openProjectDialog({ fromEnrollment: true });
@@ -1923,8 +2046,8 @@ deviceEnrollDialog.addEventListener("close", () => {
   deviceEnrollForm.reset();
   syncEnrollmentGpuPolicy();
 });
-detailChangeProject.addEventListener("click", openMoveDialog);
-detailToggleMonitoring.addEventListener("click", openMonitoringConfirmation);
+if (canManage) detailChangeProject.addEventListener("click", openMoveDialog);
+if (canManage) detailToggleMonitoring.addEventListener("click", openMonitoringConfirmation);
 moveDeviceForm.addEventListener("submit", (event) => {
   event.preventDefault();
   void submitMoveDevice();
@@ -1952,6 +2075,21 @@ document.addEventListener("visibilitychange", () => {
   refreshActiveView();
 });
 refreshActiveView();
+} else if (dashboardView === "users") {
+  sidebarToggle.addEventListener("click", () => toggleSidebar());
+  logout.addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+    window.location.assign("/auth/google/login");
+  });
+  newUser.addEventListener("click", () => openUserDialog());
+  userForm.addEventListener("submit", (event) => { event.preventDefault(); void submitUser(); });
+  userClose.addEventListener("click", closeUserDialog);
+  userCancel.addEventListener("click", closeUserDialog);
+  userDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeUserDialog(); });
+  const preference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
+  if (preference === "collapsed") setSidebarCollapsed(true);
+  else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);
+  refreshActiveView();
 } else {
   sidebarToggle.addEventListener("click", () => {
     toggleSidebar();
@@ -1960,7 +2098,7 @@ refreshActiveView();
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
     window.location.assign("/auth/google/login");
   });
-  newProject.addEventListener("click", () => openProjectDialog());
+  newProject?.addEventListener("click", () => openProjectDialog());
   projectForm.addEventListener("submit", (event) => {
     event.preventDefault();
     void submitProject();
