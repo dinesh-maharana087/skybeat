@@ -33,6 +33,23 @@
 .device-row--attention:has(.status-offline) td:first-child, .device-row--attention:has(.status-driver-error) td:first-child, .device-row--attention:has(.status-gpu-missing) td:first-child, .device-row--attention:has(.status-nvidia-smi-failed) td:first-child { box-shadow: inset .2rem 0 0 var(--sb-danger); }
 .device-loading, .devices-result-context { margin: 0 0 var(--sb-space-2); }
 .sidebar-collapsed .nav-label, .sidebar-collapsed .brand-subtitle { display: none; }
+
+/* Stage 08E keeps the existing drawer while prioritising current diagnostic evidence. */
+.detail-hero { display: grid; gap: var(--sb-space-1); min-width: 0; }
+.detail-identity-summary { color: var(--sb-text-secondary); font-size: var(--sb-font-size-sm); margin: 0; overflow-wrap: anywhere; }
+.detail-state-summary, .detail-diagnostic-summary { display: grid; gap: var(--sb-space-2); grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); }
+.detail-state-summary { margin-top: var(--sb-space-2); }
+.detail-fact { background: var(--sb-bg-surface-secondary); border: 1px solid var(--sb-border); border-radius: var(--sb-radius-sm); display: grid; gap: var(--sb-space-1); min-width: 0; padding: var(--sb-space-2); }
+.detail-fact > span:first-child { color: var(--sb-text-muted); font-size: var(--sb-font-size-xs); font-weight: 700; }
+.detail-fact > strong { color: var(--sb-text-primary); font-size: var(--sb-font-size-sm); overflow-wrap: anywhere; }
+.detail-resource-telemetry { display: grid; gap: var(--sb-space-2); grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); margin-top: var(--sb-space-3); }
+.detail-resource { display: grid; gap: var(--sb-space-1); margin-top: var(--sb-space-2); }
+.detail-resource-header { align-items: baseline; display: flex; font-size: var(--sb-font-size-sm); gap: var(--sb-space-2); justify-content: space-between; }
+.detail-resource-header span { color: var(--sb-text-muted); font-variant-numeric: tabular-nums; }
+.detail-resource-meter { background: var(--sb-neutral-soft); border-radius: 999px; height: .5rem; overflow: hidden; }
+.detail-resource-meter > span { background: var(--sb-primary); display: block; height: 100%; }
+@media (max-width: 720px) { .detail-state-summary, .detail-diagnostic-summary, .detail-resource-telemetry { grid-template-columns: 1fr; } }
+
 @media (max-width: 900px) {
   .app-shell.sidebar-mobile-open .app-sidebar { box-shadow: var(--sb-shadow-md); display: flex; inset: 0 auto 0 0; max-width: 18rem; position: fixed; width: min(82vw, var(--sb-sidebar-width)); z-index: 4; }
   .app-shell.sidebar-mobile-open::after { background: rgb(16 35 63 / 35%); content: ""; inset: 0; position: fixed; z-index: 3; }

@@ -194,9 +194,17 @@
             </section>
           </section>
 
+          {% endif %}
+
+          {% if active_view == "devices" or active_view == "overview" %}
           <aside id="detail-panel" class="detail-panel" role="complementary" aria-labelledby="detail-title" hidden>
             <div class="detail-panel-header">
-              <div><p class="eyebrow">Selected device</p><h2 id="detail-title" tabindex="-1">Device detail</h2></div>
+              <div class="detail-hero">
+                <p class="eyebrow">Selected device</p>
+                <h2 id="detail-title" tabindex="-1">Device detail</h2>
+                <p id="detail-identity-summary" class="detail-identity-summary"></p>
+                <div id="detail-state-summary" class="detail-state-summary" aria-label="Current device state"></div>
+              </div>
               <button id="detail-close" type="button">Close detail</button>
             </div>
             <p id="detail-status" aria-live="polite"></p>
@@ -206,11 +214,12 @@
             </div>
             <button id="detail-retry" type="button" hidden>Retry detail</button>
             <div id="detail-content">
-              <section aria-labelledby="detail-identity-heading"><h3 id="detail-identity-heading">Identity</h3><dl id="detail-identity"></dl></section>
-              <section aria-labelledby="detail-freshness-heading"><h3 id="detail-freshness-heading">Freshness</h3><dl id="detail-freshness"></dl></section>
-              <section aria-labelledby="detail-system-heading"><h3 id="detail-system-heading">Host and system</h3><dl id="detail-system"></dl></section>
+              <section aria-labelledby="detail-diagnostic-heading"><h3 id="detail-diagnostic-heading">Current diagnostic summary</h3><div id="detail-diagnostic-summary"></div></section>
+              <section aria-labelledby="detail-identity-heading"><h3 id="detail-identity-heading">Device identity</h3><dl id="detail-identity"></dl></section>
+              <section aria-labelledby="detail-freshness-heading"><h3 id="detail-freshness-heading">Availability and telemetry timing</h3><dl id="detail-freshness"></dl></section>
+              <section aria-labelledby="detail-system-heading"><h3 id="detail-system-heading">System telemetry</h3><dl id="detail-system"></dl><div id="detail-resource-telemetry" class="detail-resource-telemetry" aria-label="Reported CPU and memory utilization"></div></section>
               <section aria-labelledby="detail-storage-heading"><h3 id="detail-storage-heading">Storage</h3><div id="detail-storage"></div></section>
-              <section aria-labelledby="detail-gpus-heading"><h3 id="detail-gpus-heading">Observed GPUs</h3><div id="detail-gpus"></div></section>
+              <section aria-labelledby="detail-gpus-heading"><h3 id="detail-gpus-heading">GPU diagnostics</h3><div id="detail-gpus"></div></section>
               <section aria-labelledby="detail-policy-heading"><h3 id="detail-policy-heading">Expected GPU configuration</h3><dl id="detail-policy"></dl></section>
               <section aria-labelledby="detail-incidents-heading"><h3 id="detail-incidents-heading">Recent incidents</h3><div id="detail-incidents"></div></section>
               <section aria-labelledby="history-heading">

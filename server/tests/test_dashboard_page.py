@@ -716,3 +716,52 @@ def test_dashboard_never_uses_unsafe_html_and_only_stringifies_structured_mutati
         assert unsafe_api not in script
     assert "JSON.stringify(payload)" in script
     assert "renderRawJson" not in script
+
+
+def test_dashboard_stage08e_reuses_one_diagnostic_drawer_for_overview_and_devices():
+    template = dashboard_template()
+    script = dashboard_script()
+    styles = dashboard_shell_styles()
+
+    assert '{% if active_view == "devices" or active_view == "overview" %}' in template
+    for identifier in (
+        "detail-identity-summary",
+        "detail-state-summary",
+        "detail-diagnostic-summary",
+        "detail-resource-telemetry",
+        "detail-panel",
+    ):
+        assert f'id="{identifier}"' in template
+    for helper in (
+        "function renderDetailIdentitySummary(device)",
+        "function renderDetailStateSummary(device)",
+        "function renderDiagnosticSummary(device)",
+        "function renderResourceTelemetry(target, resources)",
+        "function initializeSharedDetailDrawer()",
+    ):
+        assert helper in script
+    assert 'detailManagementActions.hidden = dashboardView !== "devices"' in script
+    assert "await refreshOpenDetail();" in script
+    for selector in (
+        ".detail-identity-summary",
+        ".detail-state-summary",
+        ".detail-resource-telemetry",
+        ".detail-resource-meter",
+    ):
+        assert selector in styles
+
+
+def test_dashboard_stage08e_keeps_canonical_evidence_history_and_safe_detail_race_handling():
+    script = dashboard_script()
+
+    assert "statusPill(device.state)" in script
+    assert "statusPill(device.gpu_health?.effective)" in script
+    assert '"Reported GPU state"' in script
+    assert '"Telemetry sample collected"' in script
+    assert '"Dashboard refresh"' in script
+    assert "detailAbortController?.abort()" in script
+    assert "detailLastSuccess = null;" in script
+    assert "void refreshOpenHistory();" in script
+    assert "function renderHistory(payload)" in script
+    for unsafe_api in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert unsafe_api not in script

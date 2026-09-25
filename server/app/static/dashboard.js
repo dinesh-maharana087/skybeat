@@ -58,9 +58,13 @@ const detailTitle = document.getElementById("detail-title");
 const detailStatus = document.getElementById("detail-status");
 const detailRetry = document.getElementById("detail-retry");
 const detailClose = document.getElementById("detail-close");
+const detailIdentitySummary = document.getElementById("detail-identity-summary");
+const detailStateSummary = document.getElementById("detail-state-summary");
+const detailDiagnosticSummary = document.getElementById("detail-diagnostic-summary");
 const detailIdentity = document.getElementById("detail-identity");
 const detailFreshness = document.getElementById("detail-freshness");
 const detailSystem = document.getElementById("detail-system");
+const detailResourceTelemetry = document.getElementById("detail-resource-telemetry");
 const detailStorage = document.getElementById("detail-storage");
 const detailGpus = document.getElementById("detail-gpus");
 const detailPolicy = document.getElementById("detail-policy");
@@ -901,6 +905,7 @@ async function refreshOverviewView() {
       return;
     }
     markDashboardFresh(overviewResult.value.server_time);
+    await refreshOpenDetail();
   } catch (_) {
     if (overviewLoading !== null) overviewLoading.hidden = true;
     if (overviewError !== null) {
@@ -938,7 +943,90 @@ async function refreshActiveView() {
 function detailPairs(target, pairs) {
   target.replaceChildren();
   for (const [label, value] of pairs) {
-    target.append(element("dt", label), element("dd", displayValue(value)));
+    const definition = document.createElement("dd");
+    if (value instanceof Node) definition.append(value);
+    else definition.textContent = displayValue(value);
+    target.append(element("dt", label), definition);
+  }
+}
+
+function formatDuration(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "â€”";
+  const totalSeconds = Math.floor(value);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function detailFact(label, value) {
+  const fact = document.createElement("div");
+  fact.className = "detail-fact";
+  fact.append(element("span", label));
+  if (value instanceof Node) fact.append(value);
+  else fact.append(element("strong", displayValue(value)));
+  return fact;
+}
+
+function renderDetailIdentitySummary(device) {
+  detailIdentitySummary.replaceChildren();
+  const values = [device.hostname, device.name, device.project?.name].filter(
+    (value, index, entries) => value && entries.indexOf(value) === index
+  );
+  detailIdentitySummary.textContent = values.join(" · ");
+}
+
+function renderDetailStateSummary(device) {
+  detailStateSummary.replaceChildren(
+    detailFact("Device UUID", device.device_id),
+    detailFact("Availability", statusPill(device.state)),
+    detailFact("GPU state", statusPill(device.gpu_health?.effective)),
+    detailFact("Last seen", timestampNode(device.last_seen_at))
+  );
+}
+
+function renderDiagnosticSummary(device) {
+  detailDiagnosticSummary.replaceChildren(
+    detailFact("Canonical availability", statusPill(device.state)),
+    detailFact("Canonical GPU state", statusPill(device.gpu_health?.effective)),
+    detailFact("Reported GPU state", statusPill(device.gpu_health?.reported)),
+    detailFact("Telemetry freshness", device.telemetry_stale === true ? "STALE" : "Current")
+  );
+}
+
+function renderResourceTelemetry(target, resources) {
+  target.replaceChildren();
+  const available = resources.filter((resource) => typeof resource.value === "number" && Number.isFinite(resource.value));
+  if (!available.length) {
+    target.append(
+      element(
+        "p",
+        `No reported ${resources.map((resource) => resource.label.toLowerCase()).join(" or ")} telemetry available.`
+      )
+    );
+    return;
+  }
+  for (const resource of available) {
+    const value = Math.max(0, Math.min(100, resource.value));
+    const card = document.createElement("div");
+    card.className = "detail-resource";
+    const header = document.createElement("div");
+    header.className = "detail-resource-header";
+    header.append(element("strong", resource.label), element("span", formatPercent(resource.value)));
+    const meter = document.createElement("div");
+    meter.className = "detail-resource-meter";
+    meter.setAttribute("role", "progressbar");
+    meter.setAttribute("aria-label", `${resource.label}: ${formatPercent(resource.value)}`);
+    meter.setAttribute("aria-valuemin", "0");
+    meter.setAttribute("aria-valuemax", "100");
+    meter.setAttribute("aria-valuenow", String(value));
+    const fill = document.createElement("span");
+    fill.style.width = `${value}%`;
+    meter.append(fill);
+    card.append(header, meter);
+    target.append(card);
   }
 }
 
@@ -960,18 +1048,22 @@ function formatTemperature(value) {
 
 function resetDetailSections() {
   for (const target of [
+    detailIdentitySummary,
+    detailStateSummary,
+    detailDiagnosticSummary,
     detailIdentity,
     detailFreshness,
     detailSystem,
+    detailResourceTelemetry,
     detailPolicy,
     detailStorage,
     detailGpus,
     detailIncidents,
   ]) {
-    target.replaceChildren();
+    target?.replaceChildren();
   }
   currentDetail = null;
-  detailManagementActions.hidden = true;
+  if (detailManagementActions !== null) detailManagementActions.hidden = true;
 }
 
 async function requestDeviceDetail(deviceId, signal) {
@@ -996,19 +1088,23 @@ async function requestDeviceIncidents(deviceId, signal) {
 
 function renderDetail(device) {
   currentDetail = device;
-  detailManagementActions.hidden = false;
+  detailManagementActions.hidden = dashboardView !== "devices";
   detailTitle.textContent = `Device detail: ${displayValue(device.name)}`;
+  renderDetailIdentitySummary(device);
+  renderDetailStateSummary(device);
+  renderDiagnosticSummary(device);
   detailPairs(detailIdentity, [
     ["Device name", device.name],
     ["Device UUID", device.device_id],
     ["Project", device.project?.name],
     ["Monitoring", device.monitoring_enabled === true ? "Enabled" : "Disabled"],
-    ["Availability", device.state],
-    ["GPU health", device.gpu_health?.effective],
   ]);
   detailPairs(detailFreshness, [
-    ["Latest telemetry receipt", device.latest_received_at],
-    ["Last seen", device.last_seen_at],
+    ["Canonical availability", device.state],
+    ["Last seen", timestampNode(device.last_seen_at)],
+    ["Latest telemetry receipt", timestampNode(device.latest_received_at)],
+    ["Telemetry sample collected", timestampNode(device.collected_at)],
+    ["Dashboard refresh", timestampNode(device.server_time)],
     ["Telemetry freshness", device.telemetry_stale === true ? "STALE" : "Current"],
   ]);
   const os = device.os ?? {};
@@ -1019,12 +1115,14 @@ function renderDetail(device) {
     ["Operating system", os.name],
     ["Architecture", os.architecture],
     ["Agent version", device.agent_version],
-    ["Uptime", device.uptime_seconds],
-    ["CPU utilization", formatPercent(device.cpu?.utilization_percent)],
-    ["Memory utilization", formatPercent(device.memory?.utilization_percent)],
+    ["Uptime", formatDuration(device.uptime_seconds)],
+  ]);
+  renderResourceTelemetry(detailResourceTelemetry, [
+    { label: "CPU utilization", value: device.cpu?.utilization_percent },
+    { label: "Memory utilization", value: device.memory?.utilization_percent },
   ]);
   renderStorage(device.disks);
-  renderGpus(device.gpus);
+  renderGpus(device.gpus, device.gpu_health);
   const policy = device.expected_gpu_policy ?? {};
   detailPairs(detailPolicy, [
     ["Minimum expected GPU count", policy.minimum_count],
@@ -1051,13 +1149,15 @@ function renderStorage(disks) {
       ["Available", formatBytes(disk.free_bytes ?? disk.available_bytes)],
       ["Utilization", formatPercent(disk.utilization_percent)],
     ]);
-    card.append(values);
+    const utilization = document.createElement("div");
+    renderResourceTelemetry(utilization, [{ label: "Disk utilization", value: disk.utilization_percent }]);
+    card.append(values, utilization);
     list.append(card);
   }
   detailStorage.replaceChildren(list);
 }
 
-function renderGpus(gpus) {
+function renderGpus(gpus, gpuHealth) {
   const items = Array.isArray(gpus) ? gpus : [];
   if (!items.length) {
     detailGpus.replaceChildren(element("p", "No GPU telemetry available."));
@@ -1073,12 +1173,16 @@ function renderGpus(gpus) {
     detailPairs(values, [
       ["Index", gpu.index],
       ["GPU UUID", gpu.uuid],
+      ["Reported GPU state", gpuHealth?.reported],
+      ["Canonical GPU state", gpuHealth?.effective],
       ["Utilization", formatPercent(gpu.utilization_percent)],
       ["Temperature", formatTemperature(gpu.temperature_celsius)],
       ["Memory used", formatBytes(gpu.memory_used_bytes)],
       ["Memory total", formatBytes(gpu.memory_total_bytes)],
     ]);
-    card.append(values);
+    const utilization = document.createElement("div");
+    renderResourceTelemetry(utilization, [{ label: "GPU utilization", value: gpu.utilization_percent }]);
+    card.append(values, utilization);
     list.append(card);
   }
   detailGpus.replaceChildren(list);
@@ -1697,6 +1801,38 @@ function closeMonitoringDialog() {
   if (monitoringDialog.open) monitoringDialog.close();
 }
 
+function initializeSharedDetailDrawer() {
+  if (detailPanel === null) return;
+  detailClose.addEventListener("click", closeDetail);
+  detailRetry.addEventListener("click", () => {
+    if (selectedDeviceId !== null) void loadDetail(selectedDeviceId, { focus: true });
+  });
+  for (const button of historyRangeControls.querySelectorAll("button[data-history-range]")) {
+    button.addEventListener("click", () => {
+      const rangeName = button.dataset.historyRange;
+      if (selectedDeviceId === null || !HISTORY_RANGES.includes(rangeName)) return;
+      selectedHistoryRange = rangeName;
+      updateHistoryRangeControls();
+      historyContent.replaceChildren();
+      historyTruncation.hidden = true;
+      historyTruncation.textContent = "";
+      historyLastSuccess = null;
+      void loadHistory(selectedDeviceId, rangeName);
+    });
+  }
+  historyRetry.addEventListener("click", () => {
+    if (selectedDeviceId !== null) void loadHistory(selectedDeviceId, selectedHistoryRange);
+  });
+  document.addEventListener("keydown", (event) => {
+    const dialogOpen = [projectDialog, deviceEnrollDialog, moveDeviceDialog, monitoringDialog].some(
+      (dialog) => dialog?.open
+    );
+    if (event.key === "Escape" && !dialogOpen && !detailPanel.hidden) closeDetail();
+  });
+}
+
+initializeSharedDetailDrawer();
+
 if (dashboardView === "devices") {
 const projectIdFromUrl = new URLSearchParams(window.location.search).get("project_id");
 if (projectIdFromUrl !== null && CANONICAL_UUID.test(projectIdFromUrl)) {
@@ -1745,7 +1881,6 @@ devices.addEventListener("click", (event) => {
     applyDeviceFilter(name, value);
   }
 });
-detailClose.addEventListener("click", closeDetail);
 newProject.addEventListener("click", () => openProjectDialog());
 addDevice.addEventListener("click", () => openEnrollmentDialog());
 newProjectFromEnroll.addEventListener("click", () => {
@@ -1792,25 +1927,6 @@ for (const identifier of ["move-device-close", "move-device-cancel"]) {
 for (const identifier of ["monitoring-close", "monitoring-cancel"]) {
   document.getElementById(identifier).addEventListener("click", closeMonitoringDialog);
 }
-detailRetry.addEventListener("click", () => {
-  if (selectedDeviceId !== null) void loadDetail(selectedDeviceId, { focus: true });
-});
-for (const button of historyRangeControls.querySelectorAll("button[data-history-range]")) {
-  button.addEventListener("click", () => {
-    const rangeName = button.dataset.historyRange;
-    if (selectedDeviceId === null || !HISTORY_RANGES.includes(rangeName)) return;
-    selectedHistoryRange = rangeName;
-    updateHistoryRangeControls();
-    historyContent.replaceChildren();
-    historyTruncation.hidden = true;
-    historyTruncation.textContent = "";
-    historyLastSuccess = null;
-    void loadHistory(selectedDeviceId, rangeName);
-  });
-}
-historyRetry.addEventListener("click", () => {
-  if (selectedDeviceId !== null) void loadHistory(selectedDeviceId, selectedHistoryRange);
-});
 document.getElementById("logout").addEventListener("click", async () => {
   await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
   window.location.assign("/auth/google/login");
@@ -1823,11 +1939,6 @@ document.addEventListener("visibilitychange", () => {
   }
   refreshActiveView();
 });
-document.addEventListener("keydown", (event) => {
-  const dialogOpen = projectDialog.open || deviceEnrollDialog.open || moveDeviceDialog.open || monitoringDialog.open;
-  if (event.key === "Escape" && !dialogOpen && !detailPanel.hidden) closeDetail();
-});
-
 refreshActiveView();
 } else {
   sidebarToggle?.addEventListener("click", () => {
