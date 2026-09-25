@@ -2,9 +2,9 @@
 
 Last updated: 2026-09-25
 Current stage: Stage 07 - Dashboard, Operational Visibility & Deployment Runbook (browser acceptance remains pending)
-Current UI stage: Stage 08G - Dashboard Functional Restoration & Regression Hardening
-Current milestone: Stage 08G executable verification and status checkpoint
-Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE / AWAITING BROWSER ACCEPTANCE AND EXISTING QUALITY-BASELINE REMEDIATION. Stage 07 remains in progress pending its separate browser, real-device, and deployment acceptance.
+Current UI stage: Stage 08H - Final Dashboard Shell Polish + Branding
+Current milestone: Stage 08H verified sidebar branding and company-logo shell treatment
+Status: IMPLEMENTED / EXECUTABLE AND BROWSER VERIFICATION COMPLETE. Stage 07 remains in progress pending its separate real-device and deployment acceptance.
 
 ## Completed
 
@@ -45,10 +45,11 @@ Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE / AWAITING BROWSER ACCEPT
 - Implemented Stage 08E Device Detail & Diagnostics Experience: the one existing device drawer now serves Overview and Devices, prioritizes hostname/name/project/UUID and canonical state evidence, distinguishes availability and all server-provided timing fields, presents truthful system/storage/GPU telemetry including multiple GPU records and absent telemetry, retains native-SVG history and recent incidents, and reuses the existing abort/generation and shared-polling lifecycle. No backend, API, schema, agent, deployment, or monitoring behavior changed.
 - Implemented Stage 08F dashboard polish: a compact native-SVG sidebar toggle with persisted expanded/collapsed states and accessible icon tooltips, a unified restrained operations-console visual hierarchy across panels/filters/actions/dialogs/drawer, responsive spacing, and a polished existing Add Device enrollment dialog. The existing authenticated `POST /api/v1/devices` workflow, validation, duplicate-submit guard, one-time credential handling, and dashboard refresh remain unchanged; no backend behavior changed.
 - Implemented Stage 08G dashboard functional hardening: successful existing device enrollment now remains truthfully successful if a later inventory refresh/render fails. The one-time credential stays visible, with an explicit stale-inventory notice. Repaired the blocking Devices initializer crash caused by binding the absent Overview/Projects `#new-project` control, and made the Overview `#new-project` control render its required project dialog. No route, backend, API, schema, migration, agent, deployment, or monitoring behavior changed.
+- Implemented Stage 08H final dashboard shell polish: the collapsed rail now has an explicit icon-only SkyBeat brand composition, centered navigation/toggle alignment, retained navigation tooltips, and no horizontal overflow. The existing `assert_logo.png` asset is a subtle expanded-footer `Powered by Assert AI` treatment and is hidden with the footer when collapsed. No API, database, telemetry, agent, authentication, enrollment, or business functionality changed.
 
 ## In Progress
 
-- Stage 07 remains IN PROGRESS and unaccepted. Stages 07.6 and 07.6B retain their pending browser acceptance. Stage 08G executable verification is complete, but browser acceptance is unavailable and the current server mypy baseline reports three unrelated unused-ignore errors; no subsequent stage has started.
+- Stage 07 remains IN PROGRESS and unaccepted pending its separate real-device and deployment acceptance. Stage 08H shell/branding verification is complete; no subsequent stage has started.
 
 ## Verification Completed
 
@@ -88,6 +89,7 @@ Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE / AWAITING BROWSER ACCEPT
 - Stage 08D verification: focused workspace tests 2 passed (42 deselected); complete dashboard-page regression 44 passed. Full server suite: 321 passed, 33 isolated-MySQL skips, and 2 unrelated Windows Bash path-translation installer-test failures. Ruff check and format check passed (76 files); strict mypy reported the three existing unused-ignore errors in `app/worker.py`, `app/cli.py`, and `app/main.py`, outside Stage 08D files; `node --check server/app/static/dashboard.js` and `git diff --check` passed.
 - Stage 08E verification: focused diagnostics tests 2 passed (44 deselected); complete dashboard-page regression 46 passed. Full server suite: 323 passed, 33 isolated-MySQL skips, and 2 unrelated Windows Bash path-translation installer-test failures. Ruff check and format check passed (76 files); strict mypy reported the three existing unused-ignore errors in `app/worker.py`, `app/cli.py`, and `app/main.py`, outside Stage 08E files; `node --check server/app/static/dashboard.js` and `git diff --check` passed.
 - Stage 08F verification: focused polish tests 2 passed (46 deselected); complete dashboard page plus management regression 52 passed. Full server suite: 325 passed, 33 isolated-MySQL skips, and 2 unrelated Windows Bash path-translation installer-test failures. Ruff check and format check passed (76 files); strict mypy reported the three existing unused-ignore errors in `app/worker.py`, `app/cli.py`, and `app/main.py`, outside Stage 08F files; `node --check server/app/static/dashboard.js` and `git diff --check` passed.
+- Stage 08H verification: first ran the new collapsed-brand regression red (expected missing intentional rail selector), then green. Complete dashboard-page regression passed (51 passed); Ruff lint and format checks passed (70 files); `node --check server/app/static/dashboard.js` and `git diff --check` passed. A loopback-only Chrome preview with the development-only auth bypass measured Overview, Devices, and Projects expanded and collapsed: all collapsed rails were 72 px with hidden copy/subtitle/footer, centered nav icons/toggle, and `documentWidth == viewportWidth`; all expanded routes showed the copy/subtitle/footer and loaded the company image. The browser captured zero `Runtime.exceptionThrown` and `console.error` events. Full server suite: 328 passed, 33 isolated-MySQL skips, and 2 existing Windows Bash path-translation installer failures.
 
 ## Verification Pending
 
@@ -133,6 +135,7 @@ Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE / AWAITING BROWSER ACCEPT
 - Development auth bypass: `server/app/config.py`, `server/app/dashboard/service.py`, dashboard page/API authorization dependencies, `server/app/main.py`, `.env.example`, `deployment/production.env.example`, configuration/dashboard tests, and this checkpoint.
 - Stage 07.6: `server/app/dashboard/management.py`, `server/app/schemas/dashboard_management.py`, `server/app/api/auth.py`, `server/app/api/dashboard.py`, `server/app/main.py`, dashboard template/static CSS/JavaScript, dashboard management/API/page/deployment-artifact tests, `docs/API_SPEC.md`, `docs/DEPLOYMENT_RUNBOOK.md`, the Stage 07.6 design/plan, and this checkpoint.
 - Stage 07.6B: `server/app/dashboard/read.py`, `server/app/api/dashboard_page.py`, dashboard template/static CSS/JavaScript, dashboard read/API/page tests, `docs/API_SPEC.md`, the Stage 07.6B design/plan, and this checkpoint. The strict-mypy runtime-settings boundary is documented at existing API/worker/CLI process entry points.
+- Stage 08H: `server/app/templates/dashboard.html`, `server/app/static/dashboard.css`, `server/app/static/dashboard-shell.css`, `server/app/static/assert_logo.png`, focused dashboard page tests, and this checkpoint.
 
 ## Migrations Applied/Tested
 
@@ -175,6 +178,7 @@ Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE / AWAITING BROWSER ACCEPT
 - No Stage 08E executable software blocker remains. The two full-suite deployment-installer failures are Windows Bash path translation, and the three strict-mypy findings predate Stage 08E; browser and isolated-MySQL acceptance remain environment-pending. The existing detail contract has no per-GPU reason code or inventory-reliability field, so the drawer intentionally shows only canonical/reported states and existing incident evidence rather than fabricating diagnostics. Stage 08F has not started.
 - No Stage 08F executable software blocker remains. The two full-suite deployment-installer failures are Windows Bash path translation, and the three strict-mypy findings predate Stage 08F; browser and isolated-MySQL acceptance remain environment-pending. The existing device enrollment API was reused exactly; no backend, schema, or provisioning behavior was added. No subsequent stage has started.
 - No Stage 08G executable software blocker remains. The two full-suite deployment-installer failures are Windows Bash path translation, and the three strict-mypy findings predate Stage 08G; browser and isolated-MySQL acceptance remain environment-pending. Runtime regressions protect both the enrollment success boundary and the Devices initializer when `#new-project` is legitimately absent. No subsequent stage has started.
+- No Stage 08H shell/branding blocker remains. The two full-suite deployment-installer failures are Windows Bash path translation and are unrelated to this scope. The loopback browser preview did not require or modify the protected MySQL environment. No subsequent stage has started.
 
 ## Security Notes
 
@@ -192,6 +196,7 @@ Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE / AWAITING BROWSER ACCEPT
 - The development bypass is opt-in through `SKYBEAT_DEV_AUTH_BYPASS=true` only with `SKYBEAT_ENV=development`; startup logs `DEVELOPMENT DASHBOARD AUTH BYPASS ENABLED`. It produces no session, Google token, credential, browser storage value, or database record, and production/test configurations reject it before startup.
 - Stage 07.6 mutations retain the existing dashboard identity and same-origin comparison, validate strict bounded inputs, return no-store display-safe projections, and reuse `IdentityService` rather than duplicating project/device lifecycle rules. The generated enrollment credential is returned only once, is rendered/copied only through an explicit user action, and is cleared from the dialog and in-memory state on dismiss or reopen; no credential is stored in browser storage or added to a URL.
 - Stage 07.6B attention is generated exclusively from existing canonical availability, effective GPU, and incident records, capped at 20 server-side rows, and does not expose or construct severity, reason, score, rank, or synthetic health. `has_active_incident` is an inclusion/display boolean only, separate from device health. Dynamic UI content uses DOM construction and text content; no unsafe HTML API, browser credential storage, WebSocket, SSE, offset pagination, migration, or remote dependency was introduced. The sole local preference key is `skybeat.sidebar.v1`.
+- Stage 08H uses only local static CSS, native SVG, and the repository company-logo asset. The loopback preview used a dummy database URL and the existing development-only auth bypass; it sent no external request, accessed no production data, and was stopped after verification.
 
 ## Environment Limitations
 
@@ -203,10 +208,11 @@ Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE / AWAITING BROWSER ACCEPT
 - Docker CLI/Compose is unavailable on this Windows environment; no image build, container, proxy, volume, or Caddy runtime check was attempted through an alternative or destructive path.
 - No local dashboard listener was running on the standard development ports, and the retained MySQL data files remain unavailable; browser load/authentication/navigation/polling/console verification could not be run without changing protected local infrastructure.
 - The local verification venv uses the existing user-local Python 3.12.6 interpreter. It was synchronized from `server/uv.lock` with the `dev` extra, then supplemented from the existing hash-locked `agent/requirements.lock` because the full server suite imports the agent's `psutil` dependency.
+- The Stage 08H browser connector had no available browser surface, so the same installed Chrome was driven headlessly only against a temporary loopback preview. Its temporary process, profile, screenshot, and logs were removed after verification.
 
 ## Next Action
 
-- Keep Stage 07 browser acceptance pending. For Stage 08F browser acceptance, when an isolated local dashboard environment is available, verify Overview/Devices expanded and collapsed sidebars; collapsed navigation tooltips; Add Device open/validation/success/error flows; diagnostic drawer; Projects; responsive widths; preserved filters/pagination/polling; and no new console errors. Resolve or explicitly accept the unrelated Windows Bash path-translation and existing mypy unused-ignore baseline failures before claiming full verification. STOP: do not begin another stage.
+- Keep Stage 07 real-device and deployment acceptance pending. Do not begin Stage 09; this Stage 08H request is complete. Resolve or explicitly accept the unrelated Windows Bash path-translation and existing mypy unused-ignore baseline failures before claiming overall release readiness.
 
 ## Prior Stage Completion
 
@@ -319,6 +325,19 @@ Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE / AWAITING BROWSER ACCEPT
 - Security implications: dynamic content remains DOM/text-only and same-origin; the one-time credential remains transient and is not stored in browser storage. The repair does not add remote operations or alter enrollment authorization.
 - Next stage: STOP. Do not begin Stage 08H. Preserve the existing Stage 07 browser-acceptance limitation.
 
+## Stage 08H Checkpoint
+
+- Stage: 08H - Final Dashboard Shell Polish + Branding.
+- Status: IMPLEMENTED / EXECUTABLE AND BROWSER VERIFICATION COMPLETE.
+- Files changed: `server/app/templates/dashboard.html`, `server/app/static/dashboard.css`, `server/app/static/dashboard-shell.css`, `server/app/static/assert_logo.png`, `server/tests/test_dashboard_page.py`, and this checkpoint.
+- Implementation: replaced inherited compact-rail layout with an explicit icon-only collapsed brand state. SkyBeat copy/subtitle are hidden rather than merely clipped; the product mark, navigation icons, and toggle are centered; tooltips remain. The existing Assert AI image is served as a small expanded-footer `Powered by` treatment and is not shown collapsed.
+- Migrations: none. No backend, API, schema, database, telemetry, agent, authentication, enrollment, deployment, or business-logic behavior changed.
+- Tests executed: the new source-level regression failed before the CSS change and passed after it. Complete dashboard-page suite: 51 passed. Ruff lint and format checks: passed (70 files). `node --check` and `git diff --check`: passed. Full server suite: 328 passed, 33 isolated-MySQL skips, 2 Windows Bash path-translation installer failures unrelated to this scope.
+- Browser verification: temporary loopback-only Chrome preview with the development auth bypass verified Overview, Devices, and Projects in expanded and collapsed state. Expanded routes displayed the product copy/subtitle/footer and loaded `assert_logo.png`; collapsed routes had a 72 px rail, hidden copy/subtitle/footer, centered navigation/toggle, no horizontal overflow, and no captured JavaScript exception or `console.error` event. Temporary preview/browser artifacts were removed.
+- Security implications: only local static assets/CSS were added. No external request, production data, credential, session, API, or authorization behavior was changed.
+- Known limitations: the two full-suite installer failures are the existing Windows Bash path-translation defect; MySQL-dependent tests remain skipped without an isolated MySQL URL. Overall Stage 07 real-device and deployment acceptance remain pending.
+- Next stage: STOP. Do not begin Stage 09.
+
 ## Resume Command / Guidance
 
-Stage 08G executable verification is complete, but browser acceptance remains pending. Resume only with the documented isolated local browser/UI acceptance when its safe database/listener environment is available; retain the separate Stage 07 browser, real-device, and deployment acceptance checkpoint. Do not begin Stage 08H. Any production operation remains separately gated.
+Read AGENTS.md, docs/IMPLEMENTATION_PLAN.md, this file, and inspect the current Git diff before continuing. Stage 08H is complete; retain the separate Stage 07 real-device and deployment acceptance checkpoint, and do not begin Stage 09 without explicit authorization.

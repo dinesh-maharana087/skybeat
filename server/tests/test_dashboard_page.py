@@ -80,6 +80,31 @@ def test_authenticated_dashboard_routes_render_selected_view_controls_and_requir
     assert 'id="new-project-from-enroll"' in devices.text
 
 
+def test_dashboard_shell_serves_the_company_logo_on_every_dashboard_view():
+    class Authenticated:
+        def authenticate_session(self, token):
+            assert token == "valid-browser-session"
+            return DashboardUser("google-user", "ops@example.test", None)
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Authenticated()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        views = [
+            client.get(path) for path in ("/dashboard", "/dashboard/devices", "/dashboard/projects")
+        ]
+        logo = client.get("/static/assert_logo.png")
+
+    assert all(response.status_code == 200 for response in views)
+    assert all('class="company-logo"' in response.text for response in views)
+    assert all('src="/static/assert_logo.png"' in response.text for response in views)
+    assert logo.status_code == 200
+    assert logo.headers["content-type"] == "image/png"
+
+
 def test_development_dashboard_bypass_renders_a_fixed_local_identity_without_a_session():
     class StartupWarningCapture(logging.Handler):
         def __init__(self):
@@ -793,6 +818,26 @@ def test_dashboard_stage08f_sidebar_uses_icon_toggle_and_collapsed_navigation_to
     )
     assert ".sidebar-collapsed .sidebar-nav a::after" in styles
     assert ".sidebar-toggle.is-collapsed .sidebar-toggle-icon--expand" in styles
+
+
+def test_dashboard_stage08h_defines_an_intentional_icon_only_collapsed_brand_state():
+    template = dashboard_template()
+    styles = dashboard_styles() + dashboard_shell_styles()
+
+    assert 'class="brand-mark"' in template
+    assert 'class="brand-copy"' in template
+    assert 'class="company-logo" src="/static/assert_logo.png"' in template
+    assert ".app-shell.sidebar-collapsed .app-sidebar" in styles
+    assert "overflow-x: clip" in styles
+    assert ".sidebar-collapsed .brand-lockup { align-items: center; display: grid;" in styles
+    assert (
+        ".sidebar-collapsed .brand-copy, .sidebar-collapsed .brand-subtitle { display: none; }"
+        in styles
+    )
+    assert (
+        ".sidebar-collapsed .sidebar-toggle { align-self: center; justify-self: center;" in styles
+    )
+    assert ".sidebar-collapsed .sidebar-nav a { justify-content: center;" in styles
     assert "transition: grid-template-columns .18s ease" in styles
 
 
