@@ -17,6 +17,7 @@ const SIDEBAR_PREFERENCE_KEY = "skybeat.sidebar.v1";
 const appShell = document.querySelector(".app-shell");
 const sidebarToggle = document.getElementById("sidebar-toggle");
 const sidebarToggleLabel = document.getElementById("sidebar-toggle-label");
+const logout = document.getElementById("logout");
 
 const devices = document.getElementById("devices");
 const deviceEmpty = document.getElementById("device-empty");
@@ -1663,6 +1664,15 @@ async function submitProject() {
   }
 }
 
+async function refreshEnrollmentInventory() {
+  try {
+    await refreshCanonicalDashboard();
+  } catch (_) {
+    enrollmentStatus.textContent =
+      "Device enrolled. Copy the credential before closing this dialog. Inventory refresh failed; existing device data may be stale.";
+  }
+}
+
 async function submitEnrollment() {
   if (enrollmentSubmissionInFlight || enrollmentCredential !== null) return;
   const name = enrollName.value.trim();
@@ -1691,7 +1701,7 @@ async function submitEnrollment() {
     enrollmentCredentialPanel.hidden = false;
     copyEnrollmentCredentialButton.disabled = false;
     enrollmentStatus.textContent = "Device enrolled. Copy the credential before closing this dialog.";
-    await refreshCanonicalDashboard();
+    await refreshEnrollmentInventory();
   } catch (_) {
     enrollmentStatus.textContent = "Device could not be enrolled. Check the form and try again.";
     enrollSubmit.disabled = false;
@@ -1843,7 +1853,7 @@ if (projectIdFromUrl !== null && CANONICAL_UUID.test(projectIdFromUrl)) {
 const sidebarPreference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
 if (sidebarPreference === "collapsed") setSidebarCollapsed(true);
 else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);
-sidebarToggle?.addEventListener("click", () => {
+sidebarToggle.addEventListener("click", () => {
   toggleSidebar();
 });
 filters.addEventListener("submit", (event) => {
@@ -1884,7 +1894,6 @@ devices.addEventListener("click", (event) => {
     applyDeviceFilter(name, value);
   }
 });
-newProject.addEventListener("click", () => openProjectDialog());
 addDevice.addEventListener("click", () => openEnrollmentDialog());
 newProjectFromEnroll.addEventListener("click", () => {
   pendingEnrollmentDraft = enrollmentDraft();
@@ -1930,7 +1939,7 @@ for (const identifier of ["move-device-close", "move-device-cancel"]) {
 for (const identifier of ["monitoring-close", "monitoring-cancel"]) {
   document.getElementById(identifier).addEventListener("click", closeMonitoringDialog);
 }
-document.getElementById("logout").addEventListener("click", async () => {
+logout.addEventListener("click", async () => {
   await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
   window.location.assign("/auth/google/login");
 });
@@ -1944,21 +1953,21 @@ document.addEventListener("visibilitychange", () => {
 });
 refreshActiveView();
 } else {
-  sidebarToggle?.addEventListener("click", () => {
+  sidebarToggle.addEventListener("click", () => {
     toggleSidebar();
   });
-  document.getElementById("logout")?.addEventListener("click", async () => {
+  logout.addEventListener("click", async () => {
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
     window.location.assign("/auth/google/login");
   });
-  newProject?.addEventListener("click", () => openProjectDialog());
-  projectForm?.addEventListener("submit", (event) => {
+  newProject.addEventListener("click", () => openProjectDialog());
+  projectForm.addEventListener("submit", (event) => {
     event.preventDefault();
     void submitProject();
   });
-  projectClose?.addEventListener("click", closeProjectDialog);
-  projectCancel?.addEventListener("click", closeProjectDialog);
-  projectDialog?.addEventListener("cancel", (event) => {
+  projectClose.addEventListener("click", closeProjectDialog);
+  projectCancel.addEventListener("click", closeProjectDialog);
+  projectDialog.addEventListener("cancel", (event) => {
     event.preventDefault();
     closeProjectDialog();
   });

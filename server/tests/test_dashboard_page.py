@@ -1,5 +1,8 @@
 import logging
 import re
+import shutil
+import subprocess
+import textwrap
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -40,7 +43,7 @@ def test_dashboard_page_redirects_unauthenticated_browser_to_google_login():
     assert "set-cookie" not in response.headers
 
 
-def test_authenticated_dashboard_routes_render_the_selected_view_only():
+def test_authenticated_dashboard_routes_render_selected_view_controls_and_required_dialogs():
     class Authenticated:
         def authenticate_session(self, token):
             assert token == "valid-browser-session"
@@ -69,6 +72,12 @@ def test_authenticated_dashboard_routes_render_the_selected_view_only():
     assert 'href="/dashboard"' in overview.text
     assert 'href="#overview-heading"' not in overview.text
     assert 'id="sidebar-toggle"' in overview.text
+    assert 'id="new-project"' in overview.text
+    assert 'id="project-dialog"' in overview.text
+    assert 'id="project-dialog"' in devices.text
+    assert 'id="project-dialog"' in projects.text
+    assert 'id="new-project"' not in devices.text
+    assert 'id="new-project-from-enroll"' in devices.text
 
 
 def test_development_dashboard_bypass_renders_a_fixed_local_identity_without_a_session():
@@ -803,3 +812,166 @@ def test_dashboard_stage08f_polishes_the_existing_add_device_enrollment_dialog()
     assert ".dialog-close" in styles
     assert ".dialog-description" in styles
     assert ".dialog-actions" in styles
+
+
+def test_dashboard_stage08g_keeps_successful_enrollment_truthful_when_inventory_refresh_fails():
+    node = shutil.which("node")
+    assert node is not None
+    harness = textwrap.dedent(
+        """
+        import fs from "node:fs";
+        import vm from "node:vm";
+
+        const source = fs.readFileSync(0, "utf8");
+        const projectId = "e3e70682-c209-4cac-a29f-6fbed82c07cd";
+        const credential = "sb1.e3e70682-c209-4cac-a29f-6fbed82c07cd.test-secret";
+        const listeners = new WeakMap();
+        let failRendering = false;
+
+        class Element {
+          constructor(id = "") {
+            this.id = id;
+            this.attributes = new Map();
+            this.children = [];
+            this.classList = { add() {}, contains() { return false; }, remove() {}, toggle() {} };
+            this.dataset = {};
+            this.disabled = false;
+            this.hidden = false;
+            this.checked = false;
+            this.open = false;
+            this.selectedOptions = [];
+            this.style = {};
+            this.textContent = "";
+            this.value = "";
+          }
+          addEventListener(type, listener) {
+            const byType = listeners.get(this) ?? new Map();
+            byType.set(type, listener);
+            listeners.set(this, byType);
+          }
+          emit(type) {
+            const listener = listeners.get(this)?.get(type);
+            return listener?.({ key: "", preventDefault() {}, target: this });
+          }
+          append(...children) {
+            this.children.push(...children);
+            this.firstChild = this.children[0] ?? null;
+          }
+          appendChild(child) { this.append(child); return child; }
+          closest() { return null; }
+          focus() {}
+          getAttribute(name) { return this.attributes.get(name) ?? null; }
+          querySelectorAll() { return []; }
+          remove() {}
+          removeAttribute(name) { this.attributes.delete(name); }
+          replaceChildren(...children) {
+            this.children = children;
+            this.firstChild = children[0] ?? null;
+          }
+          reset() {}
+          setAttribute(name, value) { this.attributes.set(name, String(value)); }
+          showModal() { this.open = true; }
+          close() { this.open = false; this.emit("close"); }
+        }
+
+        const elements = new Map();
+        const intentionallyAbsent = new Set(["new-project"]);
+        function elementFor(id) {
+          if (!elements.has(id)) elements.set(id, new Element(id));
+          return elements.get(id);
+        }
+        function pageElement(id) {
+          return intentionallyAbsent.has(id) ? null : elementFor(id);
+        }
+        elementFor("enroll-gpu-enabled").checked = true;
+        elementFor("enroll-gpu-count").value = "1";
+        elementFor("page-size").value = "50";
+
+        const document = {
+          body: Object.assign(elementFor("body"), { dataset: { dashboardView: "devices" } }),
+          addEventListener() {},
+          createElement(tag) {
+            if (failRendering) throw new Error("inventory render failed");
+            return new Element(tag);
+          },
+          getElementById: pageElement,
+          hidden: false,
+          querySelector() { return elementFor("app-shell"); },
+        };
+        const response = (payload) => ({ ok: true, json: async () => payload });
+        async function fetch(path, options = {}) {
+          if (path === "/api/v1/devices" && options.method === "POST") {
+            const payload = JSON.parse(options.body);
+            if (
+              payload.name !== "GPU node" ||
+              payload.project_id !== projectId ||
+              payload.gpu_monitoring_enabled !== true ||
+              payload.expected_gpu_min_count !== 1
+            ) throw new Error("unexpected enrollment payload");
+            return response({ credential, device: { device_id: projectId, name: "GPU node" } });
+          }
+          if (String(path).startsWith("/api/v1/projects")) {
+            return response({
+              items: [{ project_id: projectId, name: "GPU Lab", device_counts: {} }],
+              server_time: "2026-09-25T00:00:00Z",
+            });
+          }
+          if (String(path).startsWith("/api/v1/dashboard/overview")) {
+            return response({ counts: { total: 0 }, server_time: "2026-09-25T00:00:00Z" });
+          }
+          if (String(path).startsWith("/api/v1/devices?")) {
+            return response({ items: [], next_cursor: null, server_time: "2026-09-25T00:00:00Z" });
+          }
+          throw new Error(`unexpected request ${path}`);
+        }
+        const window = {
+          clearTimeout() {},
+          location: { assign() {}, origin: "https://testserver", search: "" },
+          matchMedia() { return { matches: false }; },
+          setTimeout() { return 1; },
+        };
+        const context = {
+          AbortController,
+          Element,
+          URL,
+          URLSearchParams,
+          console,
+          document,
+          fetch,
+          localStorage: { getItem() { return null; }, setItem() {} },
+          navigator: { clipboard: { writeText: async () => {} } },
+          window,
+        };
+        vm.runInNewContext(source, context);
+        for (let count = 0; count < 10; count += 1) await new Promise(setImmediate);
+
+        elementFor("add-device").emit("click");
+        elementFor("enroll-name").value = "GPU node";
+        elementFor("enroll-project").value = projectId;
+        failRendering = true;
+        elementFor("device-enroll-form").emit("submit");
+        for (let count = 0; count < 10; count += 1) await new Promise(setImmediate);
+
+        if (elementFor("enrollment-credential").textContent !== credential) {
+          throw new Error("successful enrollment did not retain the credential");
+        }
+        if (elementFor("enrollment-credential-panel").hidden) {
+          throw new Error("successful enrollment hid the one-time credential");
+        }
+        if (!elementFor("enrollment-status").textContent.startsWith("Device enrolled.")) {
+          const message = elementFor("enrollment-status").textContent;
+          throw new Error(`enrollment reported a false failure: ${message}`);
+        }
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - the test runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=dashboard_script(),
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode == 0, result.stderr
