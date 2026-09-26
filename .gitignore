@@ -23,6 +23,7 @@ build/
 dist/
 .coverage
 htmlcov/
+.tmp
 
 # Editor/OS state
 .idea/

@@ -8,7 +8,7 @@ Type=simple
 User=skybeat
 Group=skybeat
 WorkingDirectory=/opt/skybeat
-EnvironmentFile=/etc/skybeat-agent/agent.env
+EnvironmentFile=/etc/skybeat/agent.env
 ExecStart=/opt/skybeat/venv/bin/skybeat-agent
 Restart=on-failure
 RestartSec=5
@@ -16,6 +16,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
+CapabilityBoundingSet=
 UMask=0077
 
 [Install]

@@ -1933,4 +1933,29 @@ OBSERVE
 EXECUTE ON DEVICE
 ```
 
+---
+
+# 75. Stage 10 Edge Enrollment and Release Security
+
+Stage 10 uses three separately scoped values: a short-lived single-use `sbe1`
+enrollment token, a permanent per-device `sb1` credential, and a short-lived
+receipt-only `sbv1` verification token. Raw values are never persisted by the
+server; digests, expiry, use state, actor attribution, and target intent are
+durable. A consumed `sbe1` cannot be used for exchange, status, credential
+recovery, or any other endpoint.
+
+The agent credential is written atomically only to root-owned
+`/etc/skybeat/agent.env` mode `0600`. systemd reads that protected file before
+starting the least-privileged `skybeat` process; credentials, enrollment
+tokens, verification receipts, authorization headers, curl configuration files,
+and response files must not be logged, placed in command arguments, or copied
+into `VERSION`/unit files.
+
+The release builder creates a locally verifiable wheel, manifest, standalone
+SHA-256 record, hash-locked requirements, and an Ubuntu CPython 3.12 manylinux
+x86_64 wheelhouse. Installation is fail-closed: it verifies the explicit
+artifact and manifest before changing the host, performs no PyPI/Git/source
+installation, retains CA verification, and does not weaken file permissions or
+systemd hardening to recover from a failure.
+
 Remote operations require a separately designed future security model and are outside SkyBeat V1.

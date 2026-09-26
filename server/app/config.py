@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     google_client_secret: SecretStr | None = Field(default=None, repr=False)
     session_encryption_key: SecretStr | None = Field(default=None, repr=False)
     oidc_timeout_seconds: int = Field(default=5, ge=1, le=15)
+    agent_enrollment_ttl_seconds: int = Field(default=600, ge=60, le=1800)
+    agent_enrollment_verification_ttl_seconds: int = Field(default=600, ge=60, le=1800)
     smtp_host: str | None = Field(default=None, min_length=1, max_length=253)
     smtp_port: int = Field(default=587, ge=1, le=65535)
     smtp_username: str | None = Field(default=None, max_length=320)

@@ -1,63 +1,23 @@
 #!/usr/bin/env bash
-# Install the reviewed SkyBeat agent package without accepting credentials on the command line.
 set -euo pipefail
-
-usage() {
-    printf '%s\n' 'usage: sudo ./scripts/install-agent.sh <agent-source-directory> <protected-env-file>' >&2
-}
-
-fail() {
-    printf '%s\n' "install-agent: $1" >&2
-    exit 1
-}
-
-for argument in "$@"; do
-    case "$argument" in
-        --token | --credential | --secret | --token=* | --credential=* | --secret=*)
-            fail 'credential command-line arguments are not accepted'
-            ;;
-    esac
-done
-
-[[ "$#" -eq 2 ]] || {
-    usage
-    exit 64
-}
-
-source_dir="$1"
-environment_file="$2"
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-repository_root="$(dirname -- "$script_dir")"
-unit_source="$repository_root/deployment/systemd/skybeat-agent.service"
-
-[[ -d "$source_dir" ]] || fail 'agent source directory is invalid'
-[[ -f "$source_dir/pyproject.toml" ]] || fail 'agent source directory is invalid'
-[[ -f "$source_dir/requirements.lock" ]] || fail 'agent source directory is invalid'
-[[ -d "$source_dir/src/skybeat_agent" ]] || fail 'agent source directory is invalid'
-[[ -f "$environment_file" ]] || fail 'protected environment file is missing'
-[[ -f "$unit_source" ]] || fail 'committed systemd unit is missing'
-[[ "${EUID}" -eq 0 ]] || fail 'run this installer as root'
-command -v python3.12 >/dev/null 2>&1 || fail 'python3.12 is required'
-command -v systemctl >/dev/null 2>&1 || fail 'systemctl is required'
-
-if ! id -u skybeat >/dev/null 2>&1; then
-    if getent group skybeat >/dev/null 2>&1; then
-        useradd --system --gid skybeat --no-create-home --shell /usr/sbin/nologin skybeat
-    else
-        useradd --system --user-group --no-create-home --shell /usr/sbin/nologin skybeat
-    fi
+source "$script_dir/lib/skybeat_agent_install.sh"
+usage() { printf '%s\n' 'usage: sudo ./scripts/install-agent.sh --server URL --package WHEEL --sha256 HEX --wheelhouse DIR --lockfile FILE [--token-file FILE|--token TOKEN] [--re-enroll]' >&2; }
+server='' package='' expected_sha256='' wheelhouse='' lockfile='' token_file='' token='' re_enroll=0
+while [[ $# -gt 0 ]]; do case "$1" in --server|--package|--sha256|--wheelhouse|--lockfile|--token-file|--token) [[ $# -ge 2 ]] || { usage; exit 64; }; case "$1" in --server) server="$2";;--package) package="$2";;--sha256) expected_sha256="$2";;--wheelhouse) wheelhouse="$2";;--lockfile) lockfile="$2";;--token-file) token_file="$2";;--token) token="$2";;esac; shift 2;; --re-enroll) re_enroll=1; shift;; *) usage; exit 64;; esac; done
+[[ -n "$server$package$expected_sha256$wheelhouse$lockfile" ]] || { usage; exit 64; }
+[[ -z "$token" || -z "$token_file" ]] || fail 'use only one enrollment token source'
+[[ -z "$token" ]] || printf '%s\n' 'install-agent: warning: use --token-file in production; --token exposes a short-lived secret to process inspection.' >&2
+service_started=0
+cleanup() { local status=$?; if [[ $status -ne 0 && $service_started -eq 1 ]]; then systemctl disable --now skybeat-agent.service >/dev/null 2>&1 || true; fi; exit "$status"; }
+trap cleanup EXIT
+preflight; verify_package
+if installation_is_current; then
+    install_outcome=ALREADY_CURRENT
+    verify_installation
+else
+    existing_sha256="$(installed_sha256 || true)"
+    install_package; configure_agent; install_service; verify_installation
 fi
-
-install -d -m 0755 -o skybeat -g skybeat /opt/skybeat
-install -d -m 0755 -o root -g root /etc/skybeat-agent
-
-if [[ ! -x /opt/skybeat/venv/bin/python ]]; then
-    python3.12 -m venv /opt/skybeat/venv
-fi
-
-/opt/skybeat/venv/bin/python -m pip install --no-cache-dir --require-hashes -r "$source_dir/requirements.lock"
-/opt/skybeat/venv/bin/python -m pip install --no-deps "$source_dir"
-install -m 0600 -o root -g root "$environment_file" /etc/skybeat-agent/agent.env
-install -m 0644 -o root -g root "$unit_source" /etc/systemd/system/skybeat-agent.service
-systemctl daemon-reload
-systemctl enable --now skybeat-agent.service
+trap - EXIT
+printf '%s\n' "$install_outcome"

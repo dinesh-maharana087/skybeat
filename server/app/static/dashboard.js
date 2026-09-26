@@ -1787,15 +1787,6 @@ async function submitProject() {
   }
 }
 
-async function refreshEnrollmentInventory() {
-  try {
-    await refreshCanonicalDashboard();
-  } catch (_) {
-    enrollmentStatus.textContent =
-      "Device enrolled. Copy the credential before closing this dialog. Inventory refresh failed; existing device data may be stale.";
-  }
-}
-
 async function submitEnrollment() {
   if (enrollmentSubmissionInFlight || enrollmentCredential !== null) return;
   const name = enrollName.value.trim();
@@ -1810,23 +1801,24 @@ async function submitEnrollment() {
   enrollSubmit.disabled = true;
   enrollmentStatus.textContent = "Enrolling device…";
   try {
-    const payload = await requestDashboardMutation("/api/v1/devices", "POST", {
+    const payload = await requestDashboardMutation("/api/v1/agent-enrollments", "POST", {
+      mode: "NEW",
       name,
       project_id: projectId,
       gpu_monitoring_enabled: gpuMonitoringEnabled,
       expected_gpu_min_count: gpuMonitoringEnabled ? expectedGpuMinCount : 0,
     });
-    if (typeof payload?.credential !== "string" || !payload.credential.startsWith("sb1.")) {
-      throw new Error("credential response was invalid");
+    if (typeof payload?.token !== "string" || !payload.token.startsWith("sbe1.")) {
+      throw new Error("enrollment token response was invalid");
     }
-    enrollmentCredential = payload.credential;
+    enrollmentCredential = payload.token;
     enrollmentCredentialNode.textContent = enrollmentCredential;
     enrollmentCredentialPanel.hidden = false;
     copyEnrollmentCredentialButton.disabled = false;
-    enrollmentStatus.textContent = "Device enrolled. Copy the credential before closing this dialog.";
-    await refreshEnrollmentInventory();
+    enrollmentStatus.textContent =
+      "Installer token created. Copy it before closing this dialog; it is single use and will not be shown again.";
   } catch (_) {
-    enrollmentStatus.textContent = "Device could not be enrolled. Check the form and try again.";
+    enrollmentStatus.textContent = "Installer token could not be created. Check the form and try again.";
     enrollSubmit.disabled = false;
   } finally {
     enrollmentSubmissionInFlight = false;
@@ -1837,9 +1829,10 @@ async function copyEnrollmentCredential() {
   if (enrollmentCredential === null) return;
   try {
     await navigator.clipboard.writeText(enrollmentCredential);
-    enrollmentStatus.textContent = "Credential copied. Store it only in the protected agent environment file.";
+    enrollmentStatus.textContent =
+      "Installer token copied. Store it only in a root-readable token file until installation.";
   } catch (_) {
-    enrollmentStatus.textContent = "Credential could not be copied. Copy it manually before closing this dialog.";
+    enrollmentStatus.textContent = "Installer token could not be copied. Copy it manually before closing this dialog.";
   }
 }
 

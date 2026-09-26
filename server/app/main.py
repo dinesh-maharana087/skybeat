@@ -3,6 +3,7 @@
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -16,6 +17,8 @@ from app.api.auth import LoginRateLimiter
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
 from app.api.dashboard_page import router as dashboard_page_router
+from app.api.enrollment import EnrollmentRateLimiter
+from app.api.enrollment import router as enrollment_router
 from app.api.health import router as health_router
 from app.api.heartbeats import PerDeviceRateLimiter
 from app.api.heartbeats import router as heartbeats_router
@@ -25,6 +28,7 @@ from app.dashboard.oidc import GoogleOIDCClient, OIDCClient
 from app.dashboard.read import DashboardReadService
 from app.dashboard.service import DashboardAuthService
 from app.db import Database
+from app.enrollment.service import AgentEnrollmentService
 from app.logging import configure_logging
 from app.users.service import UserService
 
@@ -80,6 +84,13 @@ def create_app(
     )
     app.state.dashboard_read_service = DashboardReadService(db)
     app.state.dashboard_management_service_factory = DashboardManagementService
+    app.state.agent_enrollment_service_factory = lambda database, *, actor: AgentEnrollmentService(
+        database,
+        actor=actor,
+        enrollment_lifetime=timedelta(seconds=config.agent_enrollment_ttl_seconds),
+        verification_lifetime=timedelta(seconds=config.agent_enrollment_verification_ttl_seconds),
+    )
+    app.state.enrollment_rate_limiter = EnrollmentRateLimiter()
     app.state.user_service_factory = UserService
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.allowed_hosts)
     app.mount(
@@ -126,5 +137,6 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(heartbeats_router)
     app.include_router(dashboard_router)
+    app.include_router(enrollment_router)
     app.include_router(dashboard_page_router)
     return app

@@ -2291,3 +2291,24 @@ expected GPU baseline
 ```
 
 This separation is a core V1 architectural rule.
+
+---
+
+# 79. Stage 10 Agent Enrollment Exchange
+
+`POST /api/v1/agent-enrollments` is a same-origin Owner/Admin-only intent
+issuance endpoint. It returns a short-lived `sbe1.<id>.<secret>` token once;
+the server stores only a digest and issuing an intent does not create a device.
+
+`POST /api/v1/agent-enrollments/exchange` accepts only an `sbe1` bearer token
+over HTTPS. It consumes a valid intent exactly once under its row lock, creates
+or rotates the intended canonical credential, and returns the device UUID,
+one-time `sb1` credential, and a distinct short-lived `sbv1` receipt. Expired,
+replayed, malformed, mismatched, and consumed enrollment tokens all return the
+same safe authorization error. Clients must not retry an uncertain exchange.
+
+`GET /api/v1/agent-enrollments/verification` accepts only an `sbv1` bearer
+receipt and returns `{ "accepted_heartbeat": true|false }` until expiry. It is
+not a credential, cannot exchange/re-enroll, and cannot read telemetry,
+dashboard data, or normal device APIs. These responses use `Cache-Control:
+no-store`.

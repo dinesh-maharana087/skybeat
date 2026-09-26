@@ -303,7 +303,7 @@
                 <div><p class="eyebrow">Enrollment</p><h2 id="device-enroll-title">Add device</h2></div>
                 <button id="device-enroll-close" class="dialog-close" type="button" aria-label="Close add device dialog"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
               </div>
-              <p class="dialog-description">Create the device record, then copy its one-time enrollment credential.</p>
+              <p class="dialog-description">Create a short-lived, single-use installer enrollment token. The device record is created only when the installer exchanges it.</p>
               <label for="enroll-name">Device name
                 <input id="enroll-name" name="name" maxlength="128" autocomplete="off" required>
               </label>
@@ -320,11 +320,11 @@
               </label>
               <p id="enrollment-status" role="status" aria-live="polite"></p>
               <div id="enrollment-credential-panel" hidden>
-                <p class="credential-warning">Copy this enrollment credential now. It will not be shown again.</p>
+                <p class="credential-warning">Copy this installer enrollment token now. It will not be shown again and cannot be used as a device credential.</p>
                 <code id="enrollment-credential"></code>
-                <button id="copy-enrollment-credential" type="button" disabled>Copy credential</button>
+                <button id="copy-enrollment-credential" type="button" disabled>Copy installer token</button>
               </div>
-              <div class="dialog-actions"><button id="enroll-submit" class="sb-button--primary" type="submit">Enroll device</button><button id="enroll-cancel" class="sb-button--secondary" type="button">Cancel</button></div>
+              <div class="dialog-actions"><button id="enroll-submit" class="sb-button--primary" type="submit">Create installer token</button><button id="enroll-cancel" class="sb-button--secondary" type="button">Cancel</button></div>
             </form>
           </dialog>
 

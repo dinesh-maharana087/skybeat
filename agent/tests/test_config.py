@@ -1,8 +1,10 @@
+import sys
 from dataclasses import FrozenInstanceError
 
 import pytest
 
 from skybeat_agent.config import Config, ConfigurationError
+from skybeat_agent.main import main
 
 DEVICE = "a4f82a6d-61c6-4c72-9a57-626e524571e4"
 TOKEN = "sb1.8cf5c647-70a0-4559-a4da-1a39dd66c119." + "a" * 42 + "A"
@@ -65,3 +67,11 @@ def test_required_configuration(key):
     del env[key]
     with pytest.raises(ConfigurationError):
         Config.from_env(env)
+
+
+def test_console_version_does_not_require_agent_configuration(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["skybeat-agent", "--version"])
+
+    main()
+
+    assert capsys.readouterr().out == "skybeat-agent 1.0.0\n"

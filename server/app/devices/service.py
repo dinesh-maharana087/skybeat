@@ -215,27 +215,48 @@ class IdentityService:
     ) -> Enrollment:
         name = _label(name)
         with self.database.transaction() as session:
-            project = self._project(session, project_uuid)
-            if not project.is_active:
-                raise Conflict("Project is inactive.")
             now = database_utc(session)
-            expiry = self._expiry(expires_at, now)
-            device = Device(
-                device_uuid=str(uuid4()),
-                project_id=project.id,
-                name=name,
-                monitoring_enabled=True,
-                monitoring_started_at=now,
-                gpu_monitoring_enabled=policy.monitoring_enabled,
-                expected_gpu_min_count=policy.min_count,
-                expected_gpu_uuids=list(policy.uuids),
-                created_at=now,
-                updated_at=now,
+            return self.enroll_in_session(
+                session,
+                project_uuid,
+                name,
+                policy=policy,
+                expires_at=expires_at,
+                now=now,
             )
-            session.add(device)
-            session.flush()
-            self._audit(session, "device.enrolled", now, device=device)
-            credential = self._credential(session, device, now, expiry)
+
+    def enroll_in_session(
+        self,
+        session: Session,
+        project_uuid: str,
+        name: str,
+        *,
+        policy: GPUPolicy = DEFAULT_GPU_POLICY,
+        expires_at: datetime | None = None,
+        now: datetime,
+    ) -> Enrollment:
+        """Create a device and credential inside a caller-owned transaction."""
+        name = _label(name)
+        project = self._project(session, project_uuid)
+        if not project.is_active:
+            raise Conflict("Project is inactive.")
+        expiry = self._expiry(expires_at, now)
+        device = Device(
+            device_uuid=str(uuid4()),
+            project_id=project.id,
+            name=name,
+            monitoring_enabled=True,
+            monitoring_started_at=now,
+            gpu_monitoring_enabled=policy.monitoring_enabled,
+            expected_gpu_min_count=policy.min_count,
+            expected_gpu_uuids=list(policy.uuids),
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(device)
+        session.flush()
+        self._audit(session, "device.enrolled", now, device=device)
+        credential = self._credential(session, device, now, expiry)
         return Enrollment(device, credential)
 
     def get_device(self, device_uuid: str) -> Device:
@@ -299,32 +320,50 @@ class IdentityService:
     def rotate(
         self, device_uuid: str, *, overlap_hours: int = 24, expires_at: datetime | None = None
     ) -> GeneratedCredential:
+        with self.database.transaction() as session:
+            now = database_utc(session)
+            return self.rotate_in_session(
+                session,
+                device_uuid,
+                overlap_hours=overlap_hours,
+                expires_at=expires_at,
+                now=now,
+            )
+
+    def rotate_in_session(
+        self,
+        session: Session,
+        device_uuid: str,
+        *,
+        overlap_hours: int = 24,
+        expires_at: datetime | None = None,
+        now: datetime,
+    ) -> GeneratedCredential:
+        """Rotate a credential inside a caller-owned transaction."""
         if type(overlap_hours) is not int or not 1 <= overlap_hours <= 24:
             raise IdentityError("Rotation overlap must be between 1 and 24 hours.")
-        with self.database.transaction() as session:
-            device = lock_device(session, device_uuid)
-            now = database_utc(session)
-            expiry = self._expiry(expires_at, now)
-            active = session.scalars(
-                select(DeviceCredential).where(
-                    DeviceCredential.device_id == device.id,
-                    DeviceCredential.revoked_at.is_(None),
-                    or_(DeviceCredential.expires_at.is_(None), DeviceCredential.expires_at > now),
-                )
-            ).all()
-            if len(active) >= 2:
-                raise Conflict("Two credentials are already active; finish the existing rotation.")
-            overlap_end = now + timedelta(hours=overlap_hours)
-            for credential in active:
-                credential.expires_at = min(credential.expires_at or overlap_end, overlap_end)
-            generated = self._credential(session, device, now, expiry)
-            self._audit(
-                session,
-                "credential.rotated",
-                now,
-                device=device,
-                details={"credential_id": generated.credential_id, "overlap_hours": overlap_hours},
+        device = lock_device(session, device_uuid)
+        expiry = self._expiry(expires_at, now)
+        active = session.scalars(
+            select(DeviceCredential).where(
+                DeviceCredential.device_id == device.id,
+                DeviceCredential.revoked_at.is_(None),
+                or_(DeviceCredential.expires_at.is_(None), DeviceCredential.expires_at > now),
             )
+        ).all()
+        if len(active) >= 2:
+            raise Conflict("Two credentials are already active; finish the existing rotation.")
+        overlap_end = now + timedelta(hours=overlap_hours)
+        for credential in active:
+            credential.expires_at = min(credential.expires_at or overlap_end, overlap_end)
+        generated = self._credential(session, device, now, expiry)
+        self._audit(
+            session,
+            "credential.rotated",
+            now,
+            device=device,
+            details={"credential_id": generated.credential_id, "overlap_hours": overlap_hours},
+        )
         return generated
 
     def revoke(self, device_uuid: str, credential_id: str) -> None:

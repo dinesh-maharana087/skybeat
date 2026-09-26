@@ -1,10 +1,10 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-09-25
-Current stage: Stage 09 - User Management + Role-Based Access Control
+Last updated: 2026-09-26
+Current stage: Stage 10 - Production Edge Agent Deployment
 Current UI stage: Stage 09 - User Management + Role-Based Access Control
-Current milestone: Stage 09 implementation and executable verification complete
-Status: IMPLEMENTED. Server-side RBAC, durable user provisioning, Owner safety, and the role-aware Users dashboard are complete. Stage 10 remains out of scope.
+Current milestone: Stage 10 production-path bundle acceptance and operator runbook completed; real Ubuntu target acceptance remains
+Status: IN PROGRESS / READY FOR FINAL HUMAN ACCEPTANCE. The approved local-wheel model is retained. Durable enrollment, release verification, hardened installation, receipt polling, and the explicit-wheel Linux installer contract are implemented and locally verified; real-MySQL and supported-Ubuntu acceptance remain environment-pending. Do not create a final commit or start Stage 11.
 
 ## Completed
 
@@ -50,9 +50,17 @@ Status: IMPLEMENTED. Server-side RBAC, durable user provisioning, Owner safety, 
 
 ## In Progress
 
-- No active implementation milestone. Do not begin Stage 10 without explicit authorization.
+- Stage 10 implementation is in progress. Preserve the approved local-wheel/local-wheelhouse delivery model, strict one-use enrollment token semantics, receipt-only post-install verification, and preflight-before-host-change requirement.
+- Stage 10 remaining work is supported Ubuntu 24.04 amd64 real-install acceptance: systemd ownership/modes, receipt-confirmed heartbeat, dashboard visibility, reboot persistence, ordinary reinstall, consumed-token rejection, and bound `--re-enroll`. Do not begin Stage 11.
 
 ## Verification Completed
+
+- Stage 10 Task 1 focused enrollment primitives/model tests: 7 passed; one lifecycle integration test skipped only because `SKYBEAT_TEST_DATABASE_URL` is not configured. Ruff check/format and strict mypy passed for the affected server source. `git diff --check` passed.
+- Stage 10 Tasks 1-2 focused enrollment/API/dashboard regression tests: 32 passed, one real-MySQL lifecycle test skipped only because `SKYBEAT_TEST_DATABASE_URL` is not configured; Ruff check/format and strict mypy passed for 8 affected server source files. Alembic reports sole head `d12e7f9c43a0`.
+- Stage 10 Task 3 dashboard source/Node regression tests: 54 passed. The dialog uses the authenticated same-origin intent endpoint, holds the returned `sbe1` value only in transient memory/DOM for the open dialog, and clears it on close. The Python linter is not a JavaScript/HTML linter and was not treated as a meaningful check for those assets.
+- Stage 10 release/installer focused suite: 73 passed, 1 real-MySQL lifecycle test skipped because `SKYBEAT_TEST_DATABASE_URL` is unavailable, and two pre-existing upstream FastAPI/Authlib deprecation warnings were emitted. Ruff check/format, strict mypy, Alembic sole-head `d12e7f9c43a0`, and `git diff --check` passed.
+- Stage 10 final local acceptance: rebuilt `agent/requirements.lock` from the corrected Ubuntu-wheel-compatible `psutil>=7,<7.1.2` constraint; created and verified the final local-only Ubuntu CPython 3.12/manylinux-x86_64 bundle at `release-final/skybeat-agent-1.0.0`. The verifier accepted the bundle, `sha256sum -c wheel.sha256` passed, and a byte-modified copy of the actual agent wheel was rejected with `package wheel sha256 mismatch`.
+- Final focused Stage 10 tests: 79 passed, 1 real-MySQL lifecycle test skipped only because `SKYBEAT_TEST_DATABASE_URL` is unavailable; upstream FastAPI/Authlib deprecation warnings only. Full agent suite: 65 passed. Server Ruff check and format check passed (83 files); strict server mypy passed for 49 source files; agent Ruff check and format check passed (19 files); strict agent mypy passed for 11 source files. Alembic reports sole head `d12e7f9c43a0`; `git diff --check` passed.
 
 - Server strict heartbeat contract tests: 130 passed.
 - Server API transport/error tests: 6 passed.
@@ -119,6 +127,11 @@ Status: IMPLEMENTED. Server-side RBAC, durable user provisioning, Owner safety, 
 
 ## Files Changed
 
+- Stage 10 Task 1: `docs/superpowers/specs/2026-09-25-stage-10-edge-deployment-design.md`, `docs/superpowers/plans/2026-09-25-stage-10-edge-deployment.md`, `server/app/enrollment/`, `server/app/models/auth.py`, `server/app/models/__init__.py`, `server/app/devices/service.py`, migration `d12e7f9c43a0`, focused enrollment tests, and this checkpoint.
+- Stage 10 Task 2: `server/app/api/enrollment.py`, `server/app/schemas/enrollment.py`, `server/app/main.py`, `server/app/config.py`, `.env.example`, focused API tests, and this checkpoint.
+- Stage 10 Task 3: `server/app/templates/dashboard.html`, `server/app/static/dashboard.js`, focused dashboard page/Node tests, and this checkpoint.
+- Stage 10 release/installer: `agent/src/skybeat_agent/__init__.py`, `agent/src/skybeat_agent/main.py`, agent config tests, `scripts/build-agent-release.sh`, `scripts/verify-agent-release.py`, `scripts/install-agent.sh`, `scripts/lib/skybeat_agent_install.sh`, `deployment/systemd/skybeat-agent.service`, release/installer tests, and this checkpoint.
+
 - `docs/IMPLEMENTATION_STATUS.md`
 - `server/app/api/heartbeats.py`, `server/app/heartbeats/`, `server/app/schemas/heartbeat.py`, `server/app/models/heartbeat.py`
 - `server/app/models/__init__.py`, `server/app/devices/service.py`, `server/app/main.py`
@@ -140,6 +153,8 @@ Status: IMPLEMENTED. Server-side RBAC, durable user provisioning, Owner safety, 
 
 ## Migrations Applied/Tested
 
+- Additive Stage 10 revision `d12e7f9c43a0` chains from Stage 09 `b31d2ef4a1c9` and creates durable enrollment intents. It has not been applied here because the required isolated MySQL 8 test URL is unavailable. No database was modified.
+
 - Stage 01 revision `614a53a9e2cb` remains applied to isolated local `skybeat_test` on MySQL 8.4.10/InnoDB.
 - Additive Stage 02 revision `1b2785bb39ef` applied successfully to that same isolated database and exercised by real-MySQL tests. It creates `heartbeat_receipts`, `heartbeat_samples` and `device_latest`.
 - Additive Stage 03 revision `625bfa1677df` is the current Alembic head and chains from `1b2785bb39ef`; it has not been applied in this session because the retained isolated MySQL data files are not writable.
@@ -157,6 +172,9 @@ Status: IMPLEMENTED. Server-side RBAC, durable user provisioning, Owner safety, 
 - No production database was accessed. No downgrade, drop, reset or destructive database action occurred.
 
 ## Known Issues
+
+- Stage 10 real-MySQL lifecycle/migration verification is pending solely because `SKYBEAT_TEST_DATABASE_URL` is unavailable. The skipped test covers consumption/replay/receipt scope and fresh-heartbeat verification; no substitute database claim is made.
+- The Linux installer cannot be executed safely on this Windows workspace: Bash/systemd, Ubuntu 24.04 platform checks, offline wheelhouse acquisition, real enrollment exchange, service startup, and verification-receipt polling remain supported-Ubuntu acceptance work. No release bundle was published and no host installation occurred.
 
 - No Stage 02 acceptance blockers remain.
 - Environment-specific pending: real Linux process-group child cleanup, actual NVIDIA hardware/driver, real HTTPS/Caddy/network/TLS, Linux systemd shutdown, and soak validation remain unexercised on this Windows laptop.
@@ -182,6 +200,9 @@ Status: IMPLEMENTED. Server-side RBAC, durable user provisioning, Owner safety, 
 - No Stage 08H shell/branding blocker remains. The two full-suite deployment-installer failures are Windows Bash path translation and are unrelated to this scope. The loopback browser preview did not require or modify the protected MySQL environment. No subsequent stage has started.
 
 ## Security Notes
+
+- Stage 10 Tasks 1-2 persist only SHA-256 digests for `sbe1` enrollment and `sbv1` verification values. Exchange consumes an intent under a row lock and creates/rotates its permanent credential, receipt, audit record, and consumed state in one transaction. Owner/Admin intent creation requires the existing authenticated same-origin dependency; anonymous exchange and receipt routes are per-source rate bounded, bearer-only, no-store, and accept only their respective opaque token prefix. A receipt reports only a post-exchange accepted-heartbeat boolean and cannot be exchanged.
+- Stage 10 release tooling builds a wheel, creates a hash-locked offline wheelhouse and manifest, and verifies all release hashes before the installer creates a venv. The installer rejects source-tree inputs, PyPI access, non-HTTPS endpoints, malformed checksum/token inputs, and unsafe token-file links; it writes only the permanent `sb1` value into root-owned mode-0600 `/etc/skybeat/agent.env`. Normal reinstallation retains an existing config unless `--re-enroll` is explicit.
 
 - No production access, deployment, notifications, credential rotation or destructive operation was performed.
 - Payloads are strict/bounded and do not echo secrets. Credentials are revalidated on retries before returning stored acknowledgements.
@@ -213,7 +234,8 @@ Status: IMPLEMENTED. Server-side RBAC, durable user provisioning, Owner safety, 
 
 ## Next Action
 
-- Keep Stage 07 real-device and deployment acceptance pending. Do not begin Stage 09; this Stage 08H request is complete. Resolve or explicitly accept the unrelated Windows Bash path-translation and existing mypy unused-ignore baseline failures before claiming overall release readiness.
+- Implement Stage 10 Task 3 dashboard intent dialog and source tests. Read this checkpoint, the approved Stage 10 design/plan, and inspect the current Git diff before continuing.
+- Finish Stage 10 runbook/documentation and supported Ubuntu acceptance. Add receipt-poll execution coverage before claiming the installer production-accepted. Read this checkpoint, the approved Stage 10 design/plan, and inspect the current Git diff before continuing.
 
 ## Prior Stage Completion
 

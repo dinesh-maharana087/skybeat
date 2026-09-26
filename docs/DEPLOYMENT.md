@@ -2477,6 +2477,177 @@ Remote administration, command execution, repair, and self-healing remain outsid
 
 ---
 
+# 88. Stage 10 Edge Agent Production Runbook
+
+This runbook is for a supported **Ubuntu 24.04 LTS amd64** device with systemd
+and Python 3.12. It is an acceptance procedure, not authority to modify an
+unapproved production host. The agent makes outbound HTTPS connections only.
+
+## Release bundle
+
+Build a reviewed local release bundle from the repository checkout. The builder
+creates a universal agent wheel and an Ubuntu CPython 3.12/manylinux-x86_64
+wheelhouse; it does not install an agent or contact an agent host.
+
+```sh
+./scripts/build-agent-release.sh --output /srv/skybeat/releases
+python3.12 scripts/verify-agent-release.py \
+  --bundle /srv/skybeat/releases/skybeat-agent-1.0.0
+( cd /srv/skybeat/releases/skybeat-agent-1.0.0 && sha256sum -c wheel.sha256 )
+```
+
+The release directory must contain the agent wheel, `requirements.lock`,
+`wheelhouse/`, `release-manifest.json`, and `wheel.sha256`. Transfer that exact
+directory through an approved operator channel. Re-run the verifier and
+`sha256sum -c` on the receiving host before installation. Do not use Git,
+PyPI, a source tree, or a downloaded installer as an agent package source.
+
+The root-operated installer scripts and systemd unit are reviewed release
+tooling, not a package source. Place the matching reviewed tooling checkout at
+`/srv/skybeat/release-tools`; its `scripts/install-agent.sh` locates its
+adjacent library and unit file. Do not edit the tooling or release bundle on
+the target.
+
+## Initial installation and server receipt
+
+An Owner or Admin first creates a `NEW` agent enrollment intent in the
+authenticated Devices workflow and transfers its one-time `sbe1` token through
+an approved protected channel. Store it in a root-only file; never put it in
+shell history, a URL, a ticket, or a service unit.
+
+```sh
+sudo install -d -m 0700 -o root -g root /root/skybeat
+sudo install -m 0600 -o root -g root /secure-transfer/enrollment.token \
+  /root/skybeat/enrollment.token
+sudo /srv/skybeat/release-tools/scripts/install-agent.sh \
+  --server https://monitor.example.com \
+  --package /srv/skybeat/releases/skybeat-agent-1.0.0/skybeat_agent-1.0.0-py3-none-any.whl \
+  --sha256 "$(awk '{print $1}' /srv/skybeat/releases/skybeat-agent-1.0.0/wheel.sha256)" \
+  --wheelhouse /srv/skybeat/releases/skybeat-agent-1.0.0/wheelhouse \
+  --lockfile /srv/skybeat/releases/skybeat-agent-1.0.0/requirements.lock \
+  --token-file /root/skybeat/enrollment.token
+sudo shred -u /root/skybeat/enrollment.token
+```
+
+`--token-file` is the production default. `--token` is intentionally warned
+against because command arguments can be exposed to history or privileged
+process inspection. The installer verifies the explicit wheel hash and the
+whole release manifest before changing the virtual environment, installs only
+from the local wheelhouse with hash enforcement, exchanges the token once, and
+polls the narrow verification receipt for a fresh accepted heartbeat. An
+uncertain exchange response must never be retried; create a new explicit
+intent instead.
+
+## On-target acceptance checks
+
+Run these commands after a successful install. They do not print the permanent
+device credential.
+
+```sh
+sudo systemctl status --no-pager skybeat-agent.service
+sudo systemctl is-enabled skybeat-agent.service
+sudo systemctl is-active skybeat-agent.service
+pid="$(sudo systemctl show --value --property MainPID skybeat-agent.service)"
+sudo ps -o user=,group=,pid=,args= -p "$pid"
+sudo systemctl show --no-pager -p User -p Group -p FragmentPath -p ExecStart skybeat-agent.service
+sudo stat -c '%U:%G %a %n' /etc/skybeat/agent.env
+sudo awk -F= '
+  $1 == "SKYBEAT_SERVER_URL" && $2 ~ /^https:\/\// { server=1 }
+  $1 == "SKYBEAT_DEVICE_ID" && $2 ~ /^[0-9a-f-]{36}$/ { device=1 }
+  $1 == "SKYBEAT_DEVICE_TOKEN" && $2 ~ /^sb1\./ { credential=1 }
+  END { exit !(server && device && credential) }
+' /etc/skybeat/agent.env
+sudo journalctl -u skybeat-agent.service --since '10 minutes ago' --no-pager
+```
+
+Acceptance requires `skybeat` ownership of the running process, root ownership
+and `0600` mode for `/etc/skybeat/agent.env`, and a successful non-printing
+configuration check. The unit must be root-owned at
+`/etc/systemd/system/skybeat-agent.service`; it runs as `skybeat` and must not
+be given sudo, Docker, or a device-wide credential.
+
+In an authorized browser session, open
+`https://monitor.example.com/dashboard/devices`, find the returned device UUID,
+and confirm the intended project/name, `ONLINE`, a recent Last Seen value, and
+CPU, memory, filesystem, and GPU/not-monitored truthfully displayed. Confirm
+the installer reported receipt verification; the browser/dashboard is the
+operator-facing second confirmation, not a replacement for that receipt.
+
+## Restart, reboot, reinstall, and upgrade
+
+First prove boot persistence on the real target:
+
+```sh
+sudo reboot
+# After reconnecting:
+sudo systemctl is-enabled skybeat-agent.service
+sudo systemctl is-active skybeat-agent.service
+sudo journalctl -u skybeat-agent.service -b --no-pager
+```
+
+For an ordinary same-release reinstall, omit all token options. A healthy
+matching release exits `ALREADY_CURRENT`; a damaged unit, environment, virtual
+environment, or service is repaired without consuming an enrollment token.
+
+```sh
+sudo /srv/skybeat/release-tools/scripts/install-agent.sh \
+  --server https://monitor.example.com \
+  --package /srv/skybeat/releases/skybeat-agent-1.0.0/skybeat_agent-1.0.0-py3-none-any.whl \
+  --sha256 "$(awk '{print $1}' /srv/skybeat/releases/skybeat-agent-1.0.0/wheel.sha256)" \
+  --wheelhouse /srv/skybeat/releases/skybeat-agent-1.0.0/wheelhouse \
+  --lockfile /srv/skybeat/releases/skybeat-agent-1.0.0/requirements.lock
+```
+
+For a verified upgrade, first complete a backup/change review, verify the new
+bundle, then run the same token-free command with the new explicit wheel,
+hash, wheelhouse, and lockfile. A changed verified wheel reports `UPGRADED`;
+the existing protected credential is retained. Do not rotate a credential as a
+side effect of an ordinary upgrade.
+
+## Controlled replay and re-enrollment acceptance
+
+To prove consumed-token rejection, use a dedicated already-consumed test intent
+and force `--re-enroll`. This must fail with a generic enrollment error and
+must not print the token or credential. Do not use a current operational token
+for this drill.
+
+```sh
+sudo /srv/skybeat/release-tools/scripts/install-agent.sh \
+  --server https://monitor.example.com \
+  --package /srv/skybeat/releases/skybeat-agent-1.0.0/skybeat_agent-1.0.0-py3-none-any.whl \
+  --sha256 "$(awk '{print $1}' /srv/skybeat/releases/skybeat-agent-1.0.0/wheel.sha256)" \
+  --wheelhouse /srv/skybeat/releases/skybeat-agent-1.0.0/wheelhouse \
+  --lockfile /srv/skybeat/releases/skybeat-agent-1.0.0/requirements.lock \
+  --token-file /root/skybeat/consumed-test.token --re-enroll
+```
+
+For intentional credential rotation, an Owner or Admin creates a `REPLACE`
+intent bound to the existing device (not a `NEW` intent), securely transfers
+that new token file, and runs the same command with `--re-enroll`. Verify the
+same device UUID remains `ONLINE` after the fresh heartbeat, then securely
+erase the token file. A lost exchange response is not retried; issue a new
+replacement intent after reviewing the resulting device/audit state.
+
+## Failure recovery and troubleshooting
+
+If preflight, checksum, manifest, or offline-install validation fails, stop:
+do not bypass hashes, enable network installation, loosen permissions, or edit
+the bundle. Recopy a verified release. If the service fails, collect only
+safe diagnostics with `systemctl status` and `journalctl`; check
+`/opt/skybeat/VERSION`, unit ownership, config mode, outbound DNS/HTTPS, and
+the server-side enrollment/audit state. Do not print `agent.env`, curl an
+authorization header directly, disable TLS verification, add NVIDIA groups, or
+use `PrivateDevices=true`. Missing/failed NVIDIA tooling is reported as GPU
+state; it is not an installation failure and must not trigger driver repair.
+
+An expired, consumed, or uncertain `sbe1` exchange is intentionally
+unrecoverable. Obtain a new time-bounded intent from an authorized operator.
+The installer receipt is short-lived and only says whether the exchanged device
+has an accepted heartbeat; it cannot authenticate the dashboard, telemetry,
+or a second exchange.
+
+---
+
 # 87. Stage 06 Operator Runbook
 
 This runbook implements the approved Compose/systemd architecture. It is an operator procedure, not permission to alter an existing production host, database, firewall, or credentials without the required change approval.

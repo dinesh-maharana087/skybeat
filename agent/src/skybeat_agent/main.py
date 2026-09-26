@@ -1,9 +1,11 @@
 """Console entry point."""
 
+import argparse
 import asyncio
 import signal
 from functools import partial
 
+from skybeat_agent import __version__
 from skybeat_agent.collectors.gpu import GPUCollector
 from skybeat_agent.collectors.system import collect_system, prime_cpu_sample
 from skybeat_agent.config import Config
@@ -14,6 +16,12 @@ from skybeat_agent.transport import HeartbeatSender
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(prog="skybeat-agent")
+    parser.add_argument("--version", action="store_true", help="print the installed agent version")
+    arguments = parser.parse_args()
+    if arguments.version:
+        print(f"skybeat-agent {__version__}")
+        return
     config = Config.from_env()
     configure_logging(config.log_level, secrets=(config.token,))
     prime_cpu_sample()

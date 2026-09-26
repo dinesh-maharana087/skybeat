@@ -762,7 +762,7 @@ def test_dashboard_management_uses_same_origin_mutations_without_browser_storage
     script = dashboard_script()
 
     assert '"/api/v1/projects"' in script
-    assert '"/api/v1/devices"' in script
+    assert '"/api/v1/agent-enrollments"' in script
     assert 'method: "POST"' in script
     assert '"PATCH"' in script
     assert 'credentials: "same-origin"' in script
@@ -918,8 +918,7 @@ def test_dashboard_stage08f_polishes_the_existing_add_device_enrollment_dialog()
     assert 'class="sb-button--primary"' in template
     assert 'class="sb-button--secondary"' in template
     assert 'class="sb-button--ghost"' in template
-    assert 'requestDashboardMutation("/api/v1/devices", "POST"' in script
-    assert "await refreshCanonicalDashboard();" in script
+    assert 'requestDashboardMutation("/api/v1/agent-enrollments", "POST"' in script
     assert "enrollmentSubmissionInFlight" in script
     assert ".dialog-close" in styles
     assert ".dialog-description" in styles
@@ -936,7 +935,7 @@ def test_dashboard_stage08g_keeps_successful_enrollment_truthful_when_inventory_
 
         const source = fs.readFileSync(0, "utf8");
         const projectId = "e3e70682-c209-4cac-a29f-6fbed82c07cd";
-        const credential = "sb1.e3e70682-c209-4cac-a29f-6fbed82c07cd.test-secret";
+        const enrollmentToken = "sbe1.e3e70682-c209-4cac-a29f-6fbed82c07cd.test-secret";
         const listeners = new WeakMap();
         let failRendering = false;
 
@@ -1012,15 +1011,16 @@ def test_dashboard_stage08g_keeps_successful_enrollment_truthful_when_inventory_
         };
         const response = (payload) => ({ ok: true, json: async () => payload });
         async function fetch(path, options = {}) {
-          if (path === "/api/v1/devices" && options.method === "POST") {
+          if (path === "/api/v1/agent-enrollments" && options.method === "POST") {
             const payload = JSON.parse(options.body);
             if (
+              payload.mode !== "NEW" ||
               payload.name !== "GPU node" ||
               payload.project_id !== projectId ||
               payload.gpu_monitoring_enabled !== true ||
               payload.expected_gpu_min_count !== 1
             ) throw new Error("unexpected enrollment payload");
-            return response({ credential, device: { device_id: projectId, name: "GPU node" } });
+            return response({ token: enrollmentToken });
           }
           if (String(path).startsWith("/api/v1/projects")) {
             return response({
@@ -1064,13 +1064,13 @@ def test_dashboard_stage08g_keeps_successful_enrollment_truthful_when_inventory_
         elementFor("device-enroll-form").emit("submit");
         for (let count = 0; count < 10; count += 1) await new Promise(setImmediate);
 
-        if (elementFor("enrollment-credential").textContent !== credential) {
-          throw new Error("successful enrollment did not retain the credential");
+        if (elementFor("enrollment-credential").textContent !== enrollmentToken) {
+          throw new Error("successful enrollment did not retain the installer token");
         }
         if (elementFor("enrollment-credential-panel").hidden) {
-          throw new Error("successful enrollment hid the one-time credential");
+          throw new Error("successful enrollment hid the one-time installer token");
         }
-        if (!elementFor("enrollment-status").textContent.startsWith("Device enrolled.")) {
+        if (!elementFor("enrollment-status").textContent.startsWith("Installer token created.")) {
           const message = elementFor("enrollment-status").textContent;
           throw new Error(`enrollment reported a false failure: ${message}`);
         }
