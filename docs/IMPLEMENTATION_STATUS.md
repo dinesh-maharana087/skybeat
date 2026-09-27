@@ -1,6 +1,6 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-09-26
+Last updated: 2026-09-27
 Current stage: Stage 10 - Production Edge Agent Deployment
 Current UI stage: Stage 09 - User Management + Role-Based Access Control
 Current milestone: Stage 10 production-path bundle acceptance and operator runbook completed; real Ubuntu target acceptance remains
@@ -60,6 +60,7 @@ Status: IN PROGRESS / READY FOR FINAL HUMAN ACCEPTANCE. The approved local-wheel
 - Stage 10 Task 3 dashboard source/Node regression tests: 54 passed. The dialog uses the authenticated same-origin intent endpoint, holds the returned `sbe1` value only in transient memory/DOM for the open dialog, and clears it on close. The Python linter is not a JavaScript/HTML linter and was not treated as a meaningful check for those assets.
 - Stage 10 release/installer focused suite: 73 passed, 1 real-MySQL lifecycle test skipped because `SKYBEAT_TEST_DATABASE_URL` is unavailable, and two pre-existing upstream FastAPI/Authlib deprecation warnings were emitted. Ruff check/format, strict mypy, Alembic sole-head `d12e7f9c43a0`, and `git diff --check` passed.
 - Stage 10 final local acceptance: rebuilt `agent/requirements.lock` from the corrected Ubuntu-wheel-compatible `psutil>=7,<7.1.2` constraint; created and verified the final local-only Ubuntu CPython 3.12/manylinux-x86_64 bundle at `release-final/skybeat-agent-1.0.0`. The verifier accepted the bundle, `sha256sum -c wheel.sha256` passed, and a byte-modified copy of the actual agent wheel was rejected with `package wheel sha256 mismatch`.
+- Pre-Stage 11 Google authentication prerequisite audit: retained the existing Google OIDC authorization-code/PKCE, opaque session, normalized durable-user resolution, stored-role RBAC, and local sole-Owner bootstrap design. Added the deterministic Windows PowerShell local acceptance procedure and a safe validation/presence/state diagnostic; no application, schema, migration, or authentication behavior changed.
 - Final focused Stage 10 tests: 79 passed, 1 real-MySQL lifecycle test skipped only because `SKYBEAT_TEST_DATABASE_URL` is unavailable; upstream FastAPI/Authlib deprecation warnings only. Full agent suite: 65 passed. Server Ruff check and format check passed (83 files); strict server mypy passed for 49 source files; agent Ruff check and format check passed (19 files); strict agent mypy passed for 11 source files. Alembic reports sole head `d12e7f9c43a0`; `git diff --check` passed.
 
 - Server strict heartbeat contract tests: 130 passed.
@@ -376,3 +377,15 @@ Status: IN PROGRESS / READY FOR FINAL HUMAN ACCEPTANCE. The approved local-wheel
 ## Resume Command / Guidance
 
 Read AGENTS.md, docs/IMPLEMENTATION_PLAN.md, this file, and inspect the current Git diff before continuing. Stage 09 is complete; retain the Stage 07/08 environment limitations, do not create a commit, and do not begin Stage 10 without explicit authorization.
+
+## Pre-Stage 11 Google Authentication Acceptance Checkpoint
+
+- Status: EXECUTABLE REGRESSION VERIFIED / REAL GOOGLE BROWSER AUTHENTICATION PENDING HUMAN ACCEPTANCE AND LOCAL OPERATOR CONFIGURATION.
+- Scope: verification prerequisite only; Stage 11 was not started and no commit was created.
+- Files changed: `.env.example`, `docs/DEPLOYMENT_RUNBOOK.md`, and this status file. No code, API, schema, migration, role policy, session behavior, or OAuth flow changed.
+- Existing architecture: Google OIDC verifies identity and its configured email/domain policy admits it. The verified email is normalized, resolved to an active `application_users` record, and the current stored `OWNER`/`ADMIN`/`USER` role is enforced server-side on every request. The first successful login binds the verified Google subject; Google claims never grant a role.
+- Local state observed without revealing values: configuration loads successfully; Google Client ID absent; Google Client Secret present (not externally validated); public URL `http://localhost:8000`; development bypass enabled; no email/domain admission policy configured. Real Google browser authentication remains pending human acceptance because the operator must supply a valid Client ID/secret, disable the bypass, configure admission, and register the documented callback.
+- Tests executed: focused configuration, OIDC/session, user/RBAC, CLI, and dashboard API suite: 91 passed. The only output warnings were existing FastAPI/Starlette and Authlib `httpx` deprecations.
+- Verification completed: server Ruff check passed; Ruff format check passed (83 files); strict mypy passed (49 source files); Alembic reports sole head `d12e7f9c43a0`; focused configuration regression tests passed (26 passed); `git diff --check` passed.
+- Verification pending: interactive Google browser acceptance only, after the required local configuration is supplied. No protected database, OAuth client, credentials, or production service was modified.
+- Next action: run the documented PowerShell acceptance procedure with the real local Google client and Owner record. Do not start Stage 11 or create a commit.

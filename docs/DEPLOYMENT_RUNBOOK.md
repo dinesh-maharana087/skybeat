@@ -37,6 +37,130 @@ bypass flag; when it is off, the existing Google OIDC and opaque-session flow
 remains required. Do not change retained MySQL ACLs/data, reset MySQL, or use
 this local procedure as a production deployment instruction.
 
+## Local Google OIDC and Owner acceptance
+
+This is the real local authentication path used for the Pre-Stage 11
+acceptance prerequisite. It does not enable the development bypass, create an
+Owner from Google claims, or change the application's OIDC/session design.
+The application intentionally reads process environment variables; it does
+not load `.env` automatically.
+
+In the protected, Git-ignored repository-root `.env`, configure the existing
+variables below. Use an exact email allowlist or an approved Google Workspace
+hosted-domain admission policy. The future Owner must satisfy that admission
+policy before it can sign in.
+
+```text
+SKYBEAT_ENV=development
+SKYBEAT_DATABASE_URL=mysql+pymysql://<scoped-user>:<url-encoded-password>@127.0.0.1:3306/<database>?charset=utf8mb4
+SKYBEAT_PUBLIC_BASE_URL=http://localhost:8000
+SKYBEAT_ALLOWED_HOSTS=localhost,127.0.0.1
+SKYBEAT_ALLOWED_EMAILS=<YOUR_ADMIN_EMAIL>
+# Or, only when an approved Workspace domain policy is appropriate:
+# SKYBEAT_ALLOWED_DOMAINS=example.com
+SKYBEAT_DEV_AUTH_BYPASS=false
+SKYBEAT_GOOGLE_CLIENT_ID=<GOOGLE_WEB_CLIENT_ID>
+SKYBEAT_GOOGLE_CLIENT_SECRET=<GOOGLE_WEB_CLIENT_SECRET>
+SKYBEAT_SESSION_ENCRYPTION_KEY=<FERNET_KEY>
+```
+
+Do not put actual values in source, shell history, logs, screenshots, or
+documentation. `SKYBEAT_ALLOWED_EMAILS`/`SKYBEAT_ALLOWED_DOMAINS` are an OIDC
+admission gate only: they do not assign a SkyBeat role.
+
+From the repository root, load that file only into the current PowerShell
+process. This loader deliberately emits no values and preserves `=` characters
+in secrets:
+
+```powershell
+$envFile = Join-Path (Get-Location) ".env"
+Get-Content -LiteralPath $envFile | ForEach-Object {
+    if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$') {
+        [Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
+    }
+}
+```
+
+Use this safe presence/state diagnostic after loading the file. It never
+prints a secret; `GOOGLE SECRET: True` means a value is present, not that its
+value has been externally validated. If the environment is malformed, it
+reports only that loading failed and the exception class.
+
+```powershell
+@'
+from app.config import Settings
+try:
+    settings = Settings()
+except Exception as error:
+    print("CONFIGURATION LOAD: False")
+    print("CONFIGURATION ERROR TYPE: " + type(error).__name__)
+else:
+    print("CONFIGURATION LOAD: True")
+    print("GOOGLE CLIENT ID: " + str(bool(settings.google_client_id)))
+    print("GOOGLE SECRET: " + str(settings.google_client_secret is not None))
+    print("ADMISSION POLICY: " + str(settings.dashboard_authorization_configured))
+    print("DEV BYPASS: " + str(settings.dev_auth_bypass))
+    print("PUBLIC URL: " + settings.public_base_url)
+'@ | uv run --project server --frozen python -
+```
+
+Expected acceptance state is `CONFIGURATION LOAD: True`, `GOOGLE CLIENT ID:
+True`, `GOOGLE SECRET: True`, `ADMISSION POLICY: True`, `DEV BYPASS: False`,
+and `PUBLIC URL: http://localhost:8000`.
+
+The local Google Cloud Console credential must be a **Web application** OAuth
+client with this exact Authorized Redirect URI:
+
+```text
+http://localhost:8000/auth/google/callback
+```
+
+SkyBeat uses a server-side authorization-code callback and has no browser
+Google JavaScript client, so no Authorized JavaScript Origin is required for
+this flow. Configure the consent screen with the intended audience and
+minimum `openid email` scopes. For an External app in Testing, add the intended
+Google account as a Google test user; an Internal app is limited by the
+Workspace organization. Google permits a localhost HTTP redirect for local
+development, but production must use the approved HTTPS origin.
+
+With the migration already applied to the local development database,
+bootstrap the sole Owner before logging in. The command is idempotent for the
+same normalized email and rejects an attempt to establish a different Owner:
+
+```powershell
+uv run --project server --frozen python -m app.cli --actor local-operator owner-bootstrap --email <YOUR_ADMIN_EMAIL>
+```
+
+Start the local API from the same PowerShell process so it receives the loaded
+environment:
+
+```powershell
+uv run --project server --frozen python -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+Open `http://localhost:8000`, select Google login, and authenticate with the
+same Google email used in `owner-bootstrap`. After callback completion,
+SkyBeat must resolve the normalized, verified Google email to its active
+`application_users` record, bind its Google subject on the first login, and
+take the role only from that stored record. Confirm that the Owner dashboard
+loads and that the existing Projects, Devices, Users, and authorized device
+enrollment workflows are available.
+
+For a negative server-side RBAC check, sign in as an already-provisioned
+`USER`, open browser developer tools on the dashboard, and run:
+
+```javascript
+fetch("/api/v1/projects", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ name: "unauthorized-rbac-check" })
+}).then(async (response) => console.log(response.status, await response.text()))
+```
+
+The request must return `403`; no project must be created. Return to the
+Owner account afterward and do not use a development-auth bypass as evidence
+for this acceptance.
+
 ## Server deployment
 
 ### Prerequisites
