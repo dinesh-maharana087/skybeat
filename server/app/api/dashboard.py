@@ -20,7 +20,6 @@ from app.dashboard.service import (
     SessionRejected,
     resolve_dashboard_user,
 )
-from app.db import Database
 from app.devices.service import Conflict, IdentityError, NotFound
 from app.models import ApplicationUser
 from app.notifications.management import NotificationManagementService, NotificationProjectNotFound
@@ -70,10 +69,10 @@ UserAdminDependency = Annotated[
 
 def _management_service(request: Request, user: DashboardUser) -> DashboardManagementService:
     factory = cast(
-        Callable[[Database, str], DashboardManagementService],
+        Callable[..., DashboardManagementService],
         request.app.state.dashboard_management_service_factory,
     )
-    return factory(request.app.state.database, user.email)
+    return factory(request.app.state.database, actor=user.email)
 
 
 def _user_service(request: Request, user: DashboardUser) -> UserService:

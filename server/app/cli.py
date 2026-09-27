@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import sys
 from datetime import UTC, datetime
 from typing import Never
@@ -45,6 +46,12 @@ def _bounded_text(value: str, maximum: int) -> str:
 
 def _name(value: str) -> str:
     return _bounded_text(value, 128)
+
+
+def _actor(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_@.\-]{1,128}", value) or value.startswith("sb1."):
+        raise argparse.ArgumentTypeError("A bounded operator identifier is required.")
+    return value
 
 
 def _description(value: str) -> str:
@@ -101,7 +108,7 @@ def _parser() -> SafeParser:
         allow_abbrev=False,
     )
     parser.add_argument(
-        "--actor", type=_name, required=True, help="Accountable local operator label"
+        "--actor", type=_actor, required=True, help="Accountable local operator label"
     )
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("project-create", allow_abbrev=False)

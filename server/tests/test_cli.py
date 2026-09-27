@@ -155,6 +155,14 @@ def test_actor_required_before_mutations(cli, capsys):
     assert "Invalid command arguments" in capsys.readouterr().err
 
 
+def test_actor_is_validated_as_an_audit_identifier_before_mutations(cli, capsys):
+    assert (
+        cli.module.main(["--actor", "local operator", "project-create", "--name", "example"]) == 2
+    )
+    cli.module.Database.assert_not_called()
+    assert "Invalid command arguments" in capsys.readouterr().err
+
+
 def test_help_does_not_initialize_database(cli, capsys):
     assert cli.module.main(["--help"]) == 0
     cli.module.Database.assert_not_called()

@@ -446,9 +446,9 @@ def test_user_role_cannot_create_a_project_even_with_a_direct_api_request():
     )
     app = create_app(settings)
     app.state.dashboard_auth_service = UserSession()
-    app.state.dashboard_management_service_factory = lambda database, actor: (_ for _ in ()).throw(
-        AssertionError("management must not run")
-    )
+    app.state.dashboard_management_service_factory = lambda database, *, actor: (
+        _ for _ in ()
+    ).throw(AssertionError("management must not run"))
     with TestClient(app, base_url="https://testserver") as client:
         client.cookies.set("__Host-skybeat_session", "valid-browser-session")
         response = client.post("/api/v1/projects", json={"name": "Forged control"})
@@ -533,7 +533,7 @@ def test_cross_origin_dashboard_enrollment_is_rejected_before_management_service
             assert token == "valid-browser-session"
             return DashboardUser("google-user", "ops@example.test", None)
 
-    def management_factory(database, actor):
+    def management_factory(database, *, actor):
         calls.append((database, actor))
         raise AssertionError("management service must not be created")
 
@@ -608,7 +608,7 @@ def test_authorized_management_routes_forward_dashboard_actor_and_safe_projectio
         def list_projects(self):
             return {"items": [], "server_time": "2026-09-24T10:00:00Z"}
 
-    def management_factory(database, actor):
+    def management_factory(database, *, actor):
         factory_actors.append(actor)
         return Management()
 
@@ -678,7 +678,7 @@ def test_dashboard_management_invalid_payloads_and_identity_errors_are_safe_no_s
     )
     app = create_app(settings)
     app.state.dashboard_auth_service = AuthorizedSession()
-    app.state.dashboard_management_service_factory = lambda database, actor: Management()
+    app.state.dashboard_management_service_factory = lambda database, *, actor: Management()
     with TestClient(app, base_url="https://testserver") as client:
         client.cookies.set("__Host-skybeat_session", "valid-browser-session")
         invalid = client.post("/api/v1/projects", json={"name": " "})
@@ -708,7 +708,7 @@ def test_development_bypass_uses_the_same_dashboard_management_identity_boundary
         def create_project(self, request):
             return {"project_id": "e3e70682-c209-4cac-a29f-6fbed82c07cd", "name": request.name}
 
-    def management_factory(database, actor):
+    def management_factory(database, *, actor):
         actors.append(actor)
         return Management()
 

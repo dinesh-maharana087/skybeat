@@ -345,8 +345,21 @@ async function requestDashboardMutation(path, method, payload) {
   } catch (_) {
     responsePayload = null;
   }
-  if (!response.ok) throw new Error("dashboard management request failed");
+  if (!response.ok) {
+    const error = new Error("dashboard management request failed");
+    error.status = response.status;
+    throw error;
+  }
   return responsePayload;
+}
+
+function projectCreationErrorMessage(error) {
+  const status = error instanceof Error ? error.status : null;
+  if (status === 401) return "Your session has expired. Sign in again.";
+  if (status === 403) return "You no longer have permission to create projects.";
+  if (status === 409) return "A project change conflicts with the current state. Refresh and try again.";
+  if (status === 422) return "Enter a valid project name and try again.";
+  return "Project could not be created. Check the name and try again.";
 }
 
 function renderOverview(payload) {
@@ -1876,8 +1889,8 @@ async function submitProject() {
       draft.projectId = projectId;
       openEnrollmentDialog(draft);
     }
-  } catch (_) {
-    projectStatus.textContent = "Project could not be created. Check the name and try again.";
+  } catch (error) {
+    projectStatus.textContent = projectCreationErrorMessage(error);
   } finally {
     projectSubmissionInFlight = false;
     projectSubmit.disabled = false;

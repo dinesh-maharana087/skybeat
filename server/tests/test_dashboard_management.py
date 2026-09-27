@@ -123,3 +123,29 @@ def test_dashboard_management_enrollment_delegates_to_identity_service(monkeypat
     }
     assert management.enrollment_credential_value(result).get_secret_value().startswith("sb1.")
     assert "test-secret" not in repr(result)
+
+
+def test_dashboard_management_project_creation_uses_the_canonical_authenticated_actor(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeIdentityService:
+        def __init__(self, database, *, actor):
+            captured["database"] = database
+            captured["actor"] = actor
+
+        def create_project(self, *, name):
+            captured["name"] = name
+            return SimpleNamespace(public_id="e3e70682-c209-4cac-a29f-6fbed82c07cd", name=name)
+
+    monkeypatch.setattr(management, "IdentityService", FakeIdentityService)
+
+    result = management.DashboardManagementService(
+        object(), actor="owner@example.test"
+    ).create_project(ProjectCreateRequest(name="GPU Lab"))
+
+    assert captured["actor"] == "owner@example.test"
+    assert captured["name"] == "GPU Lab"
+    assert result == {
+        "project_id": "e3e70682-c209-4cac-a29f-6fbed82c07cd",
+        "name": "GPU Lab",
+    }

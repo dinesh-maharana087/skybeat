@@ -3,13 +3,15 @@ from datetime import timedelta
 
 import pytest
 from cryptography.fernet import Fernet
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.config import Settings
 from app.dashboard.auth import VerifiedIdentity
 from app.dashboard.service import DashboardAuthService, SessionRejected
 from app.db import database_utc
-from app.models import AdminSession, ApplicationUser
+from app.main import create_app
+from app.models import AdminSession, ApplicationUser, AuditEvent, Project
 from app.users.service import UserRole
 
 pytestmark = pytest.mark.mysql
@@ -80,6 +82,43 @@ def test_authorized_google_identity_receives_opaque_session(
         stored = session.scalar(select(AdminSession))
         assert stored is not None
         assert stored.session_hash != token.encode()
+
+
+def test_active_owner_creates_a_project_through_the_dashboard_api_with_audited_identity(
+    mysql_database, mysql_settings, identity
+):
+    service, _ = auth_service(mysql_database, mysql_settings, identity)
+    login = asyncio.run(service.begin_login("https://monitor.example.test/auth/google/callback"))
+    token = asyncio.run(
+        service.complete_login(
+            state=login.state,
+            code="authorization-code",
+            browser_binding=login.browser_binding,
+            redirect_uri="https://monitor.example.test/auth/google/callback",
+        )
+    )
+    app = create_app(service.settings, database=mysql_database)
+    app.state.dashboard_auth_service = service
+
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", token)
+        response = client.post("/api/v1/projects", json={"name": "Owner dashboard project"})
+
+    assert response.status_code == 200
+    project_id = response.json()["project"]["project_id"]
+    with mysql_database.transaction() as session:
+        project = session.scalar(select(Project).where(Project.public_id == project_id))
+        audit = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.action == "project.created",
+                AuditEvent.actor == "ops@example.test",
+            )
+        )
+
+    assert project is not None
+    assert project.name == "Owner dashboard project"
+    assert audit is not None
+    assert audit.project_id == project.id
 
 
 def test_unauthorized_or_empty_policy_identity_cannot_create_session(

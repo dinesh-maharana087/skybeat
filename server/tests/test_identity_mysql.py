@@ -9,7 +9,7 @@ from sqlalchemy.exc import OperationalError
 
 from app.db import database_utc
 from app.devices.service import AuthenticationFailed, Conflict, GPUPolicy, IdentityError
-from app.models import AuditEvent, Device, DeviceCredential
+from app.models import AuditEvent, Device, DeviceCredential, Project
 
 pytestmark = pytest.mark.mysql
 
@@ -42,6 +42,39 @@ def test_migration_and_connection_settings(mysql_database):
             .all()
         )
         assert set(engines) == {"InnoDB"}
+
+
+def test_project_creation_persists_the_project_and_actor_audit_event(identity, mysql_database):
+    project = identity.create_project("Owner managed project")
+
+    with mysql_database.transaction() as session:
+        persisted = session.scalar(select(Project).where(Project.public_id == project.public_id))
+        audit = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.project_id == project.id,
+                AuditEvent.action == "project.created",
+            )
+        )
+
+    assert persisted is not None
+    assert persisted.name == "Owner managed project"
+    assert audit is not None
+    assert audit.actor == "pytest"
+
+
+def test_project_creation_allows_duplicate_display_names_with_distinct_public_ids(
+    identity, mysql_database
+):
+    first = identity.create_project("Shared display name")
+    second = identity.create_project("Shared display name")
+
+    with mysql_database.transaction() as session:
+        projects = session.scalars(
+            select(Project).where(Project.name == "Shared display name").order_by(Project.id)
+        ).all()
+
+    assert first.public_id != second.public_id
+    assert [project.public_id for project in projects] == [first.public_id, second.public_id]
 
 
 def test_enrollment_digest_only_and_binding(identity, mysql_database):

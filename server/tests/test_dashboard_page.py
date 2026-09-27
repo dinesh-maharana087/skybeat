@@ -133,6 +133,14 @@ def test_dashboard_logout_returns_users_to_the_login_page_source():
     assert 'window.location.assign("/auth/google/login")' not in script
 
 
+def test_project_submission_keeps_normal_management_errors_safe_and_actionable():
+    script = dashboard_script()
+
+    assert "You no longer have permission to create projects." in script
+    assert "A project change conflicts with the current state. Refresh and try again." in script
+    assert "Enter a valid project name and try again." in script
+
+
 def test_authenticated_dashboard_routes_render_selected_view_controls_and_required_dialogs():
     class Authenticated:
         def authenticate_session(self, token):
