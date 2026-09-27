@@ -52,6 +52,16 @@ def test_unexpected_error_is_safe_and_has_server_generated_request_id():
         assert response.json()["error"]["request_id"] != "untrusted-id"
 
 
+def test_login_uses_conservative_browser_security_headers():
+    with TestClient(create_app(config()), base_url="https://testserver") as client:
+        response = client.get("/login")
+
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["permissions-policy"] == "geolocation=(), camera=(), microphone=()"
+
+
 def test_readiness_handles_missing_migration_assets(monkeypatch):
     monkeypatch.setattr(
         "app.db.ScriptDirectory.from_config", Mock(side_effect=CommandError("missing"))

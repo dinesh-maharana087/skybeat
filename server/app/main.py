@@ -30,6 +30,7 @@ from app.dashboard.service import DashboardAuthService
 from app.db import Database
 from app.enrollment.service import AgentEnrollmentService
 from app.logging import configure_logging
+from app.notifications.management import NotificationManagementService
 from app.users.service import UserService
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,7 @@ def create_app(
     )
     app.state.enrollment_rate_limiter = EnrollmentRateLimiter()
     app.state.user_service_factory = UserService
+    app.state.notification_management_service_factory = NotificationManagementService
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.allowed_hosts)
     app.mount(
         "/static",
@@ -110,6 +112,8 @@ def create_app(
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
         )
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
         if request.url.path.startswith("/api/v1/"):
             response.headers["Cache-Control"] = "no-store"
         return response

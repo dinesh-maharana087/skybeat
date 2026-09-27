@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.dashboard.redirects import safe_return_path
 from app.dashboard.service import DashboardUser
 from app.main import create_app
 
@@ -39,8 +40,97 @@ def test_dashboard_page_redirects_unauthenticated_browser_to_google_login():
         response = client.get("/", follow_redirects=False)
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/auth/google/login"
+    assert response.headers["location"] == "/login?next=/"
     assert "set-cookie" not in response.headers
+
+
+def test_login_page_is_a_safe_explicit_google_entry_point():
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    with TestClient(create_app(settings), base_url="https://testserver") as client:
+        login = client.get("/login?next=/dashboard/devices")
+        external = client.get("/login?next=https://attacker.example/")
+        protected = client.get("/dashboard/devices", follow_redirects=False)
+
+    assert login.status_code == 200
+    assert 'href="/auth/google/login?next=/dashboard/devices"' in login.text
+    assert "Continue with Google" in login.text
+    assert 'src="/static/assert_logo.png"' in login.text
+    assert external.status_code == 200
+    assert 'href="/auth/google/login"' in external.text
+    assert protected.headers["location"] == "/login?next=/dashboard/devices"
+
+
+def test_safe_return_path_rejects_external_protocol_relative_and_malformed_targets():
+    for target in (
+        "https://attacker.example/",
+        "http://attacker.example/",
+        "//attacker.example/",
+        "/\\attacker.example/",
+        "javascript:alert(1)",
+        "data:text/html,unsafe",
+        "/dashboard#fragment",
+        "/dashboard with-space",
+        "dashboard/devices",
+        "/" + "a" * 2049,
+    ):
+        assert safe_return_path(target) is None
+
+    assert safe_return_path("/dashboard/devices?project=ops") == "/dashboard/devices?project=ops"
+
+
+def test_all_protected_dashboard_views_preserve_only_their_internal_return_path():
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    with TestClient(create_app(settings), base_url="https://testserver") as client:
+        responses = {
+            path: client.get(path, follow_redirects=False)
+            for path in (
+                "/dashboard",
+                "/dashboard/projects",
+                "/dashboard/users",
+                "/dashboard/notifications",
+            )
+        }
+
+    assert responses["/dashboard"].headers["location"] == "/login?next=/dashboard"
+    assert responses["/dashboard/projects"].headers["location"] == "/login?next=/dashboard/projects"
+    assert responses["/dashboard/users"].headers["location"] == "/login?next=/dashboard/users"
+    assert (
+        responses["/dashboard/notifications"].headers["location"]
+        == "/login?next=/dashboard/notifications"
+    )
+
+
+def test_login_page_shows_only_safe_error_copy_and_redirects_authenticated_users():
+    class Authenticated:
+        def authenticate_session(self, token):
+            return DashboardUser("google-user", "ops@example.test", None)
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    with TestClient(app, base_url="https://testserver") as client:
+        failed = client.get("/login?error=verification_failed")
+        app.state.dashboard_auth_service = Authenticated()
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        authenticated = client.get("/login", follow_redirects=False)
+
+    assert failed.status_code == 200
+    assert "Google sign-in could not be verified." in failed.text
+    assert "verification_failed" not in failed.text
+    assert authenticated.status_code == 303
+    assert authenticated.headers["location"] == "/dashboard"
+
+
+def test_dashboard_logout_returns_users_to_the_login_page_source():
+    script = dashboard_script()
+
+    assert 'window.location.assign("/login")' in script
+    assert 'window.location.assign("/auth/google/login")' not in script
 
 
 def test_authenticated_dashboard_routes_render_selected_view_controls_and_required_dialogs():

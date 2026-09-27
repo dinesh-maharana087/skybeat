@@ -56,7 +56,11 @@ def test_smtp_provider_sends_safe_offline_message_with_stable_message_id(monkeyp
     assert result.outcome is ProviderOutcome.ACCEPTED
     assert sent[0]["Subject"] == "[SkyBeat] OFFLINE - Training Fleet / GPU host 01"
     assert sent[0]["Message-ID"] == "<4a4c9d7f-3d7a-4a1f-8d6b-041a7d2ecce0@skybeat>"
-    assert "Device is unreachable by the monitoring system." in sent[0].get_content()
+    assert (
+        "Device is unreachable by the monitoring system."
+        in sent[0].get_body(preferencelist=("plain",)).get_content()
+    )
+    assert "<html>" in sent[0].get_body(preferencelist=("html",)).get_content()
 
 
 def test_smtp_authentication_failure_is_permanent_without_exposing_provider_text(monkeypatch):
@@ -148,4 +152,4 @@ def test_smtp_provider_uses_gpu_specific_operational_content(monkeypatch):
 
     assert provider.send(_message("GPU_DEGRADED")).outcome is ProviderOutcome.ACCEPTED
     assert sent[0]["Subject"] == "[SkyBeat] GPU DEGRADED - Training Fleet / GPU host 01"
-    assert "two fresh observations" in sent[0].get_content()
+    assert "two fresh observations" in sent[0].get_body(preferencelist=("plain",)).get_content()

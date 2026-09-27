@@ -12,7 +12,7 @@ from app.config import Settings
 from app.dashboard.auth import AuthorizationPolicy, VerifiedIdentity, session_token_digest
 from app.dashboard.oidc import OIDCClient, OIDCError
 from app.db import Database, database_utc
-from app.models import AdminSession, ApplicationUser, OAuthTransaction
+from app.models import AdminSession, ApplicationUser, AuditEvent, OAuthTransaction
 from app.users.service import UserRole, normalize_email
 
 OAUTH_TRANSACTION_LIFETIME = timedelta(minutes=10)
@@ -147,6 +147,16 @@ class DashboardAuthService:
             if stored is None or stored.revoked_at is not None or stored.expires_at <= now:
                 raise SessionRejected("Dashboard session is invalid.")
             stored.revoked_at = now
+            session.add(
+                AuditEvent(
+                    actor=stored.email,
+                    action="auth.logout",
+                    project_id=None,
+                    device_id=None,
+                    occurred_at=now,
+                    details={"scope": "local_session"},
+                )
+            )
 
     def _create_transaction(self) -> tuple[str, str, str, str]:
         if self._fernet is None:
@@ -221,6 +231,16 @@ class DashboardAuthService:
                     expires_at=now + SESSION_ABSOLUTE_LIFETIME,
                     last_used_at=now,
                     authorization_policy_version=1,
+                )
+            )
+            session.add(
+                AuditEvent(
+                    actor=identity.email,
+                    action="auth.login_succeeded",
+                    project_id=None,
+                    device_id=None,
+                    occurred_at=now,
+                    details={"authenticator": "google"},
                 )
             )
         return token

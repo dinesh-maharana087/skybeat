@@ -5,7 +5,12 @@ from pydantic import SecretStr
 from app.config import Settings
 from app.dashboard.management import EnrollmentResult
 from app.dashboard.read import DashboardReadService
-from app.dashboard.service import DashboardUser, LoginRedirect
+from app.dashboard.service import (
+    DashboardAuthError,
+    DashboardUser,
+    LoginRedirect,
+    SessionRejected,
+)
 from app.devices.credentials import GeneratedCredential
 from app.devices.service import Conflict, NotFound
 from app.main import create_app
@@ -251,13 +256,13 @@ def test_google_login_callback_and_logout_use_host_only_opaque_cookies():
     app = create_app(settings)
     app.state.dashboard_auth_service = FakeAuth()
     with TestClient(app, base_url="https://testserver") as client:
-        login = client.get("/auth/google/login", follow_redirects=False)
+        login = client.get("/auth/google/login?next=/dashboard/devices", follow_redirects=False)
         assert login.status_code == 307
         assert login.headers["location"] == "https://accounts.example.test/authorize"
         assert "__Host-skybeat_oauth=" in login.headers["set-cookie"]
         callback = client.get("/auth/google/callback?state=state&code=code", follow_redirects=False)
         assert callback.status_code == 303
-        assert callback.headers["location"] == "/"
+        assert callback.headers["location"] == "/dashboard/devices"
         assert "__Host-skybeat_session=" in callback.headers["set-cookie"]
         logout = client.post("/auth/logout")
 
@@ -283,6 +288,56 @@ def test_google_login_is_rate_limited_before_creating_oauth_transactions():
     assert responses[6].headers["retry-after"] == "60"
 
 
+def test_google_authentication_failures_redirect_to_safe_login_states():
+    class UnavailableAuth:
+        async def begin_login(self, redirect_uri):
+            raise DashboardAuthError("provider failure")
+
+        async def complete_login(self, **kwargs):
+            raise DashboardAuthError("callback failure")
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = UnavailableAuth()
+    with TestClient(app, base_url="https://testserver") as client:
+        unavailable = client.get("/auth/google/login", follow_redirects=False)
+        malformed = client.get("/auth/google/callback", follow_redirects=False)
+        failed = client.get("/auth/google/callback?state=state&code=code", follow_redirects=False)
+
+    assert unavailable.status_code == 303
+    assert unavailable.headers["location"] == "/login?error=unavailable"
+    assert malformed.status_code == 303
+    assert malformed.headers["location"] == "/login?error=verification_failed"
+    assert failed.status_code == 303
+    assert failed.headers["location"] == "/login?error=verification_failed"
+
+
+def test_google_access_denial_and_invalid_session_never_render_sensitive_error_detail():
+    class DeniedAuth:
+        async def complete_login(self, **kwargs):
+            raise SessionRejected("disabled user: should not reach browser")
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = DeniedAuth()
+    with TestClient(app, base_url="https://testserver") as client:
+        denied = client.get("/auth/google/callback?state=state&code=code", follow_redirects=False)
+        rendered = client.get(denied.headers["location"])
+
+    assert denied.status_code == 303
+    assert denied.headers["location"] == "/login?error=access_denied"
+    assert "disabled user" not in rendered.text
+    assert "Your Google account is not authorized for SkyBeat." in rendered.text
+
+
 def test_dashboard_management_routes_require_the_existing_dashboard_user_and_no_store():
     settings = Settings(
         env="test",
@@ -292,6 +347,86 @@ def test_dashboard_management_routes_require_the_existing_dashboard_user_and_no_
         response = client.post("/api/v1/projects", json={"name": "GPU Lab"})
 
     assert response.status_code == 401
+    assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize("role", ["OWNER", "ADMIN"])
+def test_notification_management_api_allows_owner_and_admin(role):
+    from app.users.service import UserRole
+
+    calls: list[object] = []
+
+    class Session:
+        def authenticate_session(self, token):
+            return DashboardUser("google-user", "ops@example.test", None, 7, UserRole(role))
+
+    class Notifications:
+        def list_projects(self):
+            return {"items": [{"project_id": "e3e70682-c209-4cac-a29f-6fbed82c07cd"}]}
+
+        def update_project(self, project_id, payload):
+            calls.append((project_id, payload))
+            return {"project_id": project_id, "configured": True, "recipients": payload.recipients}
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Session()
+    app.state.notification_management_service_factory = lambda database, *, actor: Notifications()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        listed = client.get("/api/v1/notifications")
+        updated = client.put(
+            "/api/v1/notifications/e3e70682-c209-4cac-a29f-6fbed82c07cd",
+            json={
+                "recipients": ["Ops@Example.Test"],
+                "device_offline_enabled": True,
+                "device_recovered_enabled": False,
+                "gpu_degraded_enabled": True,
+                "gpu_recovered_enabled": True,
+            },
+        )
+
+    assert listed.status_code == 200
+    assert updated.status_code == 200
+    assert calls[0][0] == "e3e70682-c209-4cac-a29f-6fbed82c07cd"
+    assert calls[0][1].recipients == ["ops@example.test"]
+
+
+def test_notification_management_api_rejects_user_role_before_service_execution():
+    from app.users.service import UserRole
+
+    class Session:
+        def authenticate_session(self, token):
+            return DashboardUser("google-user", "user@example.test", None, 7, UserRole.USER)
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Session()
+    app.state.notification_management_service_factory = lambda *args, **kwargs: (
+        _ for _ in ()
+    ).throw(AssertionError("notification management must not run"))
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        response = client.put(
+            "/api/v1/notifications/e3e70682-c209-4cac-a29f-6fbed82c07cd",
+            json={
+                "recipients": [],
+                "device_offline_enabled": False,
+                "device_recovered_enabled": False,
+                "gpu_degraded_enabled": False,
+                "gpu_recovered_enabled": False,
+            },
+        )
+
+    assert response.status_code == 403
     assert response.headers["cache-control"] == "no-store"
 
 

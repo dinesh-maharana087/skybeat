@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AlertEvent, Device, Incident, NotificationDelivery, Project
+from app.notifications.configuration import snapshot_project_email_recipients
 
 CONFIRMATION_GAP_SECONDS = 75
 
@@ -244,7 +245,18 @@ class GPUIncidentService:
         )
         session.add(event)
         session.flush()
-        for channel, provider, destination in self.recipients:
+        email_recipients = snapshot_project_email_recipients(
+            session,
+            project_id=device.project_id,
+            event_kind=kind,
+            legacy_recipients=tuple(
+                destination for channel, _, destination in self.recipients if channel == "EMAIL"
+            ),
+        )
+        recipients = tuple(("EMAIL", "smtp", value) for value in email_recipients) + tuple(
+            recipient for recipient in self.recipients if recipient[0] == "SMS"
+        )
+        for channel, provider, destination in recipients:
             session.add(
                 NotificationDelivery(
                     delivery_uuid=str(uuid4()),

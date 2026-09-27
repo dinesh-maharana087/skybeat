@@ -685,6 +685,29 @@ notification forgotten
 
 No Redis or external broker is required for the initial deployment.
 
+## Project Email Policy
+
+Email recipient selection is durable and project-scoped. A project with no
+`project_notification_settings` row is **unconfigured** and continues to use
+the deployment-level `SKYBEAT_ALERT_EMAIL_RECIPIENTS` fallback. Once a project
+policy is saved, its recipients and enabled event kinds are authoritative;
+project recipients are never combined with the deployment fallback.
+
+An explicitly configured project may have zero recipients or disable an event
+kind. In either case the incident and alert event remain durable, but no email
+delivery is created for that event. The configured event controls are
+`DEVICE_OFFLINE`, `DEVICE_RECOVERED`, `GPU_DEGRADED`, and `GPU_RECOVERED`.
+
+Recipient addresses are normalized to lowercase before storage. When an event
+is created, its email destinations are copied into the existing durable
+`notification_deliveries` rows in the same transaction. Retrying that event
+therefore continues to use the original snapshot; a later configuration change
+only affects subsequently created events, including a later recovery event.
+
+OWNER and ADMIN may manage project policy. USER remains read-only. Admission to
+the dashboard and the stored SkyBeat role are separate from notification
+recipient policy.
+
 ---
 
 # 25. Delivery States
