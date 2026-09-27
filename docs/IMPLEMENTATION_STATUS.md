@@ -1,10 +1,10 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-09-27
-Current stage: Stage 11.5 - Production Authentication & Login Hardening
+Current stage: Stage 11 - Alerting & Notification Management
 Current UI stage: Stage 09 - User Management + Role-Based Access Control
-Current milestone: Stage 11.5 production authentication and login hardening is complete and accepted.
-Status: Stage 11.5 — COMPLETE / ACCEPTED. Do not start Stage 12 or merge into main.
+Current milestone: Stage 11 and Stage 11.5 are complete, accepted, and merged into `main`.
+Status: Stage 11 — COMPLETE / ACCEPTED; Stage 11.5 — COMPLETE / ACCEPTED. Merged into `main` by `59900d8`. Do not start Stage 12.
 
 ## Completed
 
@@ -50,7 +50,7 @@ Status: Stage 11.5 — COMPLETE / ACCEPTED. Do not start Stage 12 or merge into 
 
 ## In Progress
 
-- None. Stage 11.5 is complete; real Google/browser and isolated-MySQL acceptance remain environment-limited follow-up work and do not authorize Stage 12.
+- None. Stage 11 and Stage 11.5 are merged; controlled-environment acceptance remains pending and does not authorize Stage 12.
 
 ## Verification Completed
 
@@ -376,20 +376,20 @@ Status: Stage 11.5 — COMPLETE / ACCEPTED. Do not start Stage 12 or merge into 
 ## Stage 11 Checkpoint
 
 - Stage: 11 - Alerting & Notification Management.
-- Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE / AWAITING HUMAN ACCEPTANCE.
+- Status: Stage 11 — COMPLETE / ACCEPTED / MERGED INTO MAIN (`59900d8`).
 - Files changed: project notification models/migration/configuration/management service; alert event recipient selection; dashboard API/page/template/JavaScript; multipart email provider; focused tests; `docs/ALERTING.md`, `docs/API_SPEC.md`, and this checkpoint.
 - Migration: `e43a8c9b0d11_stage11_project_notification_settings` is the intended sole Alembic head. It adds one explicit settings row per project and normalized unique project recipient rows.
 - Behavior: unconfigured projects retain only `SKYBEAT_ALERT_EMAIL_RECIPIENTS`; configured projects use only their own event toggles and recipients. An empty configured recipient set or disabled event creates no email delivery, while incidents/events still persist. Recipient destinations are copied to existing delivery rows at event creation, so configuration changes cannot alter existing retry destinations. Recovery snapshots the current policy at recovery-event creation.
 - Access/security: OWNER and ADMIN may read/write policy through authenticated same-origin endpoints; USER receives 403. Policy mutations are audited without recipient addresses in the audit details. Google identity/session/user-role architecture is unchanged. Multipart SMTP mail contains a plaintext fallback and escaped, operational HTML.
-- Tests executed: focused policy/delivery/RBAC/page suite 84 passed; final focused status/policy/RBAC/page suite 81 passed; 10 MySQL-dependent tests skipped only because `SKYBEAT_TEST_DATABASE_URL` is unset. The full server suite recorded 382 passed, 37 skipped, and 5 pre-existing Stage 10 deployment-artifact failures. Ruff check passed and Ruff format check passed for 88 files; strict mypy passed for 52 source files; JavaScript syntax, Alembic sole-head `e43a8c9b0d11`, and `git diff --check` passed.
-- Verification pending: real MySQL migration/event snapshot/SMTP acceptance, interactive OWNER/ADMIN browser workflow, and real Google OWNER login. The latter remains pending human acceptance because the required Google client ID and admission policy are still absent and development auth bypass is enabled.
-- Known baseline limitations: full repository test coverage retains five pre-existing Stage 10 deployment-artifact/Windows Bash-path failures unrelated to Stage 11; no final commit was created.
-- Next action: human review of Stage 11, then provision an isolated MySQL 8.x test URL and the documented Google configuration for final acceptance. Do not begin Stage 12.
+- Tests executed: final full server suite: 393 passed, 37 isolated-MySQL/environment skips, and 5 pre-existing Stage 10 deployment-artifact/Windows-Bash failures; focused Stage 11 alert/notification/lifecycle/RBAC/dashboard/auth/configuration/audit/redirect/header suite: 172 passed, 17 isolated-MySQL skips; full agent suite: 65 passed. Server and agent Ruff/format checks and strict mypy passed before merge; post-merge server Ruff/format, focused suite, agent suite, JavaScript syntax, migration-head, and diff-integrity checks passed. The post-merge local strict-mypy rerun was unavailable because the retained virtual environment's base Python is inaccessible to this sandbox; the clean merge introduced no source resolution change and the complete pre-merge strict check remains the valid source-level evidence.
+- Verification pending: real Google browser OAuth acceptance; isolated real-MySQL migration, session, policy-snapshot, and alert lifecycle acceptance; local Windows laptop SkyBeat server acceptance; real GPU/edge-agent enrollment plus heartbeat/telemetry; end-to-end offline/recovery incident test; real SMTP/email acceptance; local network/TLS validation; production-like agent installer validation; and final production deployment acceptance. No pending item is represented as passed.
+- Known baseline limitations: full repository test coverage retains the five pre-existing Stage 10 deployment-artifact/Windows Bash-path failures documented in Stage 11.5. They were reproduced at `65a1c75` and are not Stage 11 regressions.
+- Next action: STOP. Do not start Stage 12, deploy, push, or delete the retained Stage 11 branch/worktree.
 
 ## Stage 11.5 Checkpoint
 
 - Stage: 11.5 - Production Authentication & Login Hardening.
-- Status: Stage 11.5 — COMPLETE / ACCEPTED. Real Google/browser and isolated-MySQL acceptance remain pending external configuration; Stage 12 is not authorized.
+- Status: Stage 11.5 — COMPLETE / ACCEPTED / MERGED INTO MAIN (`59900d8`). Real Google/browser and isolated-MySQL acceptance remain pending external configuration; Stage 12 is not authorized.
 - Implemented: `/login` is a responsive, local-asset SkyBeat login page with an explicit Google action. Unauthenticated dashboard routes redirect there with a validated internal `next` path; arbitrary-origin, scheme, protocol-relative, fragment, whitespace, and oversized paths are rejected. The return path is held only in a short-lived Secure/HttpOnly/SameSite=Lax host-only cookie and revalidated after callback.
 - Redirect hardening: malformed backslash-containing paths are also rejected before issuing a browser `Location` header, avoiding browser path-separator normalization. Valid internal paths and query strings are retained.
 - Preserved: Authlib authorization-code flow, PKCE, state, nonce, server-generated callback from `PUBLIC_BASE_URL`, opaque digest-only sessions, session rotation on successful login, absolute/idle expiry, request-time durable user/role resolution, TrustedHost allowlist, and existing login rate limit.
@@ -404,7 +404,7 @@ Status: Stage 11.5 — COMPLETE / ACCEPTED. Do not start Stage 12 or merge into 
 
 ## Resume Command / Guidance
 
-Read AGENTS.md, docs/IMPLEMENTATION_PLAN.md, this file, and inspect the current Git diff before continuing. Stage 11.5 is complete; retain the documented real-Google, isolated-MySQL, and deployment-test limitations. Do not begin Stage 12 or merge into main without explicit authorization.
+Read AGENTS.md, docs/IMPLEMENTATION_PLAN.md, this file, and inspect the current Git diff before continuing. Stages 11 and 11.5 are complete and merged; retain the documented real-Google, isolated-MySQL, deployment-test, and local-acceptance limitations. Do not begin Stage 12 without explicit authorization.
 
 ## Pre-Stage 11 Google Authentication Acceptance Checkpoint
 
