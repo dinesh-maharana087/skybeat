@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in | SkyBeat</title>
+    <link rel="stylesheet" href="/static/login.css">
+  </head>
+  <body>
+    <main class="login-layout">
+      <section class="login-card" aria-labelledby="login-title">
+        <div class="login-brand">
+          <img src="/static/assert_logo.png" alt="Assert AI" class="login-logo">
+          <p class="login-product">SkyBeat</p>
+          <p class="login-kicker">Operational Monitoring</p>
+        </div>
+        <h1 id="login-title">Sign in to SkyBeat</h1>
+        <p class="login-description">Secure infrastructure visibility for authorized users.</p>
+        {% if auth_error %}<p class="login-error" role="alert">{{ auth_error }}</p>{% endif %}
+        <a class="google-button" href="{{ login_url }}">Continue with Google</a>
+        <p class="login-notice">Authorized access only. Your SkyBeat role is verified server-side.</p>
+      </section>
+    </main>
+    <footer class="login-footer">Assert AI &middot; SkyBeat operational monitoring</footer>
+  </body>
+</html>

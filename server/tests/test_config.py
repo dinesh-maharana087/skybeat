@@ -86,6 +86,7 @@ def test_production_requires_https_and_explicit_host_allowlist():
         google_client_id="skybeat-test-client",
         google_client_secret="not-a-real-secret",
         session_encryption_key="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        allowed_emails=["ops@example.test"],
     )
     with pytest.raises(ValidationError):
         Settings(
@@ -190,6 +191,19 @@ def test_production_dashboard_requires_oidc_and_session_secret_configuration():
             public_base_url="https://monitor.example.test",
             allowed_hosts=["monitor.example.test"],
             allowed_emails=["ops@example.test"],
+        )
+
+
+def test_production_dashboard_requires_an_explicit_admission_policy():
+    with pytest.raises(ValidationError):
+        Settings(
+            env="production",
+            database_url="mysql+pymysql://runtime:example@mysql/skybeat",
+            public_base_url="https://monitor.example.test",
+            allowed_hosts=["monitor.example.test"],
+            google_client_id="skybeat-client",
+            google_client_secret="google-client-secret",
+            session_encryption_key="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         )
 
 

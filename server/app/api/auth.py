@@ -9,12 +9,14 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
+from app.dashboard.redirects import login_error_path, safe_return_path
 from app.dashboard.service import DashboardAuthError, DashboardAuthService, SessionRejected
 
 router = APIRouter(prefix="/auth")
 
 SESSION_COOKIE = "__Host-skybeat_session"
 OAUTH_COOKIE = "__Host-skybeat_oauth"
+RETURN_COOKIE = "__Host-skybeat_return"
 
 
 class LoginRateLimiter:
@@ -63,7 +65,7 @@ def same_origin(request: Request) -> bool:
 
 
 @router.get("/google/login")
-async def google_login(request: Request) -> RedirectResponse:
+async def google_login(request: Request, next: str | None = None) -> RedirectResponse:
     client_id = request.client.host if request.client is not None else "unknown"
     if not request.app.state.login_rate_limiter.allow(client_id):
         raise HTTPException(
@@ -74,25 +76,27 @@ async def google_login(request: Request) -> RedirectResponse:
     service: DashboardAuthService = request.app.state.dashboard_auth_service
     try:
         login = await service.begin_login(_callback_url(request))
-    except DashboardAuthError as error:
-        raise HTTPException(
-            status_code=503,
-            detail="Google authentication is temporarily unavailable.",
-            headers={"Cache-Control": "no-store"},
-        ) from error
+    except DashboardAuthError:
+        return RedirectResponse(login_error_path("unavailable"), status_code=303)
     response = RedirectResponse(login.url, status_code=307, headers={"Cache-Control": "no-store"})
     _secure_cookie(response, OAUTH_COOKIE, login.browser_binding, 600)
+    return_path = safe_return_path(next)
+    if return_path is not None:
+        _secure_cookie(response, RETURN_COOKIE, return_path, 600)
     return response
 
 
 @router.get("/google/callback", name="google_callback")
 async def google_callback(
     request: Request,
-    state: str = Query(min_length=1, max_length=256),
-    code: str = Query(min_length=1, max_length=4096),
+    state: str | None = Query(default=None),
+    code: str | None = Query(default=None),
 ) -> RedirectResponse:
+    if not state or not code or len(state) > 256 or len(code) > 4096:
+        return RedirectResponse(login_error_path("verification_failed"), status_code=303)
     service: DashboardAuthService = request.app.state.dashboard_auth_service
     binding = request.cookies.get(OAUTH_COOKIE, "")
+    return_path = safe_return_path(request.cookies.get(RETURN_COOKIE)) or "/dashboard"
     try:
         token = await service.complete_login(
             state=state,
@@ -100,21 +104,14 @@ async def google_callback(
             browser_binding=binding,
             redirect_uri=_callback_url(request),
         )
-    except SessionRejected as error:
-        raise HTTPException(
-            status_code=403,
-            detail="Dashboard access is not authorized.",
-            headers={"Cache-Control": "no-store"},
-        ) from error
-    except DashboardAuthError as error:
-        raise HTTPException(
-            status_code=401,
-            detail="Google login could not be verified.",
-            headers={"Cache-Control": "no-store"},
-        ) from error
-    response = RedirectResponse("/", status_code=303, headers={"Cache-Control": "no-store"})
+    except SessionRejected:
+        return RedirectResponse(login_error_path("access_denied"), status_code=303)
+    except DashboardAuthError:
+        return RedirectResponse(login_error_path("verification_failed"), status_code=303)
+    response = RedirectResponse(return_path, status_code=303, headers={"Cache-Control": "no-store"})
     _secure_cookie(response, SESSION_COOKIE, token, 8 * 60 * 60)
     response.delete_cookie(OAUTH_COOKIE, secure=True, httponly=True, samesite="lax", path="/")
+    response.delete_cookie(RETURN_COOKIE, secure=True, httponly=True, samesite="lax", path="/")
     return response
 
 

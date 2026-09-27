@@ -2154,7 +2154,7 @@ for (const identifier of ["monitoring-close", "monitoring-cancel"]) {
 }
 logout.addEventListener("click", async () => {
   await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
-  window.location.assign("/auth/google/login");
+  window.location.assign("/login");
 });
 document.addEventListener("visibilitychange", () => {
   window.clearTimeout(refreshTimer);
@@ -2169,7 +2169,7 @@ refreshActiveView();
   sidebarToggle.addEventListener("click", () => toggleSidebar());
   logout.addEventListener("click", async () => {
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
-    window.location.assign("/auth/google/login");
+    window.location.assign("/login");
   });
   newUser.addEventListener("click", () => openUserDialog());
   userForm.addEventListener("submit", (event) => { event.preventDefault(); void submitUser(); });
@@ -2184,7 +2184,7 @@ refreshActiveView();
   sidebarToggle.addEventListener("click", () => toggleSidebar());
   logout.addEventListener("click", async () => {
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
-    window.location.assign("/auth/google/login");
+    window.location.assign("/login");
   });
   const preference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
   if (preference === "collapsed") setSidebarCollapsed(true);
@@ -2196,7 +2196,7 @@ refreshActiveView();
   });
   logout.addEventListener("click", async () => {
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
-    window.location.assign("/auth/google/login");
+    window.location.assign("/login");
   });
   newProject?.addEventListener("click", () => openProjectDialog());
   projectForm.addEventListener("submit", (event) => {

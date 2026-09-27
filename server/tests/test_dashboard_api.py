@@ -5,7 +5,12 @@ from pydantic import SecretStr
 from app.config import Settings
 from app.dashboard.management import EnrollmentResult
 from app.dashboard.read import DashboardReadService
-from app.dashboard.service import DashboardUser, LoginRedirect
+from app.dashboard.service import (
+    DashboardAuthError,
+    DashboardUser,
+    LoginRedirect,
+    SessionRejected,
+)
 from app.devices.credentials import GeneratedCredential
 from app.devices.service import Conflict, NotFound
 from app.main import create_app
@@ -251,13 +256,13 @@ def test_google_login_callback_and_logout_use_host_only_opaque_cookies():
     app = create_app(settings)
     app.state.dashboard_auth_service = FakeAuth()
     with TestClient(app, base_url="https://testserver") as client:
-        login = client.get("/auth/google/login", follow_redirects=False)
+        login = client.get("/auth/google/login?next=/dashboard/devices", follow_redirects=False)
         assert login.status_code == 307
         assert login.headers["location"] == "https://accounts.example.test/authorize"
         assert "__Host-skybeat_oauth=" in login.headers["set-cookie"]
         callback = client.get("/auth/google/callback?state=state&code=code", follow_redirects=False)
         assert callback.status_code == 303
-        assert callback.headers["location"] == "/"
+        assert callback.headers["location"] == "/dashboard/devices"
         assert "__Host-skybeat_session=" in callback.headers["set-cookie"]
         logout = client.post("/auth/logout")
 
@@ -281,6 +286,56 @@ def test_google_login_is_rate_limited_before_creating_oauth_transactions():
     assert [response.status_code for response in responses[:6]] == [307] * 6
     assert responses[6].status_code == 429
     assert responses[6].headers["retry-after"] == "60"
+
+
+def test_google_authentication_failures_redirect_to_safe_login_states():
+    class UnavailableAuth:
+        async def begin_login(self, redirect_uri):
+            raise DashboardAuthError("provider failure")
+
+        async def complete_login(self, **kwargs):
+            raise DashboardAuthError("callback failure")
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = UnavailableAuth()
+    with TestClient(app, base_url="https://testserver") as client:
+        unavailable = client.get("/auth/google/login", follow_redirects=False)
+        malformed = client.get("/auth/google/callback", follow_redirects=False)
+        failed = client.get("/auth/google/callback?state=state&code=code", follow_redirects=False)
+
+    assert unavailable.status_code == 303
+    assert unavailable.headers["location"] == "/login?error=unavailable"
+    assert malformed.status_code == 303
+    assert malformed.headers["location"] == "/login?error=verification_failed"
+    assert failed.status_code == 303
+    assert failed.headers["location"] == "/login?error=verification_failed"
+
+
+def test_google_access_denial_and_invalid_session_never_render_sensitive_error_detail():
+    class DeniedAuth:
+        async def complete_login(self, **kwargs):
+            raise SessionRejected("disabled user: should not reach browser")
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = DeniedAuth()
+    with TestClient(app, base_url="https://testserver") as client:
+        denied = client.get("/auth/google/callback?state=state&code=code", follow_redirects=False)
+        rendered = client.get(denied.headers["location"])
+
+    assert denied.status_code == 303
+    assert denied.headers["location"] == "/login?error=access_denied"
+    assert "disabled user" not in rendered.text
+    assert "Your Google account is not authorized for SkyBeat." in rendered.text
 
 
 def test_dashboard_management_routes_require_the_existing_dashboard_user_and_no_store():

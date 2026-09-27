@@ -163,6 +163,42 @@ for this acceptance.
 
 ## Server deployment
 
+### Production Google login
+
+SkyBeat uses only the server-side Google authorization-code flow. Users first
+visit `/login`, choose **Continue with Google**, and SkyBeat returns them only
+to a validated internal path after the callback. Do not send users directly to
+the callback endpoint and do not configure a browser Google JavaScript client.
+
+For production, configure a Google **Web application** OAuth client with this
+exact redirect URI, replacing the hostname with SkyBeat's configured public
+origin:
+
+```text
+https://<skybeat-host>/auth/google/callback
+```
+
+`SKYBEAT_PUBLIC_BASE_URL` is canonical and must use that HTTPS origin; it is
+used to construct the callback URI and is never derived from an incoming Host
+header. Production startup rejects `SKYBEAT_DEV_AUTH_BYPASS=true`, non-HTTPS
+public URLs, missing Google client settings, missing session encryption key,
+and a missing email/domain admission policy. The admission policy only permits
+an identity to enter the flow; the current durable `application_users` record
+supplies the SkyBeat role. Bootstrap the initial Owner with the documented
+`owner-bootstrap` command before its first Google login.
+
+If Google is unavailable, a callback is malformed, or the identity cannot be
+admitted/provisioned, SkyBeat returns a safe login-page message without OAuth
+codes, tokens, cookie values, secrets, or database details. Login and logout
+events are recorded without those sensitive values. Local logout invalidates
+the opaque SkyBeat session only; it does not sign the operator out of Google.
+
+After a production configuration change, verify Owner, Admin, User, and an
+unauthorized identity in a browser. Confirm that logout in one tab prevents
+subsequent protected requests in another tab, and that a disabled or downgraded
+durable user loses access on its next request. Real-browser acceptance remains
+required; development bypass is never evidence of production login acceptance.
+
 ### Prerequisites
 
 Use a supported Linux server with Python 3.12 for direct development operation, MySQL 8.x/InnoDB, Caddy, UTC time synchronization, and a firewall that allows only approved operator access plus Caddy HTTP/HTTPS traffic. Production should use the Stage 06 Docker Compose deployment where available: Caddy is the only public application ingress, while API, worker, and MySQL remain private.

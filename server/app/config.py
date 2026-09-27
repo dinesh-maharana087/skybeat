@@ -229,6 +229,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production dashboard authentication requires protected OIDC settings."
                 )
+            if not self.dashboard_authorization_configured:
+                raise ValueError(
+                    "Production dashboard authentication requires an admission policy."
+                )
         return self
 
 

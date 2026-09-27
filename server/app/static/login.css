@@ -1,0 +1,30 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #0d1b2a;
+  color: #172033;
+}
+
+* { box-sizing: border-box; }
+
+body { min-height: 100vh; margin: 0; background: #0d1b2a; }
+
+.login-layout { display: grid; min-height: calc(100vh - 48px); place-items: center; padding: 32px 20px; }
+
+.login-card { width: min(100%, 480px); padding: 40px; border: 1px solid #d8e0ea; border-radius: 16px; background: #ffffff; box-shadow: 0 20px 60px rgb(0 0 0 / 25%); }
+
+.login-brand { display: grid; gap: 4px; margin-bottom: 32px; }
+.login-logo { width: 96px; height: auto; margin-bottom: 12px; object-fit: contain; object-position: left; }
+.login-product { margin: 0; color: #0d1b2a; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.03em; }
+.login-kicker { margin: 0; color: #52647a; font-size: .9rem; font-weight: 650; text-transform: uppercase; letter-spacing: .08em; }
+h1 { margin: 0; font-size: clamp(1.65rem, 3vw, 2.2rem); letter-spacing: -0.03em; }
+.login-description, .login-notice { color: #52647a; line-height: 1.55; }
+.login-description { margin: 12px 0 28px; }
+.login-notice { margin: 20px 0 0; font-size: .875rem; }
+.google-button { display: block; padding: 13px 18px; border-radius: 8px; background: #2563eb; color: #fff; font-weight: 750; text-align: center; text-decoration: none; }
+.google-button:hover { background: #1d4ed8; }
+.google-button:focus-visible { outline: 3px solid #93c5fd; outline-offset: 3px; }
+.login-error { margin: 0 0 18px; padding: 12px; border-left: 4px solid #b42318; background: #fef3f2; color: #7a271a; }
+.login-footer { padding: 0 16px 20px; color: #cbd5e1; font-size: .8rem; text-align: center; }
+
+@media (max-width: 480px) { .login-card { padding: 28px 24px; border-radius: 12px; } }
