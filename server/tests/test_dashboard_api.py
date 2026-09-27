@@ -295,6 +295,86 @@ def test_dashboard_management_routes_require_the_existing_dashboard_user_and_no_
     assert response.headers["cache-control"] == "no-store"
 
 
+@pytest.mark.parametrize("role", ["OWNER", "ADMIN"])
+def test_notification_management_api_allows_owner_and_admin(role):
+    from app.users.service import UserRole
+
+    calls: list[object] = []
+
+    class Session:
+        def authenticate_session(self, token):
+            return DashboardUser("google-user", "ops@example.test", None, 7, UserRole(role))
+
+    class Notifications:
+        def list_projects(self):
+            return {"items": [{"project_id": "e3e70682-c209-4cac-a29f-6fbed82c07cd"}]}
+
+        def update_project(self, project_id, payload):
+            calls.append((project_id, payload))
+            return {"project_id": project_id, "configured": True, "recipients": payload.recipients}
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Session()
+    app.state.notification_management_service_factory = lambda database, *, actor: Notifications()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        listed = client.get("/api/v1/notifications")
+        updated = client.put(
+            "/api/v1/notifications/e3e70682-c209-4cac-a29f-6fbed82c07cd",
+            json={
+                "recipients": ["Ops@Example.Test"],
+                "device_offline_enabled": True,
+                "device_recovered_enabled": False,
+                "gpu_degraded_enabled": True,
+                "gpu_recovered_enabled": True,
+            },
+        )
+
+    assert listed.status_code == 200
+    assert updated.status_code == 200
+    assert calls[0][0] == "e3e70682-c209-4cac-a29f-6fbed82c07cd"
+    assert calls[0][1].recipients == ["ops@example.test"]
+
+
+def test_notification_management_api_rejects_user_role_before_service_execution():
+    from app.users.service import UserRole
+
+    class Session:
+        def authenticate_session(self, token):
+            return DashboardUser("google-user", "user@example.test", None, 7, UserRole.USER)
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Session()
+    app.state.notification_management_service_factory = lambda *args, **kwargs: (
+        _ for _ in ()
+    ).throw(AssertionError("notification management must not run"))
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        response = client.put(
+            "/api/v1/notifications/e3e70682-c209-4cac-a29f-6fbed82c07cd",
+            json={
+                "recipients": [],
+                "device_offline_enabled": False,
+                "device_recovered_enabled": False,
+                "gpu_degraded_enabled": False,
+                "gpu_recovered_enabled": False,
+            },
+        )
+
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
+
+
 def test_user_role_cannot_create_a_project_even_with_a_direct_api_request():
     from app.users.service import UserRole
 

@@ -132,5 +132,5 @@ def test_status_records_operator_supplied_stage06_evidence_without_secrets():
 
     assert "operator-supplied stage 06 acceptance evidence" in status.lower()
     assert "NVIDIA GeForce RTX 5080" in status
-    assert "Current stage: Stage 07" in status
+    assert "Current stage: Stage 11" in status
     assert "Stage 07.1" in status

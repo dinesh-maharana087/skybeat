@@ -125,3 +125,36 @@ class NotificationAttempt(Base):
     outcome: Mapped[str | None] = mapped_column(String(32))
     error_category: Mapped[str | None] = mapped_column(String(64))
     provider_message_id: Mapped[str | None] = mapped_column(String(256))
+
+
+class ProjectNotificationSettings(Base):
+    """A project becomes explicitly configured when this durable row exists."""
+
+    __tablename__ = "project_notification_settings"
+    __table_args__ = (TABLE_OPTIONS,)
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), primary_key=True
+    )
+    device_offline_enabled: Mapped[bool] = mapped_column(default=True)
+    device_recovered_enabled: Mapped[bool] = mapped_column(default=True)
+    gpu_degraded_enabled: Mapped[bool] = mapped_column(default=True)
+    gpu_recovered_enabled: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+
+
+class ProjectNotificationRecipient(Base):
+    """Normalized operational email destination without provider credentials."""
+
+    __tablename__ = "project_notification_recipients"
+    __table_args__ = (
+        UniqueConstraint("project_id", "email", name="project_email"),
+        TABLE_OPTIONS,
+    )
+
+    id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="RESTRICT"))
+    email: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))

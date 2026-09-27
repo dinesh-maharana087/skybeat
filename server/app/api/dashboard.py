@@ -23,6 +23,7 @@ from app.dashboard.service import (
 from app.db import Database
 from app.devices.service import Conflict, IdentityError, NotFound
 from app.models import ApplicationUser
+from app.notifications.management import NotificationManagementService, NotificationProjectNotFound
 from app.schemas.dashboard_management import (
     DeviceEnrollRequest,
     DeviceMonitoringUpdateRequest,
@@ -30,6 +31,7 @@ from app.schemas.dashboard_management import (
     ProjectCreateRequest,
     canonical_uuid,
 )
+from app.schemas.notifications import ProjectNotificationUpdateRequest, project_identifier
 from app.schemas.users import UserCreateRequest, UserUpdateRequest
 from app.users.service import (
     UserConflict,
@@ -77,6 +79,14 @@ def _management_service(request: Request, user: DashboardUser) -> DashboardManag
 def _user_service(request: Request, user: DashboardUser) -> UserService:
     factory = cast(Callable[..., UserService], request.app.state.user_service_factory)
     return factory(request.app.state.database, actor=user.email, actor_role=user.role)
+
+
+def _notification_service(request: Request, user: DashboardUser) -> NotificationManagementService:
+    factory = cast(
+        Callable[..., NotificationManagementService],
+        request.app.state.notification_management_service_factory,
+    )
+    return factory(request.app.state.database, actor=user.email)
 
 
 def _user_projection(user: ApplicationUser) -> dict[str, object]:
@@ -145,6 +155,37 @@ async def dashboard_overview(request: Request, _: DashboardUserDependency) -> JS
     service: DashboardReadService = request.app.state.dashboard_read_service
     payload = await asyncio.to_thread(service.overview)
     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/notifications")
+async def notifications(request: Request, user: ManagementUserDependency) -> JSONResponse:
+    return JSONResponse(
+        await asyncio.to_thread(_notification_service(request, user).list_projects),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.put("/notifications/{project_uuid}")
+async def update_notifications(
+    request: Request,
+    project_uuid: str,
+    payload: ProjectNotificationUpdateRequest,
+    user: ManagementUserDependency,
+) -> JSONResponse:
+    _require_same_origin(request)
+    try:
+        result = await asyncio.to_thread(
+            _notification_service(request, user).update_project,
+            project_identifier(project_uuid),
+            payload,
+        )
+    except (NotificationProjectNotFound, ValueError) as error:
+        raise HTTPException(
+            status_code=404 if isinstance(error, NotificationProjectNotFound) else 422,
+            detail="Notification project is invalid.",
+            headers={"Cache-Control": "no-store"},
+        ) from error
+    return JSONResponse({"notification": result}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/users")

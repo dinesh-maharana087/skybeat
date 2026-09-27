@@ -129,6 +129,8 @@ const userFormStatus = document.getElementById("user-form-status");
 const userSubmit = document.getElementById("user-submit");
 const userClose = document.getElementById("user-close");
 const userCancel = document.getElementById("user-cancel");
+const notificationsList = document.getElementById("notifications-list");
+const notificationsStatus = document.getElementById("notifications-status");
 
 let refreshTimer = null;
 let searchTimer = null;
@@ -315,6 +317,12 @@ async function requestProjects() {
 async function requestUsers() {
   const response = await fetch("/api/v1/users", { credentials: "same-origin" });
   if (!response.ok) throw new Error("users request failed");
+  return response.json();
+}
+
+async function requestNotifications() {
+  const response = await fetch("/api/v1/notifications", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("notifications request failed");
   return response.json();
 }
 
@@ -1009,6 +1017,94 @@ async function refreshUsersView() {
   }
 }
 
+function notificationCheckbox(label, checked) {
+  const control = document.createElement("label");
+  control.className = "checkbox-control";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = checked;
+  control.append(input, document.createTextNode(` ${label}`));
+  return [control, input];
+}
+
+function renderNotificationProjects(items) {
+  notificationsList.replaceChildren();
+  for (const project of items) {
+    const card = document.createElement("article");
+    card.className = "project-summary-card";
+    const title = element("h3", project.project_name);
+    const mode = element(
+      "p",
+      project.configured
+        ? "Project policy is active. Only these recipients can receive email."
+        : "Using deployment fallback until a project policy is saved.",
+    );
+    const recipients = document.createElement("textarea");
+    recipients.rows = 3;
+    recipients.placeholder = "ops@example.com, oncall@example.com";
+    recipients.value = project.recipients.join(", ");
+    recipients.setAttribute("aria-label", `${project.project_name} email recipients`);
+    const [offlineControl, offline] = notificationCheckbox(
+      "Device offline", project.device_offline_enabled,
+    );
+    const [recoveredControl, recovered] = notificationCheckbox(
+      "Device recovered", project.device_recovered_enabled,
+    );
+    const [gpuDegradedControl, gpuDegraded] = notificationCheckbox(
+      "GPU degraded", project.gpu_degraded_enabled,
+    );
+    const [gpuRecoveredControl, gpuRecovered] = notificationCheckbox(
+      "GPU recovered", project.gpu_recovered_enabled,
+    );
+    const controls = document.createElement("div");
+    controls.className = "management-form";
+    controls.append(recipients, offlineControl, recoveredControl, gpuDegradedControl, gpuRecoveredControl);
+    const status = element("p", "");
+    status.setAttribute("aria-live", "polite");
+    const save = element("button", "Save project policy");
+    save.type = "button";
+    save.className = "sb-button--primary";
+    save.addEventListener("click", async () => {
+      const values = recipients.value.split(/[;,\n]/).map((value) => value.trim()).filter(Boolean);
+      save.disabled = true;
+      status.textContent = "Saving…";
+      try {
+        await requestDashboardMutation(`/api/v1/notifications/${encodeURIComponent(project.project_id)}`, "PUT", {
+          recipients: values,
+          device_offline_enabled: offline.checked,
+          device_recovered_enabled: recovered.checked,
+          gpu_degraded_enabled: gpuDegraded.checked,
+          gpu_recovered_enabled: gpuRecovered.checked,
+        });
+        status.textContent = "Saved. This policy applies to newly created alert events.";
+        await refreshNotificationsView();
+      } catch (_) {
+        status.textContent = "The policy was not accepted. Check recipients and try again.";
+      } finally {
+        save.disabled = false;
+      }
+    });
+    card.append(title, mode, controls, save, status);
+    notificationsList.append(card);
+  }
+}
+
+async function refreshNotificationsView() {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    const result = await requestNotifications();
+    renderNotificationProjects(result.items);
+    notificationsStatus.textContent = `${result.items.length} project notification polic${result.items.length === 1 ? "y" : "ies"}.`;
+    markDashboardFresh(null);
+  } catch (_) {
+    notificationsStatus.textContent = "Notification policies could not be loaded.";
+    markDashboardStale();
+  } finally {
+    refreshing = false;
+  }
+}
+
 function openUserDialog(user = null) {
   editingUserId = user?.user_id ?? null;
   userForm.reset();
@@ -1063,6 +1159,7 @@ async function refreshActiveView() {
   if (dashboardView === "devices") return refreshDashboard();
   if (dashboardView === "projects") return refreshProjectsView();
   if (dashboardView === "users") return refreshUsersView();
+  if (dashboardView === "notifications") return refreshNotificationsView();
   return refreshOverviewView();
 }
 
@@ -2079,6 +2176,16 @@ refreshActiveView();
   userClose.addEventListener("click", closeUserDialog);
   userCancel.addEventListener("click", closeUserDialog);
   userDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeUserDialog(); });
+  const preference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
+  if (preference === "collapsed") setSidebarCollapsed(true);
+  else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);
+  refreshActiveView();
+} else if (dashboardView === "notifications") {
+  sidebarToggle.addEventListener("click", () => toggleSidebar());
+  logout.addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+    window.location.assign("/auth/google/login");
+  });
   const preference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
   if (preference === "collapsed") setSidebarCollapsed(true);
   else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);

@@ -30,6 +30,7 @@ from app.dashboard.service import DashboardAuthService
 from app.db import Database
 from app.enrollment.service import AgentEnrollmentService
 from app.logging import configure_logging
+from app.notifications.management import NotificationManagementService
 from app.users.service import UserService
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,7 @@ def create_app(
     )
     app.state.enrollment_rate_limiter = EnrollmentRateLimiter()
     app.state.user_service_factory = UserService
+    app.state.notification_management_service_factory = NotificationManagementService
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.allowed_hosts)
     app.mount(
         "/static",

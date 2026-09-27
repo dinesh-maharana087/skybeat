@@ -4,6 +4,7 @@ import smtplib
 import ssl
 from datetime import UTC, datetime
 from email.message import EmailMessage
+from html import escape
 
 from app.notifications.types import DeliveryMessage, ProviderOutcome, ProviderResult
 
@@ -130,5 +131,33 @@ class SMTPEmailProvider:
             )
         else:
             body.append(f"Occurred: {_wire_time(delivery.occurred_at)}")
-        message.set_content("\n".join(body) + "\n")
+        text = "\n".join(body) + "\n"
+        message.set_content(text)
+        title = f"SkyBeat: Device {event.title()}"
+        rows = "".join(
+            f"<tr><th>{escape(label)}</th><td>{escape(value)}</td></tr>"
+            for label, value in (
+                ("Project", project),
+                ("Device", device),
+                ("Event", event),
+                ("Incident", delivery.incident_uuid),
+                ("Occurred", _wire_time(delivery.occurred_at)),
+            )
+        )
+        html = "".join(
+            (
+                '<!doctype html><html><body style="margin:0;background:#f3f6fa;">',
+                '<main style="max-width:640px;margin:24px auto;background:#fff;padding:28px;">',
+                '<p style="margin:0;color:#4361ee;font-weight:700">SKYBEAT</p>',
+                f'<h1 style="margin:12px 0">{escape(title)}</h1>',
+                "<p>Operational notification from SkyBeat.</p>",
+                '<table style="border-collapse:collapse;width:100%">',
+                rows,
+                "</table>",
+                '<p style="color:#5d6b82">',
+                "Device status is determined by server heartbeat receipt time.",
+                "</p></main></body></html>",
+            )
+        )
+        message.add_alternative(html, subtype="html")
         return message

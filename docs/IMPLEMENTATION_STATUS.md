@@ -1,10 +1,10 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-09-27
-Current stage: Stage 10 - Production Edge Agent Deployment
+Current stage: Stage 11 - Alerting & Notification Management
 Current UI stage: Stage 09 - User Management + Role-Based Access Control
-Current milestone: Stage 10 production-path bundle acceptance and operator runbook completed; real Ubuntu target acceptance remains
-Status: IN PROGRESS / READY FOR FINAL HUMAN ACCEPTANCE. The approved local-wheel model is retained. Durable enrollment, release verification, hardened installation, receipt polling, and the explicit-wheel Linux installer contract are implemented and locally verified; real-MySQL and supported-Ubuntu acceptance remain environment-pending. Do not create a final commit or start Stage 11.
+Current milestone: Stage 11 durable project notification policy, recipient snapshots, management API/dashboard, and multipart email are implemented; real-MySQL and human browser acceptance remain environment-pending.
+Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE / AWAITING HUMAN ACCEPTANCE. Do not create a final commit or start Stage 12.
 
 ## Completed
 
@@ -50,8 +50,7 @@ Status: IN PROGRESS / READY FOR FINAL HUMAN ACCEPTANCE. The approved local-wheel
 
 ## In Progress
 
-- Stage 10 implementation is in progress. Preserve the approved local-wheel/local-wheelhouse delivery model, strict one-use enrollment token semantics, receipt-only post-install verification, and preflight-before-host-change requirement.
-- Stage 10 remaining work is supported Ubuntu 24.04 amd64 real-install acceptance: systemd ownership/modes, receipt-confirmed heartbeat, dashboard visibility, reboot persistence, ordinary reinstall, consumed-token rejection, and bound `--re-enroll`. Do not begin Stage 11.
+- Stage 11 human acceptance remains: apply the migration to an isolated MySQL 8.x test database, configure recipient policy through the dashboard as OWNER/ADMIN, and confirm an actual queued SMTP delivery. No real Google browser login acceptance was attempted because the Pre-Stage 11 OAuth admission configuration remains operator-pending.
 
 ## Verification Completed
 
@@ -373,6 +372,19 @@ Status: IN PROGRESS / READY FOR FINAL HUMAN ACCEPTANCE. The approved local-wheel
 - Environment limitations: real-MySQL tests, including the Stage 09 durable-session regression, are skipped because no isolated `SKYBEAT_TEST_DATABASE_URL` is available. The normal full server command cannot collect `test_heartbeat_agent_integration.py` because the server-only environment lacks the agent's locked `psutil` dependency; installing it was blocked by the approval service usage limit. The available server regression (excluding that uncollectable test) had 353 passed and 33 MySQL skips, with two unrelated Windows Bash path-translation installer failures. Agent regression could not run with `uv --frozen` because `agent/uv.lock` is absent; no application dependency or lockfile was changed. Browser acceptance is represented by TestClient role/page coverage and JavaScript runtime/syntax checks; no production or protected local MySQL/browser environment was altered.
 - Known limitations: real MySQL migration/transaction behavior and an interactive three-role browser session remain environment-pending. Owner transfer/recovery is intentionally deferred; no Owner browser/API mutation exists.
 - Next action: STOP. Do not create a commit and do not begin Stage 10 without explicit authorization.
+
+## Stage 11 Checkpoint
+
+- Stage: 11 - Alerting & Notification Management.
+- Status: IMPLEMENTED / EXECUTABLE VERIFICATION COMPLETE / AWAITING HUMAN ACCEPTANCE.
+- Files changed: project notification models/migration/configuration/management service; alert event recipient selection; dashboard API/page/template/JavaScript; multipart email provider; focused tests; `docs/ALERTING.md`, `docs/API_SPEC.md`, and this checkpoint.
+- Migration: `e43a8c9b0d11_stage11_project_notification_settings` is the intended sole Alembic head. It adds one explicit settings row per project and normalized unique project recipient rows.
+- Behavior: unconfigured projects retain only `SKYBEAT_ALERT_EMAIL_RECIPIENTS`; configured projects use only their own event toggles and recipients. An empty configured recipient set or disabled event creates no email delivery, while incidents/events still persist. Recipient destinations are copied to existing delivery rows at event creation, so configuration changes cannot alter existing retry destinations. Recovery snapshots the current policy at recovery-event creation.
+- Access/security: OWNER and ADMIN may read/write policy through authenticated same-origin endpoints; USER receives 403. Policy mutations are audited without recipient addresses in the audit details. Google identity/session/user-role architecture is unchanged. Multipart SMTP mail contains a plaintext fallback and escaped, operational HTML.
+- Tests executed: focused policy/delivery/RBAC/page suite 84 passed; final focused status/policy/RBAC/page suite 81 passed; 10 MySQL-dependent tests skipped only because `SKYBEAT_TEST_DATABASE_URL` is unset. The full server suite recorded 382 passed, 37 skipped, and 5 pre-existing Stage 10 deployment-artifact failures. Ruff check passed and Ruff format check passed for 88 files; strict mypy passed for 52 source files; JavaScript syntax, Alembic sole-head `e43a8c9b0d11`, and `git diff --check` passed.
+- Verification pending: real MySQL migration/event snapshot/SMTP acceptance, interactive OWNER/ADMIN browser workflow, and real Google OWNER login. The latter remains pending human acceptance because the required Google client ID and admission policy are still absent and development auth bypass is enabled.
+- Known baseline limitations: full repository test coverage retains five pre-existing Stage 10 deployment-artifact/Windows Bash-path failures unrelated to Stage 11; no final commit was created.
+- Next action: human review of Stage 11, then provision an isolated MySQL 8.x test URL and the documented Google configuration for final acceptance. Do not begin Stage 12.
 
 ## Resume Command / Guidance
 

@@ -20,7 +20,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
 
 
-DashboardView = Literal["overview", "devices", "projects", "users"]
+DashboardView = Literal["overview", "devices", "projects", "notifications", "users"]
 
 
 async def _dashboard_user(request: Request) -> DashboardUser | Response | None:
@@ -96,3 +96,19 @@ async def dashboard_users(request: Request) -> Response:
             headers={"Cache-Control": "no-store"},
         )
     return await render_dashboard_view(request, "users")
+
+
+@router.get("/dashboard/notifications")
+async def dashboard_notifications(request: Request) -> Response:
+    user = await _dashboard_user(request)
+    if user is None:
+        return RedirectResponse("/auth/google/login", status_code=303)
+    if isinstance(user, Response):
+        return user
+    if user.role not in {UserRole.OWNER, UserRole.ADMIN}:
+        raise HTTPException(
+            status_code=403,
+            detail="Dashboard permission is denied.",
+            headers={"Cache-Control": "no-store"},
+        )
+    return await render_dashboard_view(request, "notifications")

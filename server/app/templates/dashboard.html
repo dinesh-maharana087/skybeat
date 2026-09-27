@@ -4,6 +4,9 @@
 {% elif active_view == "projects" %}
 {% set page_title = "Projects" %}
 {% set page_description = "Organize monitored devices by operational project." %}
+{% elif active_view == "notifications" %}
+{% set page_title = "Notifications" %}
+{% set page_description = "Control project email recipients and alert event delivery." %}
 {% elif active_view == "users" %}
 {% set page_title = "Users" %}
 {% set page_description = "Manage provisioned dashboard access and roles." %}
@@ -40,6 +43,7 @@
           <a href="/dashboard/devices" data-nav-destination="devices" data-tooltip="Devices"{% if active_view == "devices" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 12h8M8 17h5"/></svg><span class="nav-label">Devices</span></a>
           <a href="/dashboard/projects" data-nav-destination="projects" data-tooltip="Projects"{% if active_view == "projects" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M4 12h16M8 20v-4h8v4"/></svg><span class="nav-label">Projects</span></a>
           {% if can_manage %}
+          <a href="/dashboard/notifications" data-nav-destination="notifications" data-tooltip="Notifications"{% if active_view == "notifications" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 22a2.5 2.5 0 0 0 2.4-2h-4.8A2.5 2.5 0 0 0 12 22ZM18 16v-5a6 6 0 0 0-5-5.91V4a1 1 0 0 0-2 0v1.09A6 6 0 0 0 6 11v5l-2 2h16l-2-2Z"/></svg><span class="nav-label">Notifications</span></a>
           <a href="/dashboard/users" data-nav-destination="users" data-tooltip="Users"{% if active_view == "users" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-label">Users</span></a>
           {% endif %}
         </nav>
@@ -210,6 +214,15 @@
             </section>
           </section>
 
+          {% endif %}
+
+          {% if active_view == "notifications" %}
+          <section class="users-section" aria-labelledby="notifications-heading">
+            <div class="section-heading"><div><p class="eyebrow">Alert routing</p><h2 id="notifications-heading">Project notification policy</h2></div></div>
+            <p>Unconfigured projects use the deployment fallback. Saving a project makes its recipients and enabled events authoritative; it never merges with the fallback.</p>
+            <p id="notifications-status" aria-live="polite">Loading project notification policies…</p>
+            <div id="notifications-list" class="project-summary-grid" aria-live="polite"></div>
+          </section>
           {% endif %}
 
           {% if active_view == "users" %}

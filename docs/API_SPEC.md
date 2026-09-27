@@ -2312,3 +2312,34 @@ receipt and returns `{ "accepted_heartbeat": true|false }` until expiry. It is
 not a credential, cannot exchange/re-enroll, and cannot read telemetry,
 dashboard data, or normal device APIs. These responses use `Cache-Control:
 no-store`.
+
+---
+
+# 80. Project Notification Management
+
+`GET /api/v1/notifications` is an authenticated OWNER/ADMIN-only dashboard
+endpoint. It returns project names, public IDs, whether each project has an
+explicit policy, normalized email recipients, and the four event-enable flags.
+Responses use `Cache-Control: no-store`.
+
+`PUT /api/v1/notifications/{project_uuid}` is a same-origin OWNER/ADMIN-only
+endpoint. It accepts a canonical project UUID and this strict JSON body:
+
+```json
+{
+  "recipients": ["ops@example.com"],
+  "device_offline_enabled": true,
+  "device_recovered_enabled": true,
+  "gpu_degraded_enabled": true,
+  "gpu_recovered_enabled": true
+}
+```
+
+Email addresses are trimmed, normalized to lowercase, validated, deduplicated,
+and limited to 100 entries. A successful PUT creates or replaces that project's
+explicit policy and recipient set. It does not mutate prior event delivery
+snapshots or merge any recipient with `SKYBEAT_ALERT_EMAIL_RECIPIENTS`.
+
+The server records a policy-change audit event containing the actor, project,
+event flags, and recipient count. Recipient email addresses are not copied to
+the audit details.
