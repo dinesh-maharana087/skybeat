@@ -89,3 +89,73 @@ def test_enrollment_exchange_is_single_use_and_receipt_is_scoped(mysql_database,
         device.last_seen_at = database_utc(session)
 
     assert service.verify_receipt(exchanged.verification_token.value).accepted_heartbeat
+
+
+def test_enrollment_management_status_is_evidence_driven_and_revocation_is_unused_only(
+    mysql_database, identity
+):
+    from sqlalchemy import select
+
+    from app.db import database_utc
+    from app.devices.service import Conflict, GPUPolicy
+    from app.enrollment.service import (
+        AgentEnrollmentService,
+        EnrollmentLifecycle,
+        EnrollmentMode,
+        EnrollmentRejected,
+    )
+    from app.models import AgentEnrollment, AuditEvent, Device
+
+    project = identity.create_project("Enrollment lifecycle project")
+    service = AgentEnrollmentService(
+        mysql_database, actor="owner@example.com", offline_after_seconds=180
+    )
+    pending = service.create_intent(
+        mode=EnrollmentMode.NEW,
+        project_uuid=project.public_id,
+        device_name="pending-device",
+        policy=GPUPolicy(),
+    )
+
+    assert service.status(pending.enrollment.public_id).state is EnrollmentLifecycle.PENDING
+    revoked = service.revoke_unused(pending.enrollment.public_id)
+    assert revoked.state is EnrollmentLifecycle.REVOKED
+    with mysql_database.transaction() as session:
+        assert (
+            session.scalar(
+                select(AuditEvent).where(AuditEvent.action == "agent_enrollment.revoked")
+            )
+            is not None
+        )
+    with pytest.raises(EnrollmentRejected):
+        service.exchange(pending.token.value)
+
+    expired = service.create_intent(
+        mode=EnrollmentMode.NEW,
+        project_uuid=project.public_id,
+        device_name="expired-device",
+        policy=GPUPolicy(),
+    )
+    with mysql_database.transaction() as session:
+        row = session.scalar(
+            select(AgentEnrollment).where(AgentEnrollment.public_id == expired.enrollment.public_id)
+        )
+        assert row is not None
+        row.expires_at = row.created_at
+    assert service.status(expired.enrollment.public_id).state is EnrollmentLifecycle.EXPIRED
+
+    enrolled = service.create_intent(
+        mode=EnrollmentMode.NEW,
+        project_uuid=project.public_id,
+        device_name="enrolled-device",
+        policy=GPUPolicy(),
+    )
+    exchange = service.exchange(enrolled.token.value)
+    assert service.status(enrolled.enrollment.public_id).state is EnrollmentLifecycle.ENROLLED
+    with pytest.raises(Conflict):
+        service.revoke_unused(enrolled.enrollment.public_id)
+    with mysql_database.transaction() as session:
+        device = session.scalar(select(Device).where(Device.id == exchange.device.id))
+        assert device is not None
+        device.last_seen_at = database_utc(session)
+    assert service.status(enrolled.enrollment.public_id).state is EnrollmentLifecycle.ONLINE

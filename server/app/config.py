@@ -1,7 +1,9 @@
 """Validated, secret-safe runtime configuration."""
 
 import base64
+import ipaddress
 import re
+from pathlib import Path
 from typing import Annotated, Literal, Self
 from urllib.parse import urlsplit
 
@@ -50,6 +52,9 @@ class Settings(BaseSettings):
     oidc_timeout_seconds: int = Field(default=5, ge=1, le=15)
     agent_enrollment_ttl_seconds: int = Field(default=600, ge=60, le=1800)
     agent_enrollment_verification_ttl_seconds: int = Field(default=600, ge=60, le=1800)
+    agent_release_dir: Path | None = None
+    agent_server_url: str | None = None
+    allow_insecure_local_agent_server: bool = False
     smtp_host: str | None = Field(default=None, min_length=1, max_length=253)
     smtp_port: int = Field(default=587, ge=1, le=65535)
     smtp_username: str | None = Field(default=None, max_length=320)
@@ -233,6 +238,44 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production dashboard authentication requires an admission policy."
                 )
+        agent_server_url = self.agent_server_url or self.public_base_url
+        try:
+            agent_url = urlsplit(agent_server_url)
+            agent_host = agent_url.hostname
+            agent_port = agent_url.port
+        except ValueError:
+            agent_host = None
+            agent_port = None
+            agent_url = None
+        valid_agent_origin = bool(
+            agent_url is not None
+            and agent_host
+            and agent_url.scheme in {"https", "http"}
+            and not agent_url.username
+            and not agent_url.password
+            and agent_url.path in {"", "/"}
+            and not agent_url.query
+            and not agent_url.fragment
+            and (agent_port is None or 1 <= agent_port <= 65535)
+        )
+        if not valid_agent_origin or agent_url is None or agent_host is None:
+            raise ValueError("Agent server URL must be a valid origin.")
+        if agent_url.scheme == "http":
+            try:
+                agent_address = ipaddress.ip_address(agent_host)
+            except ValueError:
+                agent_address = None
+            if (
+                self.env != "development"
+                or not self.allow_insecure_local_agent_server
+                or agent_address is None
+                or agent_address.is_unspecified
+                or not (agent_address.is_private or agent_address.is_loopback)
+            ):
+                raise ValueError("Insecure agent server URLs require explicit development mode.")
+        elif self.allow_insecure_local_agent_server and self.env != "development":
+            raise ValueError("Insecure local agent server mode requires development mode.")
+        self.agent_server_url = agent_server_url
         return self
 
 

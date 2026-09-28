@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 fail() { printf '%s\n' "install-agent: $1" >&2; exit 1; }
 config_dir=/etc/skybeat; config_file=/etc/skybeat/agent.env; opt_dir=/opt/skybeat; venv_dir=/opt/skybeat/venv; state_dir=/var/lib/skybeat
-unit_source="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/deployment/systemd/skybeat-agent.service"
+unit_source="$release_dir/deployment/systemd/skybeat-agent.service"
+release_verifier="$release_dir/verify-agent-release.py"
+server_validator="$release_dir/validate-agent-server-url.py"
 install_outcome=FAILED; verification_token=''; existing_sha256=''; package_version=''
 regular() { [[ -f "$1" && ! -L "$1" ]]; }
 installed_sha256() { regular "$opt_dir/VERSION" || return 1; awk -F= '$1 == "sha256" && $2 ~ /^[0-9a-f]{64}$/ { print $2; exit }' "$opt_dir/VERSION"; }
 installation_is_current() { local installed; installed="$(installed_sha256 || true)"; [[ "$installed" == "$expected_sha256" && -x "$venv_dir/bin/skybeat-agent" && -f /etc/systemd/system/skybeat-agent.service && ! -L /etc/systemd/system/skybeat-agent.service ]] && systemctl is-active --quiet skybeat-agent.service; }
-preflight() { [[ ${EUID:-1} -eq 0 ]] || fail 'run as root'; . /etc/os-release; [[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 24.04 && $(uname -m) == x86_64 ]] || fail 'Ubuntu 24.04 amd64 is required'; [[ "$server" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || fail 'an HTTPS server origin is required'; command -v python3.12 >/dev/null && command -v curl >/dev/null && command -v sha256sum >/dev/null && command -v systemctl >/dev/null || fail 'required command is missing'; regular "$package" && regular "$lockfile" && [[ -d "$wheelhouse" && ! -L "$wheelhouse" ]] && regular "$unit_source" || fail 'release input is invalid'; [[ "$expected_sha256" =~ ^[0-9a-f]{64}$ ]] || fail 'expected sha256 is invalid'; [[ -z "$token_file" || -f "$token_file" && ! -L "$token_file" ]] || fail 'enrollment token file is invalid'; }
-verify_package() { [[ $(sha256sum "$package" | awk '{print $1}') == "$expected_sha256" ]] || fail 'package sha256 mismatch'; python3.12 "$(dirname "$unit_source")/../../scripts/verify-agent-release.py" --bundle "$(dirname "$package")" >/dev/null || fail 'release bundle verification failed'; package_version="$(python3.12 - "$package" <<'PY'
+preflight() { [[ ${EUID:-1} -eq 0 ]] || fail 'run as root'; . /etc/os-release; [[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 24.04 && $(uname -m) == x86_64 ]] || fail 'Ubuntu 24.04 amd64 is required'; command -v python3.12 >/dev/null && command -v curl >/dev/null && command -v sha256sum >/dev/null && command -v systemctl >/dev/null || fail 'required command is missing'; regular "$package" && regular "$lockfile" && [[ -d "$wheelhouse" && ! -L "$wheelhouse" ]] && regular "$unit_source" && regular "$release_verifier" && regular "$server_validator" || fail 'release input is invalid'; [[ "$expected_sha256" =~ ^[0-9a-f]{64}$ ]] || fail 'expected sha256 is invalid'; local server_arguments=(--server "$server"); [[ $allow_insecure_local_server -eq 0 ]] || server_arguments+=(--allow-insecure-local-server); python3.12 "$server_validator" "${server_arguments[@]}" >/dev/null 2>&1 || fail 'agent server origin is invalid'; [[ -z "$token_file" || -f "$token_file" && ! -L "$token_file" ]] || fail 'enrollment token file is invalid'; }
+verify_package() { [[ $(sha256sum "$package" | awk '{print $1}') == "$expected_sha256" ]] || fail 'package sha256 mismatch'; python3.12 "$release_verifier" --bundle "$(dirname "$package")" >/dev/null || fail 'release bundle verification failed'; package_version="$(python3.12 - "$package" <<'PY'
 import sys
 import zipfile
 

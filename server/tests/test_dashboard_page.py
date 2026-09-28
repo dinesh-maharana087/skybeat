@@ -879,6 +879,38 @@ def test_dashboard_enrollment_credential_is_explicitly_transient_and_copy_only_o
     assert "deviceEnrollDialog.close" in script
 
 
+def test_dashboard_deployment_flow_uses_validated_release_metadata_and_a_local_token_file_only():
+    template = dashboard_template()
+    script = dashboard_script()
+
+    for identifier in (
+        "download-agent-package",
+        "save-enrollment-token",
+        "enrollment-install-instructions",
+        "refresh-enrollment-status",
+        "revoke-enrollment",
+        "reissue-enrollment",
+    ):
+        assert f'id="{identifier}"' in template
+    assert 'fetch("/api/v1/agent-releases/current", { credentials: "same-origin" })' in script
+    assert '"/api/v1/agent-releases/current/download"' in script
+    assert "release.wheel_filename" in script
+    assert "release.wheel_sha256" in script
+    assert "cd ${release.archive_root}" in script
+    assert "chmod +x ./install-agent.sh" in script
+    assert "--token-file ./enrollment.token" in script
+    assert "new Blob([enrollmentCredential]" in script
+    assert "URL.createObjectURL" in script
+    assert "URL.revokeObjectURL" in script
+    assert "`/api/v1/agent-enrollments/${encodeURIComponent(enrollmentId)}`" in script
+    assert "if (!(await revokeEnrollment())) return;" in script
+    enrollment_section = script[
+        script.index("function submitEnrollment") : script.index("function openMoveDialog")
+    ]
+    assert "localStorage" not in enrollment_section
+    assert "sessionStorage" not in enrollment_section
+
+
 def test_dashboard_management_has_duplicate_submission_and_confirmation_guards():
     script = dashboard_script()
 
@@ -1108,8 +1140,18 @@ def test_dashboard_stage08g_keeps_successful_enrollment_truthful_when_inventory_
           querySelector() { return elementFor("app-shell"); },
         };
         const response = (payload) => ({ ok: true, json: async () => payload });
-        async function fetch(path, options = {}) {
-          if (path === "/api/v1/agent-enrollments" && options.method === "POST") {
+            async function fetch(path, options = {}) {
+              if (path === "/api/v1/agent-releases/current") {
+                return response({ release: {
+                  wheel_filename: "skybeat_agent-1.0.0-cp312-none-any.whl",
+                  wheel_sha256: "a".repeat(64),
+                  archive_filename: "skybeat-agent-1.0.0-linux.zip",
+                  archive_root: "skybeat-agent-1.0.0",
+                  server_url: "https://testserver",
+                  allow_insecure_local_server: false,
+                }});
+              }
+              if (path === "/api/v1/agent-enrollments" && options.method === "POST") {
             const payload = JSON.parse(options.body);
             if (
               payload.mode !== "NEW" ||
@@ -1118,7 +1160,10 @@ def test_dashboard_stage08g_keeps_successful_enrollment_truthful_when_inventory_
               payload.gpu_monitoring_enabled !== true ||
               payload.expected_gpu_min_count !== 1
             ) throw new Error("unexpected enrollment payload");
-            return response({ token: enrollmentToken });
+                return response({
+                  token: enrollmentToken,
+                  enrollment: { enrollment_id: projectId },
+                });
           }
           if (String(path).startsWith("/api/v1/projects")) {
             return response({

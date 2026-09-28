@@ -97,6 +97,13 @@ const enrollmentStatus = document.getElementById("enrollment-status");
 const enrollmentCredentialPanel = document.getElementById("enrollment-credential-panel");
 const enrollmentCredentialNode = document.getElementById("enrollment-credential");
 const copyEnrollmentCredentialButton = document.getElementById("copy-enrollment-credential");
+const saveEnrollmentTokenButton = document.getElementById("save-enrollment-token");
+const downloadAgentPackageButton = document.getElementById("download-agent-package");
+const enrollmentLifecycleStatus = document.getElementById("enrollment-lifecycle-status");
+const enrollmentInstallInstructions = document.getElementById("enrollment-install-instructions");
+const refreshEnrollmentStatusButton = document.getElementById("refresh-enrollment-status");
+const revokeEnrollmentButton = document.getElementById("revoke-enrollment");
+const reissueEnrollmentButton = document.getElementById("reissue-enrollment");
 const enrollSubmit = document.getElementById("enroll-submit");
 const deviceEnrollClose = document.getElementById("device-enroll-close");
 const enrollCancel = document.getElementById("enroll-cancel");
@@ -154,6 +161,8 @@ let historyLastSuccess = null;
 let latestProjects = [];
 let currentDetail = null;
 let enrollmentCredential = null;
+let enrollmentId = null;
+let enrollmentRelease = null;
 let projectSubmissionInFlight = false;
 let enrollmentSubmissionInFlight = false;
 let moveSubmissionInFlight = false;
@@ -1815,9 +1824,18 @@ function enrollmentDraft() {
 
 function clearEnrollmentCredential() {
   enrollmentCredential = null;
+  enrollmentId = null;
+  enrollmentRelease = null;
   enrollmentCredentialNode.textContent = "";
   enrollmentCredentialPanel.hidden = true;
   copyEnrollmentCredentialButton.disabled = true;
+  saveEnrollmentTokenButton.disabled = true;
+  downloadAgentPackageButton.disabled = true;
+  refreshEnrollmentStatusButton.disabled = true;
+  revokeEnrollmentButton.disabled = true;
+  reissueEnrollmentButton.disabled = true;
+  enrollmentLifecycleStatus.textContent = "";
+  enrollmentInstallInstructions.textContent = "";
 }
 
 function syncEnrollmentGpuPolicy() {
@@ -1911,6 +1929,7 @@ async function submitEnrollment() {
   enrollSubmit.disabled = true;
   enrollmentStatus.textContent = "Enrolling device…";
   try {
+    const release = await requestReleaseMetadata();
     const payload = await requestDashboardMutation("/api/v1/agent-enrollments", "POST", {
       mode: "NEW",
       name,
@@ -1918,21 +1937,115 @@ async function submitEnrollment() {
       gpu_monitoring_enabled: gpuMonitoringEnabled,
       expected_gpu_min_count: gpuMonitoringEnabled ? expectedGpuMinCount : 0,
     });
-    if (typeof payload?.token !== "string" || !payload.token.startsWith("sbe1.")) {
+    if (
+      typeof payload?.token !== "string" || !payload.token.startsWith("sbe1.") ||
+      typeof payload?.enrollment?.enrollment_id !== "string"
+    ) {
       throw new Error("enrollment token response was invalid");
     }
     enrollmentCredential = payload.token;
+    enrollmentId = payload.enrollment.enrollment_id;
+    enrollmentRelease = release;
     enrollmentCredentialNode.textContent = enrollmentCredential;
     enrollmentCredentialPanel.hidden = false;
     copyEnrollmentCredentialButton.disabled = false;
+    saveEnrollmentTokenButton.disabled = false;
+    downloadAgentPackageButton.disabled = false;
+    refreshEnrollmentStatusButton.disabled = false;
+    revokeEnrollmentButton.disabled = false;
+    reissueEnrollmentButton.disabled = false;
+    enrollmentLifecycleStatus.textContent = "Pending: valid unused enrollment authorization.";
+    enrollmentInstallInstructions.textContent = installationInstructions(release);
     enrollmentStatus.textContent =
-      "Installer token created. Copy it before closing this dialog; it is single use and will not be shown again.";
+      "Installer token created. Save the token file and download the approved package before closing this dialog.";
   } catch (_) {
     enrollmentStatus.textContent = "Installer token could not be created. Check the form and try again.";
     enrollSubmit.disabled = false;
   } finally {
     enrollmentSubmissionInFlight = false;
   }
+}
+
+async function requestReleaseMetadata() {
+  const response = await fetch("/api/v1/agent-releases/current", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("agent release request failed");
+  const release = (await response.json())?.release;
+  if (
+    typeof release?.wheel_filename !== "string" ||
+    typeof release?.wheel_sha256 !== "string" ||
+    typeof release?.archive_filename !== "string" ||
+    typeof release?.archive_root !== "string" ||
+    typeof release?.server_url !== "string"
+  ) throw new Error("agent release response was invalid");
+  return release;
+}
+
+function installationInstructions(release) {
+  const insecureFlag = release.allow_insecure_local_server === true ? " --allow-insecure-local-server" : "";
+  return `unzip ${release.archive_filename}\ncd ${release.archive_root}\nchmod +x ./install-agent.sh\nsudo ./install-agent.sh --server ${release.server_url} --package ./${release.wheel_filename} --sha256 ${release.wheel_sha256} --wheelhouse ./wheelhouse --lockfile ./requirements.lock --token-file ./enrollment.token${insecureFlag}`;
+}
+
+function downloadEnrollmentToken() {
+  if (enrollmentCredential === null || enrollmentId === null) return;
+  const tokenFile = new Blob([enrollmentCredential], { type: "text/plain" });
+  const url = URL.createObjectURL(tokenFile);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `skybeat-enrollment-${enrollmentId}.token`;
+  link.click();
+  URL.revokeObjectURL(url);
+  enrollmentStatus.textContent = "Enrollment token file saved. Keep it root-readable only until installation.";
+}
+
+function downloadAgentPackage() {
+  if (enrollmentRelease === null) return;
+  window.location.assign("/api/v1/agent-releases/current/download");
+}
+
+async function refreshEnrollmentStatus() {
+  if (enrollmentId === null) return;
+  try {
+    const response = await fetch(
+      `/api/v1/agent-enrollments/${encodeURIComponent(enrollmentId)}`,
+      { credentials: "same-origin" }
+    );
+    if (!response.ok) throw new Error("enrollment status request failed");
+    const enrollment = (await response.json())?.enrollment;
+    if (typeof enrollment?.state !== "string") throw new Error("enrollment status was invalid");
+    enrollmentLifecycleStatus.textContent = `Enrollment status: ${enrollment.state}.`;
+    revokeEnrollmentButton.disabled = enrollment.state !== "PENDING";
+  } catch (_) {
+    enrollmentLifecycleStatus.textContent = "Enrollment status could not be refreshed.";
+  }
+}
+
+async function revokeEnrollment() {
+  if (enrollmentId === null) return;
+  try {
+    const payload = await requestDashboardMutation(
+      `/api/v1/agent-enrollments/${encodeURIComponent(enrollmentId)}`, "DELETE", {}
+    );
+    if (payload?.enrollment?.state !== "REVOKED") throw new Error("enrollment revocation failed");
+    enrollmentLifecycleStatus.textContent = "Enrollment status: REVOKED.";
+    revokeEnrollmentButton.disabled = true;
+    enrollmentCredential = null;
+    enrollmentCredentialNode.textContent = "";
+    saveEnrollmentTokenButton.disabled = true;
+    copyEnrollmentCredentialButton.disabled = true;
+    return true;
+  } catch (_) {
+    enrollmentLifecycleStatus.textContent = "Unused enrollment token could not be revoked.";
+    return false;
+  }
+}
+
+async function reissueEnrollment() {
+  if (enrollmentId !== null) {
+    if (!(await revokeEnrollment())) return;
+  }
+  clearEnrollmentCredential();
+  enrollSubmit.disabled = false;
+  enrollmentStatus.textContent = "Create a new enrollment token when ready.";
 }
 
 async function copyEnrollmentCredential() {
@@ -2144,6 +2257,11 @@ deviceEnrollClose.addEventListener("click", closeEnrollmentDialog);
 enrollCancel.addEventListener("click", closeEnrollmentDialog);
 enrollGpuEnabled.addEventListener("change", syncEnrollmentGpuPolicy);
 copyEnrollmentCredentialButton.addEventListener("click", () => void copyEnrollmentCredential());
+saveEnrollmentTokenButton.addEventListener("click", downloadEnrollmentToken);
+downloadAgentPackageButton.addEventListener("click", downloadAgentPackage);
+refreshEnrollmentStatusButton.addEventListener("click", () => void refreshEnrollmentStatus());
+revokeEnrollmentButton.addEventListener("click", () => void revokeEnrollment());
+reissueEnrollmentButton.addEventListener("click", () => void reissueEnrollment());
 deviceEnrollDialog.addEventListener("close", () => {
   clearEnrollmentCredential();
   deviceEnrollForm.reset();

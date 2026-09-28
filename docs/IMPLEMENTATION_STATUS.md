@@ -402,6 +402,17 @@ Status: Stage 11 — COMPLETE / ACCEPTED; Stage 11.5 — COMPLETE / ACCEPTED. Me
 - KNOWN BASELINE / ENVIRONMENT LIMITATION — `tests/test_deployment_artifacts.py::test_installer_rejects_missing_source_and_environment_without_host_changes`: the same Windows-to-WSL path translation failure prevents the installer from reaching either invalid-input check. It fails identically at `65a1c75`.
 - Verification pending: real MySQL auth/audit/session tests and real browser Owner/Admin/User/unauthorized Google acceptance. These require the missing isolated MySQL URL and the documented real Google client/admission configuration. Do not start Stage 12 or the 24/48-hour validation.
 
+## Agent Deployment Bundle Checkpoint
+
+- Status: IMPLEMENTED / REAL BROWSER + UBUNTU AGENT ACCEPTANCE PASSED / READY FOR REQUESTED MERGE. Do not start another stage.
+- Scope: immutable, prebuilt agent-release bundle; protected OWNER/ADMIN metadata/download endpoints; transient enrollment-token UX; evidence-derived enrollment lifecycle; and deployment documentation. No authentication/session/role architecture was changed.
+- Security: the server validates only its configured absolute release directory and matching sibling archive; it never builds or accepts a requested path. The generic archive is hash-checked, agent-wheel-only, self-contained, and credential-free. Enrollment tokens remain one-time, short-lived, response-only, `no-store`, and are neither logged nor persisted after their permitted disclosure. Unused intent revocation does not revoke an enrolled device credential.
+- Access: all release and enrollment-management endpoints enforce persisted active OWNER/ADMIN roles server-side. Lifecycle is `PENDING` for valid unused intent, `EXPIRED` for unused expired intent, `REVOKED` for revoked unused intent, `ENROLLED` after exchange, and `ONLINE` only after a sufficiently recent accepted heartbeat.
+- Files changed: release builder/verifier/installer tooling; configuration/release/enrollment/API/dashboard modules and tests; `.env.example`; deployment/API/security documentation; plan/design records; and this checkpoint. No migration was introduced; Alembic head remains `e43a8c9b0d11`.
+- Verification: focused deployment/release/dashboard/enrollment suite 161 passed, 7 isolated-MySQL skips; full agent suite 65 passed; server Ruff/format and agent Ruff/format passed; strict server mypy 56 source files and strict agent mypy 11 source files passed; JavaScript syntax passed; Alembic head passed; generated release verifier and wheel hash passed; archive membership, server-wheel exclusion, and secret-like value exclusion passed. The final server suite has 428 passed and the baseline failures below.
+- Known baseline/environment limits: full server suite has 41 isolated-MySQL skips and the 5 pre-existing Windows/Bash Stage-10 deployment-artifact failures reproduced from current `main`. Real MySQL lifecycle/persistence assertions remain environment-pending. The real browser + Ubuntu GPU acceptance workflow passed and is not represented as an automated test.
+- Next action: merge only after preserving the original `main` worktree's unrelated uncommitted files.
+
 ## Resume Command / Guidance
 
 Read AGENTS.md, docs/IMPLEMENTATION_PLAN.md, this file, and inspect the current Git diff before continuing. Stages 11 and 11.5 are complete and merged; retain the documented real-Google, isolated-MySQL, deployment-test, and local-acceptance limitations. Do not begin Stage 12 without explicit authorization.

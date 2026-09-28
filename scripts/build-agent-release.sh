@@ -46,9 +46,21 @@ bundle="$staging/skybeat-agent-$version"
 wheelhouse="$bundle/wheelhouse"
 mkdir -p "$wheelhouse"
 
+mkdir -p "$bundle/lib" "$bundle/deployment/systemd"
+cp "$script_dir/install-agent.sh" "$bundle/install-agent.sh"
+cp "$script_dir/lib/skybeat_agent_install.sh" "$bundle/lib/skybeat_agent_install.sh"
+cp "$script_dir/verify-agent-release.py" "$bundle/verify-agent-release.py"
+cp "$script_dir/validate-agent-server-url.py" "$bundle/validate-agent-server-url.py"
+cp "$repository_root/deployment/systemd/skybeat-agent.service" "$bundle/deployment/systemd/skybeat-agent.service"
+printf '%s\n' 'SkyBeat agent deployment release. Use the dashboard-provided installation instructions.' >"$bundle/README.txt"
+chmod 0755 "$bundle/install-agent.sh" "$bundle/verify-agent-release.py" "$bundle/validate-agent-server-url.py"
+
 uv build --wheel --out-dir "$bundle" "$agent_dir"
-wheel="$(find "$bundle" -maxdepth 1 -type f -name "skybeat_agent-${version}-*.whl" -print -quit)"
-[[ -n "$wheel" && -f "$wheel" ]] || fail 'expected agent wheel was not built'
+rm -f "$bundle/.gitignore"
+mapfile -t wheels < <(find "$bundle" -maxdepth 1 -type f -name "skybeat_agent-${version}-*.whl" -print | LC_ALL=C sort)
+[[ ${#wheels[@]} -eq 1 ]] || fail 'expected exactly one agent wheel was not built'
+wheel="${wheels[0]}"
+[[ "$(basename "$wheel")" != skybeat_server-* ]] || fail 'server wheel cannot be an agent release package'
 (
     cd "$bundle"
     sha256sum "$(basename "$wheel")" >"$bundle/wheel.sha256"
@@ -72,8 +84,16 @@ bundle = Path(sys.argv[1])
 wheel = Path(sys.argv[2])
 sha256 = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
 version = wheel.name.split("-")[1]
+installer_artifacts = [
+    "install-agent.sh",
+    "lib/skybeat_agent_install.sh",
+    "verify-agent-release.py",
+    "validate-agent-server-url.py",
+    "deployment/systemd/skybeat-agent.service",
+    "README.txt",
+]
 manifest = {
-    "format": 1,
+    "format": 2,
     "package": {"name": "skybeat-agent", "version": version, "filename": wheel.name, "sha256": sha256(wheel)},
     "requirements_lock": {"filename": "requirements.lock", "sha256": sha256(bundle / "requirements.lock")},
     "wheelhouse": [
@@ -81,11 +101,39 @@ manifest = {
         for path in sorted((bundle / "wheelhouse").iterdir())
         if path.is_file() and not path.is_symlink()
     ],
+    "installer_artifacts": [
+        {"filename": filename, "sha256": sha256(bundle / filename)}
+        for filename in installer_artifacts
+    ],
 }
 (bundle / "release-manifest.json").write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+(bundle / "SHA256SUMS").write_text(
+    "".join(
+        f"{sha256(bundle / filename)}  {filename}\n"
+        for filename in [wheel.name, "requirements.lock", *sorted(installer_artifacts)]
+    ),
+    encoding="ascii",
+)
 PY
 python3.12 "$verifier" --bundle "$bundle"
 final_bundle="${output%/}/skybeat-agent-$version"
+archive="$staging/skybeat-agent-${version}-linux.zip"
+final_archive="${output%/}/skybeat-agent-${version}-linux.zip"
 [[ ! -e "$final_bundle" ]] || fail 'release bundle already exists'
+[[ ! -e "$final_archive" ]] || fail 'release archive already exists'
+python3.12 - "$bundle" "$archive" <<'PY'
+import sys
+import zipfile
+from pathlib import Path
+
+bundle = Path(sys.argv[1])
+archive = Path(sys.argv[2])
+with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:
+    for path in sorted(bundle.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        output.write(path, Path(bundle.name) / path.relative_to(bundle))
+PY
 mv "$bundle" "$final_bundle"
+mv "$archive" "$final_archive"
 printf '%s\n' "SkyBeat agent release bundle created: $final_bundle"
