@@ -987,9 +987,7 @@ rather than silently continuing to present old information as current.
 When enabled:
 
 ```text
-SKYBEAT_EMAIL_ENABLED=true
-
-SKYBEAT_EMAIL_RECIPIENTS
+SKYBEAT_ALERT_EMAIL_RECIPIENTS
 
 SKYBEAT_SMTP_HOST
 
@@ -999,16 +997,18 @@ SKYBEAT_SMTP_USERNAME
 
 SKYBEAT_SMTP_PASSWORD
 
-SKYBEAT_SMTP_FROM
+SKYBEAT_SMTP_FROM_ADDRESS
 ```
 
-Prefer:
+The current provider always performs:
 
 ```text
 STARTTLS
 ```
 
-or provider-supported implicit TLS.
+before SMTP authentication. Use a STARTTLS-capable endpoint such as Gmail's
+`smtp.gmail.com:587`. Provider-supported implicit TLS is not configured by
+this V1 SMTP implementation.
 
 Never silently fall back to plaintext SMTP.
 

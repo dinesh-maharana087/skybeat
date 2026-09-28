@@ -413,6 +413,15 @@ Status: Stage 11 — COMPLETE / ACCEPTED; Stage 11.5 — COMPLETE / ACCEPTED. Me
 - Known baseline/environment limits: full server suite has 41 isolated-MySQL skips and the 5 pre-existing Windows/Bash Stage-10 deployment-artifact failures reproduced from current `main`. Real MySQL lifecycle/persistence assertions remain environment-pending. The real browser + Ubuntu GPU acceptance workflow passed and is not represented as an automated test.
 - Next action: merge only after preserving the original `main` worktree's unrelated uncommitted files.
 
+## Pre-Production SMTP Verification Checkpoint
+
+- Status: AUTOMATED SMTP/NOTIFICATION PATH VERIFIED / REAL SMTP AND SKYBEAT-GENERATED EMAIL ACCEPTANCE PENDING HUMAN EXECUTION. Do not start the final failure/load/soak stage.
+- Root cause: a direct diagnostic passed Pydantic `Settings.smtp_password` (`SecretStr`) to `smtplib.SMTP.login`, which expects `str`. The actual worker path already correctly unwraps it at `build_smtp_provider()` before constructing `SMTPEmailProvider`; no setting type or notification architecture was weakened.
+- Changes: strengthened worker/provider boundary, STARTTLS-before-login, and secret-safe authentication-failure regression coverage; corrected SMTP variable names and STARTTLS-only behavior in `.env.example` and deployment documentation.
+- Verification: focused SMTP/worker/notification/project-policy/configuration suite: 41 passed, 7 isolated-MySQL skips. Ruff, format, strict mypy, and `git diff --check` passed. The real-MySQL delivery/retry/snapshot tests remain correctly skipped without `SKYBEAT_TEST_DATABASE_URL`.
+- Security: `SMTP_PASSWORD` remains `SecretStr`; no password is logged, serialized, or added to documentation. The SMTP provider uses STARTTLS before authentication and returns safe failure categories only.
+- Next action: operator runs the documented local SMTP login test, then creates one controlled project-scoped event and confirms worker delivery persistence plus mailbox receipt. Do not claim real acceptance until that evidence is supplied.
+
 ## Resume Command / Guidance
 
 Read AGENTS.md, docs/IMPLEMENTATION_PLAN.md, this file, and inspect the current Git diff before continuing. Stages 11 and 11.5 are complete and merged; retain the documented real-Google, isolated-MySQL, deployment-test, and local-acceptance limitations. Do not begin Stage 12 without explicit authorization.

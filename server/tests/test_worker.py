@@ -1,5 +1,7 @@
 from threading import Event
 
+from pydantic import SecretStr
+
 from app.config import Settings
 from app.worker import build_notification_providers, build_smtp_provider, run_loop, run_once
 
@@ -26,6 +28,22 @@ def test_worker_builds_smtp_provider_only_from_protected_complete_configuration(
 
     assert provider is not None
     assert provider.host == "smtp.example.test"
+
+
+def test_worker_unwraps_the_protected_smtp_password_only_for_the_smtp_provider_boundary():
+    settings = _settings(
+        smtp_host="smtp.example.test",
+        smtp_from_address="skybeat@example.test",
+        smtp_username="skybeat",
+        smtp_password="secret-not-to-log",
+    )
+
+    provider = build_smtp_provider(settings)
+
+    assert isinstance(settings.smtp_password, SecretStr)
+    assert provider is not None
+    assert type(provider.password) is str
+    assert provider.password == "secret-not-to-log"
 
 
 def test_worker_uses_a_safe_sms_noop_until_a_vendor_adapter_is_approved():
