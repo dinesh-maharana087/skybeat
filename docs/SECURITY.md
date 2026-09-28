@@ -1958,4 +1958,27 @@ artifact and manifest before changing the host, performs no PyPI/Git/source
 installation, retains CA verification, and does not weaken file permissions or
 systemd hardening to recover from a failure.
 
+## Immutable Agent Deployment Bundle controls
+
+The generic release archive is built before it is served and is immutable at
+request time. It contains the selected `skybeat_agent` wheel, locked offline
+wheelhouse, release verifier, URL validator, installer helper, systemd unit,
+and checksums; it never contains enrollment tokens, device credentials, API
+secrets, or a `skybeat_server` wheel. The server validates the configured
+directory and exact sibling archive against the manifest before every metadata
+or download response and cannot accept an HTTP-supplied filesystem path.
+
+An `sbe1` enrollment token remains short-lived, single-use, and is disclosed
+only once to an authenticated OWNER/ADMIN dashboard session. The dashboard can
+write a local token file on operator action, but does not put it in the archive,
+URL, browser storage, audit details, or generated installer command. Closing
+the dialog clears its in-memory value. Revocation is intentionally limited to
+an unused authorization and is recorded without a secret; it does not imply
+device/credential revocation after exchange.
+
+The installer accepts HTTPS origins by default. Its HTTP exception requires
+both server-side development/private-or-loopback-IP configuration and explicit
+`--allow-insecure-local-server`; arbitrary, public, and hostname HTTP origins
+are rejected before enrollment exchange.
+
 Remote operations require a separately designed future security model and are outside SkyBeat V1.

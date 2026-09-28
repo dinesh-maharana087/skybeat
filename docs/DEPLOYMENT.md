@@ -2502,11 +2502,36 @@ directory through an approved operator channel. Re-run the verifier and
 `sha256sum -c` on the receiving host before installation. Do not use Git,
 PyPI, a source tree, or a downloaded installer as an agent package source.
 
-The root-operated installer scripts and systemd unit are reviewed release
-tooling, not a package source. Place the matching reviewed tooling checkout at
-`/srv/skybeat/release-tools`; its `scripts/install-agent.sh` locates its
-adjacent library and unit file. Do not edit the tooling or release bundle on
-the target.
+### Dashboard-driven package installation
+
+For normal deployment, use the authenticated Devices workflow instead of
+constructing a wheel path or SHA-256 manually: create the enrollment, select
+**Save enrollment token**, select **Download Agent Package**, and copy both
+files to the Ubuntu device using an approved protected channel. The generated
+instructions name the exact archive, archive root, manifest-selected wheel,
+wheel hash, wheelhouse, and lockfile. After transfer, run the displayed steps:
+
+```sh
+unzip skybeat-agent-<version>-linux.zip
+cd skybeat-agent-<version>
+chmod +x ./install-agent.sh
+sudo ./install-agent.sh --server <dashboard-provided-origin> \
+  --package ./<manifest-wheel-filename> --sha256 <dashboard-provided-sha256> \
+  --wheelhouse ./wheelhouse --lockfile ./requirements.lock \
+  --token-file ./enrollment.token
+```
+
+The generic archive is self-contained; no repository checkout or release-tools
+directory is required. Keep the token file owner-readable only and delete it
+after a successful exchange. In production the provided origin is HTTPS. The
+dashboard includes `--allow-insecure-local-server` only for an explicitly
+configured development private/loopback-IP origin; do not add it for public or
+production endpoints.
+
+The root-operated installer scripts, helper, verifier, URL validator, and
+systemd unit are integrity-checked artifacts inside the release archive, not a
+package source. Do not edit the extracted tooling or release bundle on the
+target.
 
 ## Initial installation and server receipt
 
@@ -2518,15 +2543,15 @@ shell history, a URL, a ticket, or a service unit.
 ```sh
 sudo install -d -m 0700 -o root -g root /root/skybeat
 sudo install -m 0600 -o root -g root /secure-transfer/enrollment.token \
-  /root/skybeat/enrollment.token
-sudo /srv/skybeat/release-tools/scripts/install-agent.sh \
-  --server https://monitor.example.com \
-  --package /srv/skybeat/releases/skybeat-agent-1.0.0/skybeat_agent-1.0.0-py3-none-any.whl \
-  --sha256 "$(awk '{print $1}' /srv/skybeat/releases/skybeat-agent-1.0.0/wheel.sha256)" \
-  --wheelhouse /srv/skybeat/releases/skybeat-agent-1.0.0/wheelhouse \
-  --lockfile /srv/skybeat/releases/skybeat-agent-1.0.0/requirements.lock \
-  --token-file /root/skybeat/enrollment.token
-sudo shred -u /root/skybeat/enrollment.token
+  ./enrollment.token
+chmod +x ./install-agent.sh
+# Use the exact server, wheel filename, and SHA-256 shown by the dashboard.
+sudo ./install-agent.sh \
+  --server <dashboard-provided-origin> \
+  --package ./<manifest-wheel-filename> --sha256 <dashboard-provided-sha256> \
+  --wheelhouse ./wheelhouse --lockfile ./requirements.lock \
+  --token-file ./enrollment.token
+sudo shred -u ./enrollment.token
 ```
 
 `--token-file` is the production default. `--token` is intentionally warned
@@ -2590,12 +2615,10 @@ matching release exits `ALREADY_CURRENT`; a damaged unit, environment, virtual
 environment, or service is repaired without consuming an enrollment token.
 
 ```sh
-sudo /srv/skybeat/release-tools/scripts/install-agent.sh \
+sudo ./install-agent.sh \
   --server https://monitor.example.com \
-  --package /srv/skybeat/releases/skybeat-agent-1.0.0/skybeat_agent-1.0.0-py3-none-any.whl \
-  --sha256 "$(awk '{print $1}' /srv/skybeat/releases/skybeat-agent-1.0.0/wheel.sha256)" \
-  --wheelhouse /srv/skybeat/releases/skybeat-agent-1.0.0/wheelhouse \
-  --lockfile /srv/skybeat/releases/skybeat-agent-1.0.0/requirements.lock
+  --package ./<manifest-wheel-filename> --sha256 <manifest-wheel-sha256> \
+  --wheelhouse ./wheelhouse --lockfile ./requirements.lock
 ```
 
 For a verified upgrade, first complete a backup/change review, verify the new
@@ -2612,12 +2635,10 @@ must not print the token or credential. Do not use a current operational token
 for this drill.
 
 ```sh
-sudo /srv/skybeat/release-tools/scripts/install-agent.sh \
+sudo ./install-agent.sh \
   --server https://monitor.example.com \
-  --package /srv/skybeat/releases/skybeat-agent-1.0.0/skybeat_agent-1.0.0-py3-none-any.whl \
-  --sha256 "$(awk '{print $1}' /srv/skybeat/releases/skybeat-agent-1.0.0/wheel.sha256)" \
-  --wheelhouse /srv/skybeat/releases/skybeat-agent-1.0.0/wheelhouse \
-  --lockfile /srv/skybeat/releases/skybeat-agent-1.0.0/requirements.lock \
+  --package ./<manifest-wheel-filename> --sha256 <manifest-wheel-sha256> \
+  --wheelhouse ./wheelhouse --lockfile ./requirements.lock \
   --token-file /root/skybeat/consumed-test.token --re-enroll
 ```
 

@@ -19,6 +19,7 @@ from app.enrollment.service import (
     AgentEnrollmentService,
     EnrollmentMode,
     EnrollmentRejected,
+    EnrollmentStatus,
     EnrollmentToken,
     ReceiptRejected,
     TokenRejected,
@@ -83,6 +84,16 @@ def _allow_anonymous_request(request: Request) -> bool:
     source = request.client.host if request.client is not None else "unknown"
     limiter = cast(EnrollmentRateLimiter, request.app.state.enrollment_rate_limiter)
     return limiter.allow(source)
+
+
+def _status_projection(status: EnrollmentStatus) -> dict[str, object]:
+    return {
+        "enrollment_id": status.enrollment_id,
+        "state": status.state.value,
+        "expires_at": status.expires_at.isoformat(),
+        "device_id": status.device_id,
+        "last_seen_at": status.last_seen_at.isoformat() if status.last_seen_at else None,
+    }
 
 
 @router.post("")
@@ -218,4 +229,57 @@ async def verify_receipt(request: Request) -> JSONResponse:
         )
     return JSONResponse(
         {"accepted_heartbeat": result.accepted_heartbeat}, headers={"Cache-Control": "no-store"}
+    )
+
+
+@router.get("/{enrollment_id}")
+async def enrollment_status(
+    request: Request, enrollment_id: str, user: ManagementUserDependency
+) -> JSONResponse:
+    try:
+        enrollment_uuid = str(UUID(enrollment_id))
+        status = await asyncio.to_thread(_service(request, user.email).status, enrollment_uuid)
+    except (ValueError, NotFound) as error:
+        raise HTTPException(
+            status_code=422 if isinstance(error, ValueError) else 404,
+            detail="Enrollment was not found."
+            if isinstance(error, NotFound)
+            else "Enrollment is invalid.",
+            headers={"Cache-Control": "no-store"},
+        ) from error
+    return JSONResponse(
+        {"enrollment": _status_projection(status)}, headers={"Cache-Control": "no-store"}
+    )
+
+
+@router.delete("/{enrollment_id}")
+async def revoke_unused_enrollment(
+    request: Request, enrollment_id: str, user: ManagementUserDependency
+) -> JSONResponse:
+    if not same_origin(request):
+        raise HTTPException(
+            status_code=403,
+            detail="Dashboard request origin is invalid.",
+            headers={"Cache-Control": "no-store"},
+        )
+    try:
+        enrollment_uuid = str(UUID(enrollment_id))
+        status = await asyncio.to_thread(
+            _service(request, user.email).revoke_unused, enrollment_uuid
+        )
+    except (ValueError, NotFound, Conflict) as error:
+        status_code = (
+            422 if isinstance(error, ValueError) else 404 if isinstance(error, NotFound) else 409
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail="Enrollment change conflicts with the current state."
+            if isinstance(error, Conflict)
+            else "Enrollment was not found."
+            if isinstance(error, NotFound)
+            else "Enrollment is invalid.",
+            headers={"Cache-Control": "no-store"},
+        ) from error
+    return JSONResponse(
+        {"enrollment": _status_projection(status)}, headers={"Cache-Control": "no-store"}
     )

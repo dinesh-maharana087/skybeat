@@ -27,6 +27,14 @@ def test_installer_accepts_only_explicit_verified_release_inputs():
     assert "--no-deps" in LIBRARY.read_text(encoding="utf-8")
 
 
+def test_installer_requires_an_explicit_flag_for_private_development_http_only():
+    source = INSTALLER.read_text(encoding="utf-8")
+    library = LIBRARY.read_text(encoding="utf-8")
+
+    assert "--allow-insecure-local-server" in source
+    assert "validate-agent-server-url.py" in library
+
+
 def test_installer_has_ordered_fail_closed_lifecycle_helpers_and_secret_guards():
     source = LIBRARY.read_text(encoding="utf-8")
 

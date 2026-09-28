@@ -2313,6 +2313,31 @@ not a credential, cannot exchange/re-enroll, and cannot read telemetry,
 dashboard data, or normal device APIs. These responses use `Cache-Control:
 no-store`.
 
+## Agent Deployment Bundle management
+
+`GET /api/v1/agent-releases/current` and
+`GET /api/v1/agent-releases/current/download` require an authenticated
+`OWNER` or `ADMIN`. The server reads only the configured prebuilt release
+directory and its exact sibling archive after validating the manifest, every
+declared hash, `wheel.sha256`, `SHA256SUMS`, archive membership, and archive
+content hashes. The download is a fixed attachment with `Cache-Control:
+no-store`; it accepts no path or filename parameter. A release unavailable or
+invalid at request time yields a safe `503` response.
+
+The metadata response contains the exact manifest wheel filename and SHA-256,
+archive filename/root, validated server origin, and whether the explicitly
+permitted local-test HTTP installer flag is required. It never contains an
+enrollment token, credential, OAuth secret, or server wheel.
+
+`GET /api/v1/agent-enrollments/{enrollment_id}` is OWNER/ADMIN-only and returns
+only safe lifecycle projection data: `PENDING` for a valid unused authorization,
+`EXPIRED` for a naturally expired unused authorization, `REVOKED` for a
+token-free audited unused revocation, `ENROLLED` after exchange, and `ONLINE`
+only after a sufficiently recent accepted heartbeat. `DELETE` on that route is
+same-origin OWNER/ADMIN-only and revokes only a valid unused authorization. It
+returns `409` after exchange and never revokes or rotates an issued device
+credential. All management responses use `Cache-Control: no-store`.
+
 ---
 
 # 80. Project Notification Management

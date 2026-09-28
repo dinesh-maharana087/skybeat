@@ -333,9 +333,12 @@
               </label>
               <p id="enrollment-status" role="status" aria-live="polite"></p>
               <div id="enrollment-credential-panel" hidden>
-                <p class="credential-warning">Copy this installer enrollment token now. It will not be shown again and cannot be used as a device credential.</p>
+                <p class="credential-warning">Save this enrollment token now. It is short-lived, single use, and cannot be recovered or used as a device credential.</p>
                 <code id="enrollment-credential"></code>
-                <button id="copy-enrollment-credential" type="button" disabled>Copy installer token</button>
+                <div class="dialog-actions"><button id="save-enrollment-token" type="button" disabled>Save enrollment token</button><button id="copy-enrollment-credential" type="button" disabled>Copy installer token</button><button id="download-agent-package" type="button" disabled>Download Agent Package</button></div>
+                <p id="enrollment-lifecycle-status" role="status" aria-live="polite"></p>
+                <pre id="enrollment-install-instructions"></pre>
+                <div class="dialog-actions"><button id="refresh-enrollment-status" type="button" disabled>Refresh status</button><button id="revoke-enrollment" class="sb-button--secondary" type="button" disabled>Revoke unused token</button><button id="reissue-enrollment" class="sb-button--secondary" type="button" disabled>Reissue</button></div>
               </div>
               <div class="dialog-actions"><button id="enroll-submit" class="sb-button--primary" type="submit">Create installer token</button><button id="enroll-cancel" class="sb-button--secondary" type="button">Cancel</button></div>
             </form>

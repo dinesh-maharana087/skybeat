@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
@@ -348,6 +350,141 @@ def test_dashboard_management_routes_require_the_existing_dashboard_user_and_no_
 
     assert response.status_code == 401
     assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize("role", ["OWNER", "ADMIN"])
+def test_deployment_release_routes_require_management_role_and_serve_only_validated_archive(
+    role, tmp_path
+):
+    from app.dashboard.service import DashboardUser
+    from app.users.service import UserRole
+
+    archive = tmp_path / "skybeat-agent-1.0.0-linux.zip"
+    archive.write_bytes(b"approved archive")
+
+    class Session:
+        def authenticate_session(self, token):
+            return DashboardUser("google-user", "ops@example.test", None, 7, UserRole(role))
+
+    class Release:
+        def current(self):
+            return type(
+                "Metadata",
+                (),
+                {
+                    "version": "1.0.0",
+                    "wheel_filename": "skybeat_agent-1.0.0-cp312-none-any.whl",
+                    "wheel_sha256": "a" * 64,
+                    "archive_filename": archive.name,
+                    "archive_root": "skybeat-agent-1.0.0",
+                    "server_url": "https://monitor.example.test",
+                    "allow_insecure_local_server": False,
+                },
+            )()
+
+        def archive(self):
+            return archive
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Session()
+    app.state.agent_release_service = Release()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        metadata = client.get("/api/v1/agent-releases/current")
+        download = client.get("/api/v1/agent-releases/current/download")
+
+    assert metadata.status_code == 200
+    assert metadata.json()["release"]["wheel_filename"] == "skybeat_agent-1.0.0-cp312-none-any.whl"
+    assert "server" not in metadata.json()["release"]
+    assert download.status_code == 200
+    assert download.content == b"approved archive"
+    assert download.headers["cache-control"] == "no-store"
+    assert f'filename="{archive.name}"' in download.headers["content-disposition"]
+
+
+def test_deployment_release_routes_reject_user_before_release_service_execution():
+    from app.dashboard.service import DashboardUser
+    from app.users.service import UserRole
+
+    class Session:
+        def authenticate_session(self, token):
+            return DashboardUser("google-user", "user@example.test", None, 7, UserRole.USER)
+
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Session()
+    app.state.agent_release_service = type(
+        "Release", (), {"current": lambda self: (_ for _ in ()).throw(AssertionError())}
+    )()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        response = client.get("/api/v1/agent-releases/current")
+
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_deployment_enrollment_status_and_unused_revocation_use_management_identity():
+    from app.dashboard.service import DashboardUser
+    from app.enrollment.service import EnrollmentLifecycle, EnrollmentStatus
+    from app.users.service import UserRole
+
+    calls: list[tuple[str, str]] = []
+
+    class Session:
+        def authenticate_session(self, token):
+            return DashboardUser("google-user", "owner@example.test", None, 7, UserRole.OWNER)
+
+    class Enrollment:
+        def status(self, enrollment_id):
+            calls.append(("status", enrollment_id))
+            return EnrollmentStatus(
+                enrollment_id,
+                EnrollmentLifecycle.PENDING,
+                datetime(2026, 9, 28, 12, tzinfo=UTC),
+                None,
+                None,
+            )
+
+        def revoke_unused(self, enrollment_id):
+            calls.append(("revoke", enrollment_id))
+            return EnrollmentStatus(
+                enrollment_id,
+                EnrollmentLifecycle.REVOKED,
+                datetime(2026, 9, 28, 10, tzinfo=UTC),
+                None,
+                None,
+            )
+
+    enrollment_id = "e3e70682-c209-4cac-a29f-6fbed82c07cd"
+    settings = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test",
+        public_base_url="https://testserver",
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Session()
+    app.state.agent_enrollment_service_factory = lambda database, *, actor: Enrollment()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        status = client.get(f"/api/v1/agent-enrollments/{enrollment_id}")
+        revoked = client.delete(f"/api/v1/agent-enrollments/{enrollment_id}")
+
+    assert status.status_code == 200
+    assert status.json()["enrollment"]["state"] == "PENDING"
+    assert revoked.status_code == 200
+    assert revoked.json()["enrollment"]["state"] == "REVOKED"
+    assert all(response.headers["cache-control"] == "no-store" for response in (status, revoked))
+    assert calls == [("status", enrollment_id), ("revoke", enrollment_id)]
 
 
 @pytest.mark.parametrize("role", ["OWNER", "ADMIN"])

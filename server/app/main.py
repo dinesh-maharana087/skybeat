@@ -22,6 +22,7 @@ from app.api.enrollment import router as enrollment_router
 from app.api.health import router as health_router
 from app.api.heartbeats import PerDeviceRateLimiter
 from app.api.heartbeats import router as heartbeats_router
+from app.api.releases import router as release_router
 from app.config import Settings
 from app.dashboard.management import DashboardManagementService
 from app.dashboard.oidc import GoogleOIDCClient, OIDCClient
@@ -31,6 +32,7 @@ from app.db import Database
 from app.enrollment.service import AgentEnrollmentService
 from app.logging import configure_logging
 from app.notifications.management import NotificationManagementService
+from app.releases.service import AgentReleaseService
 from app.users.service import UserService
 
 logger = logging.getLogger(__name__)
@@ -90,8 +92,12 @@ def create_app(
         actor=actor,
         enrollment_lifetime=timedelta(seconds=config.agent_enrollment_ttl_seconds),
         verification_lifetime=timedelta(seconds=config.agent_enrollment_verification_ttl_seconds),
+        offline_after_seconds=config.offline_after_seconds,
     )
     app.state.enrollment_rate_limiter = EnrollmentRateLimiter()
+    app.state.agent_release_service = AgentReleaseService(
+        config.agent_release_dir, config.agent_server_url or config.public_base_url
+    )
     app.state.user_service_factory = UserService
     app.state.notification_management_service_factory = NotificationManagementService
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.allowed_hosts)
@@ -142,5 +148,6 @@ def create_app(
     app.include_router(heartbeats_router)
     app.include_router(dashboard_router)
     app.include_router(enrollment_router)
+    app.include_router(release_router)
     app.include_router(dashboard_page_router)
     return app

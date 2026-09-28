@@ -183,6 +183,32 @@ def test_development_dashboard_bypass_is_opt_in_and_rejected_outside_development
         Settings(**production)
 
 
+def test_agent_http_origin_requires_development_mode_private_ip_and_explicit_opt_in():
+    config = Settings(
+        env="development",
+        database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_development",
+        public_base_url="http://localhost:8000",
+        agent_server_url="http://192.168.1.20:8000",
+        allow_insecure_local_agent_server=True,
+    )
+
+    assert config.agent_server_url == "http://192.168.1.20:8000"
+    with pytest.raises(ValidationError):
+        Settings(
+            env="test",
+            database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+            agent_server_url="http://192.168.1.20:8000",
+            allow_insecure_local_agent_server=True,
+        )
+    with pytest.raises(ValidationError):
+        Settings(
+            env="development",
+            database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_development",
+            agent_server_url="http://8.8.8.8:8000",
+            allow_insecure_local_agent_server=True,
+        )
+
+
 def test_production_dashboard_requires_oidc_and_session_secret_configuration():
     with pytest.raises(ValidationError):
         Settings(

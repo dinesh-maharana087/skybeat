@@ -41,6 +41,14 @@ class EnrollmentMode(StrEnum):
     REPLACE = "REPLACE"
 
 
+class EnrollmentLifecycle(StrEnum):
+    PENDING = "PENDING"
+    ENROLLED = "ENROLLED"
+    ONLINE = "ONLINE"
+    EXPIRED = "EXPIRED"
+    REVOKED = "REVOKED"
+
+
 OPAQUE_COMPONENT_PATTERN = r"[A-Za-z0-9_-]{43}"
 
 
@@ -112,6 +120,15 @@ class ReceiptVerification:
     accepted_heartbeat: bool
 
 
+@dataclass(frozen=True)
+class EnrollmentStatus:
+    enrollment_id: str
+    state: EnrollmentLifecycle
+    expires_at: datetime
+    device_id: str | None
+    last_seen_at: datetime | None
+
+
 ENROLLMENT_TTL = timedelta(minutes=10)
 VERIFICATION_TTL = timedelta(minutes=10)
 
@@ -126,6 +143,7 @@ class AgentEnrollmentService:
         actor: str,
         enrollment_lifetime: timedelta = ENROLLMENT_TTL,
         verification_lifetime: timedelta = VERIFICATION_TTL,
+        offline_after_seconds: int = 180,
     ) -> None:
         self.database = database
         self.identity = IdentityService(database, actor=actor)
@@ -134,6 +152,9 @@ class AgentEnrollmentService:
         self._require_ttl(verification_lifetime)
         self.enrollment_lifetime = enrollment_lifetime
         self.verification_lifetime = verification_lifetime
+        if not isinstance(offline_after_seconds, int) or offline_after_seconds < 1:
+            raise ValueError("Offline threshold is invalid.")
+        self.offline_after = timedelta(seconds=offline_after_seconds)
 
     @staticmethod
     def _require_ttl(value: timedelta) -> None:
@@ -342,3 +363,84 @@ class AgentEnrollmentService:
                 accepted_heartbeat=device.last_seen_at is not None
                 and device.last_seen_at >= enrollment.used_at
             )
+
+    @staticmethod
+    def _enrollment(
+        session: Session, enrollment_id: str, *, locked: bool = False
+    ) -> AgentEnrollment:
+        statement = select(AgentEnrollment).where(AgentEnrollment.public_id == enrollment_id)
+        if locked:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        enrollment = session.scalar(statement)
+        if enrollment is None:
+            raise NotFound("Enrollment was not found.")
+        return enrollment
+
+    @staticmethod
+    def _was_revoked(session: Session, enrollment: AgentEnrollment) -> bool:
+        return (
+            session.scalar(
+                select(AuditEvent.id)
+                .where(
+                    AuditEvent.action == "agent_enrollment.revoked",
+                    AuditEvent.details["enrollment_id"].as_string() == enrollment.public_id,
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
+    def _status(
+        self, session: Session, enrollment: AgentEnrollment, now: datetime
+    ) -> EnrollmentStatus:
+        if enrollment.used_at is None:
+            state = (
+                EnrollmentLifecycle.REVOKED
+                if self._was_revoked(session, enrollment)
+                else EnrollmentLifecycle.EXPIRED
+                if enrollment.expires_at <= now
+                else EnrollmentLifecycle.PENDING
+            )
+            return EnrollmentStatus(
+                enrollment_id=enrollment.public_id,
+                state=state,
+                expires_at=enrollment.expires_at,
+                device_id=None,
+                last_seen_at=None,
+            )
+        device = (
+            session.scalar(select(Device).where(Device.id == enrollment.issued_device_id))
+            if enrollment.issued_device_id is not None
+            else None
+        )
+        if device is None:
+            raise NotFound("Enrollment device was not found.")
+        return EnrollmentStatus(
+            enrollment_id=enrollment.public_id,
+            state=(
+                EnrollmentLifecycle.ONLINE
+                if device.last_seen_at is not None
+                and device.last_seen_at >= now - self.offline_after
+                else EnrollmentLifecycle.ENROLLED
+            ),
+            expires_at=enrollment.expires_at,
+            device_id=device.device_uuid,
+            last_seen_at=device.last_seen_at,
+        )
+
+    def status(self, enrollment_id: str) -> EnrollmentStatus:
+        with self.database.transaction() as session:
+            enrollment = self._enrollment(session, enrollment_id)
+            return self._status(session, enrollment, database_utc(session))
+
+    def revoke_unused(self, enrollment_id: str) -> EnrollmentStatus:
+        with self.database.transaction() as session:
+            enrollment = self._enrollment(session, enrollment_id, locked=True)
+            now = database_utc(session)
+            if enrollment.used_at is not None:
+                raise Conflict("Enrollment has already issued a device credential.")
+            if enrollment.expires_at <= now:
+                raise Conflict("Enrollment is no longer valid.")
+            enrollment.expires_at = now
+            self._audit(session, "agent_enrollment.revoked", now, enrollment)
+            return self._status(session, enrollment, now)
