@@ -33,6 +33,7 @@ def test_installer_requires_an_explicit_flag_for_private_development_http_only()
 
     assert "--allow-insecure-local-server" in source
     assert "validate-agent-server-url.py" in library
+    assert "SKYBEAT_ALLOW_INSECURE_LOCAL_SERVER" in library
 
 
 def test_installer_has_ordered_fail_closed_lifecycle_helpers_and_secret_guards():

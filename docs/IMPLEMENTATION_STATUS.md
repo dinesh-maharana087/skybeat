@@ -1,6 +1,6 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 Current stage: Stage 11 - Alerting & Notification Management
 Current UI stage: Stage 09 - User Management + Role-Based Access Control
 Current milestone: Stage 11 and Stage 11.5 are complete, accepted, and merged into `main`.
@@ -50,7 +50,12 @@ Status: Stage 11 — COMPLETE / ACCEPTED; Stage 11.5 — COMPLETE / ACCEPTED. Me
 
 ## In Progress
 
-- None. Stage 11 and Stage 11.5 are merged; controlled-environment acceptance remains pending and does not authorize Stage 12.
+- Local Windows launcher hardening: `start-skybeat-local.ps1` now has a
+  repository-relative, secret-safe preflight and preserves the existing
+  development-only literal-IP HTTP agent policy. Final local startup remains
+  blocked in this checkout because the ignored `.venv` references a removed
+  Python 3.12 installation; no environment was recreated automatically.
+- Stage 11 and Stage 11.5 are merged; controlled-environment acceptance remains pending and does not authorize Stage 12.
 
 ## Verification Completed
 
@@ -421,6 +426,52 @@ Status: Stage 11 — COMPLETE / ACCEPTED; Stage 11.5 — COMPLETE / ACCEPTED. Me
 - Verification: focused SMTP/worker/notification/project-policy/configuration suite: 41 passed, 7 isolated-MySQL skips. Ruff, format, strict mypy, and `git diff --check` passed. The real-MySQL delivery/retry/snapshot tests remain correctly skipped without `SKYBEAT_TEST_DATABASE_URL`.
 - Security: `SMTP_PASSWORD` remains `SecretStr`; no password is logged, serialized, or added to documentation. The SMTP provider uses STARTTLS before authentication and returns safe failure categories only.
 - Next action: operator runs the documented local SMTP login test, then creates one controlled project-scoped event and confirms worker delivery persistence plus mailbox receipt. Do not claim real acceptance until that evidence is supplied.
+
+## Local Windows Launcher Repair Checkpoint
+
+- Status: WINDOWS HTTPS INGRESS RESTORED / UBUNTU AGENT ACCEPTANCE PENDING.
+  Do not start the final acceptance/load/soak stage.
+- Root cause: the intermediate LAN repair changed the configured agent origin
+  to direct HTTP and bound Uvicorn externally on its agent-facing port. The
+  installed agent correctly retained HTTPS and consequently sent a TLS handshake
+  to raw Uvicorn, which logged an invalid HTTP request. Caddy was no longer the
+  required local TLS ingress.
+- Restored local topology: when `SKYBEAT_AGENT_SERVER_URL` is HTTPS, the main
+  launcher starts Caddy on that exact literal private-IP address and port, with
+  `tls internal`, and runs Uvicorn only at `127.0.0.1:8000`. The unchanged local
+  browser/OIDC callback remains `http://localhost:8000`. The Caddy launcher
+  keeps the historic sibling Caddy state directories so the established local
+  CA identity is retained. Explicit direct HTTP remains a separate
+  development-only path requiring the existing literal private/loopback and
+  explicit-opt-in policy.
+- Local environment: repaired only the ignored root `.venv` interpreter pointer
+  from a removed Python 3.12 installation to the available uv-managed Python
+  3.12 runtime; package contents, application configuration, database, Ubuntu
+  agent, credentials, and enrollment state were not changed.
+- Windows verification: the exact launcher preflight passed; an active launch
+  has Caddy on the configured LAN HTTPS listener and Uvicorn on loopback only.
+  A request using Python's normal TLS verification with the preserved Caddy
+  root returned `200` through Caddy. A safe database query currently reports no
+  heartbeat newer than 90 seconds, so real Ubuntu service/dashboard acceptance
+  remains unverified and must not be claimed.
+- Automated verification: focused configuration/launcher/deployment/release/
+  OIDC tests: 85 passed; full agent suite: 70 passed; server Ruff/format and
+  strict mypy passed (56 source files); agent Ruff/format and strict mypy
+  passed (11 source files); Alembic head is `e43a8c9b0d11`; PowerShell parsing,
+  Caddy validation, and `git diff --check` passed. Full server verification had
+  443 passed and 41 isolated-MySQL skips; the five known Windows/WSL
+  deployment-artifact failures reproduce only stale pre-bundle expectations and
+  did not involve files changed by this repair.
+- Security: `.env` remains ignored; no secrets are printed by the preflight.
+  The agent validator, TLS verification, production HTTP rejection, OIDC,
+  sessions, RBAC, migrations, credentials, and enrollment behavior are
+  unchanged. Authlib's existing `httpx` fallback deprecation warning remains
+  separate; no dependency upgrade was made.
+- Next action: on the Ubuntu GPU, confirm the existing HTTPS URL, restart the
+  existing `skybeat-agent` service, inspect its journal, make a normal
+  CA-verified HTTPS curl request, and confirm a fresh dashboard heartbeat.
+  Do not re-enroll or rotate a credential unless a separate credential failure
+  is demonstrated. Do not commit, merge, push, or start another stage.
 
 ## Resume Command / Guidance
 

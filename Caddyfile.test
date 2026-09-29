@@ -1,4 +1,7 @@
-https://192.168.1.43 {
-    tls internal
-    reverse_proxy 127.0.0.1:8000
+# Local-only proxy. start-caddy-local.ps1 derives this exact TLS listen address
+# from SKYBEAT_AGENT_SERVER_URL; it is deliberately not a second `.env` value.
+https://{$SKYBEAT_LOCAL_TLS_ADDRESS:localhost:8000} {
+	bind {$SKYBEAT_LOCAL_TLS_BIND_ADDRESS:127.0.0.1}
+	tls internal
+	reverse_proxy 127.0.0.1:8000
 }

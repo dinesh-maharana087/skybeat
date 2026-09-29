@@ -341,6 +341,14 @@ Optional settings:
 | `SKYBEAT_NVIDIA_SMI_TIMEOUT_SECONDS` |                     5 |
 | `SKYBEAT_DISK_MOUNTPOINTS`           |                   `/` |
 | `SKYBEAT_LOG_LEVEL`                  |                `INFO` |
+| `SKYBEAT_ALLOW_INSECURE_LOCAL_SERVER`|                 false |
+
+`SKYBEAT_SERVER_URL` normally requires HTTPS. HTTP is accepted only for an
+explicit local-development configuration when `SKYBEAT_ALLOW_INSECURE_LOCAL_SERVER=true`
+and the origin uses a literal private or loopback IP address. Hostnames, public
+addresses, and unspecified addresses such as `0.0.0.0` are rejected. The
+release installer writes this opt-in only when its explicit
+`--allow-insecure-local-server` flag passed the same origin validation.
 
 Implementation may add bounded retry/jitter configuration where useful.
 

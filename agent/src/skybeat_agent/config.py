@@ -1,5 +1,6 @@
 """Validated, immutable agent configuration with secret-safe representation."""
 
+import ipaddress
 import re
 from dataclasses import dataclass, field
 from os import environ
@@ -53,7 +54,7 @@ class Config:
         server_url = env["SKYBEAT_SERVER_URL"]
         parsed = urlsplit(server_url)
         if (
-            parsed.scheme != "https"
+            parsed.scheme not in {"https", "http"}
             or not parsed.hostname
             or parsed.username
             or parsed.password
@@ -62,6 +63,18 @@ class Config:
             or parsed.fragment
         ):
             raise ConfigurationError("SKYBEAT_SERVER_URL is invalid.")
+        if parsed.scheme == "http":
+            try:
+                address = ipaddress.ip_address(parsed.hostname)
+            except ValueError:
+                address = None
+            if (
+                not _boolean(env, "SKYBEAT_ALLOW_INSECURE_LOCAL_SERVER", False)
+                or address is None
+                or address.is_unspecified
+                or not (address.is_private or address.is_loopback)
+            ):
+                raise ConfigurationError("SKYBEAT_SERVER_URL is invalid.")
         server_url = server_url.rstrip("/")
         device_id = env["SKYBEAT_DEVICE_ID"]
         try:

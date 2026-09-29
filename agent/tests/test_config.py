@@ -31,6 +31,38 @@ def test_config_defaults_are_safe_and_secrets_are_hidden():
         config.token = "replacement"
 
 
+def test_config_accepts_explicit_private_http_server_for_local_development():
+    config = Config.from_env(
+        environment(
+            SKYBEAT_SERVER_URL="http://192.168.1.43:8000",
+            SKYBEAT_ALLOW_INSECURE_LOCAL_SERVER="true",
+        )
+    )
+
+    assert config.server_url == "http://192.168.1.43:8000"
+
+
+@pytest.mark.parametrize(
+    "server_url,allow_insecure_local_server",
+    [
+        ("http://192.168.1.43:8000", "false"),
+        ("http://8.8.8.8:8000", "true"),
+        ("http://0.0.0.0:8000", "true"),
+        ("http://localhost:8000", "true"),
+    ],
+)
+def test_config_rejects_http_server_without_the_existing_local_transport_policy(
+    server_url, allow_insecure_local_server
+):
+    with pytest.raises(ConfigurationError):
+        Config.from_env(
+            environment(
+                SKYBEAT_SERVER_URL=server_url,
+                SKYBEAT_ALLOW_INSECURE_LOCAL_SERVER=allow_insecure_local_server,
+            )
+        )
+
+
 @pytest.mark.parametrize(
     "key,value",
     [

@@ -55,6 +55,8 @@ SKYBEAT_ENV=development
 SKYBEAT_DATABASE_URL=mysql+pymysql://<scoped-user>:<url-encoded-password>@127.0.0.1:3306/<database>?charset=utf8mb4
 SKYBEAT_PUBLIC_BASE_URL=http://localhost:8000
 SKYBEAT_ALLOWED_HOSTS=localhost,127.0.0.1
+SKYBEAT_AGENT_SERVER_URL=https://<laptop-private-ip>:8000
+SKYBEAT_ALLOW_INSECURE_LOCAL_AGENT_SERVER=false
 SKYBEAT_ALLOWED_EMAILS=<YOUR_ADMIN_EMAIL>
 # Or, only when an approved Workspace domain policy is appropriate:
 # SKYBEAT_ALLOWED_DOMAINS=example.com
@@ -68,45 +70,50 @@ Do not put actual values in source, shell history, logs, screenshots, or
 documentation. `SKYBEAT_ALLOWED_EMAILS`/`SKYBEAT_ALLOWED_DOMAINS` are an OIDC
 admission gate only: they do not assign a SkyBeat role.
 
-From the repository root, load that file only into the current PowerShell
-process. This loader deliberately emits no values and preserves `=` characters
-in secrets:
+For Windows local development, the repository launcher imports the protected
+repository-root `.env` into its own child process; it does not change the
+application's production environment-loading behavior. It ignores blank lines
+and comments, preserves `=` within values, and never prints secret values.
+Run its non-secret preflight before starting the server:
 
 ```powershell
-$envFile = Join-Path (Get-Location) ".env"
-Get-Content -LiteralPath $envFile | ForEach-Object {
-    if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$') {
-        [Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
-    }
-}
+Set-Location D:\learning\skybeat\skybeat
+PowerShell -ExecutionPolicy Bypass -File .\start-skybeat-local.ps1 -PreflightOnly
 ```
 
-Use this safe presence/state diagnostic after loading the file. It never
-prints a secret; `GOOGLE SECRET: True` means a value is present, not that its
-value has been externally validated. If the environment is malformed, it
-reports only that loading failed and the exception class.
+For the preferred HTTPS path, expected output identifies the loopback Uvicorn
+listener, the agent HTTPS endpoint, Caddy TLS termination, and `Configuration:
+OK`. The launcher validates and starts Caddy before exposing the endpoint; it
+never prints Google, SMTP, database, session, enrollment, or other secret
+values. It rejects a non-development `.env`, a malformed agent origin, or a
+failed Settings/Caddy preflight.
 
-```powershell
-@'
-from app.config import Settings
-try:
-    settings = Settings()
-except Exception as error:
-    print("CONFIGURATION LOAD: False")
-    print("CONFIGURATION ERROR TYPE: " + type(error).__name__)
-else:
-    print("CONFIGURATION LOAD: True")
-    print("GOOGLE CLIENT ID: " + str(bool(settings.google_client_id)))
-    print("GOOGLE SECRET: " + str(settings.google_client_secret is not None))
-    print("ADMISSION POLICY: " + str(settings.dashboard_authorization_configured))
-    print("DEV BYPASS: " + str(settings.dev_auth_bypass))
-    print("PUBLIC URL: " + settings.public_base_url)
-'@ | uv run --project server --frozen python -
-```
+`SKYBEAT_PUBLIC_BASE_URL` remains the browser/OIDC callback origin;
+`SKYBEAT_AGENT_SERVER_URL` is the agent-facing origin. They must not be
+conflated. For a LAN GPU, set
+`SKYBEAT_AGENT_SERVER_URL=https://<laptop-private-ip>:8000` and leave the
+insecure HTTP opt-in false. The launcher starts Caddy on that exact private-IP
+address and port, with `tls internal`, and proxies only to Uvicorn at
+`127.0.0.1:8000`. This allows the existing `http://localhost:8000` Google
+callback to remain loopback-only while the GPU reaches the same API through
+Caddy HTTPS. Caddy uses the historic repository-sibling `caddy-data` and
+`caddy-config` state directories so its existing local CA is preserved; its
+root certificate is `../caddy-data/caddy/pki/authorities/local/root.crt`.
 
-Expected acceptance state is `CONFIGURATION LOAD: True`, `GOOGLE CLIENT ID:
-True`, `GOOGLE SECRET: True`, `ADMISSION POLICY: True`, `DEV BYPASS: False`,
-and `PUBLIC URL: http://localhost:8000`.
+The corresponding protected Ubuntu agent configuration keeps the exact HTTPS
+URL in `SKYBEAT_SERVER_URL`; do not set
+`SKYBEAT_ALLOW_INSECURE_LOCAL_SERVER` for this path. Updating the server's
+agent endpoint configuration does not rotate its existing device credential or
+re-enroll the device. Ensure Windows allows inbound TCP 8000 on the **Private**
+network profile only. Do not create a Public-profile rule or expose this local
+development listener to the Internet.
+
+An explicit direct HTTP path remains only for isolated development tests:
+`SKYBEAT_AGENT_SERVER_URL=http://<private-or-loopback-ip>:8000` plus
+`SKYBEAT_ALLOW_INSECURE_LOCAL_AGENT_SERVER=true`. It binds Uvicorn directly to
+`0.0.0.0:8000`, is rejected outside development or for public/hostname/
+unspecified addresses, and must never replace the HTTPS path for an installed
+agent.
 
 The local Google Cloud Console credential must be a **Web application** OAuth
 client with this exact Authorized Redirect URI:
@@ -131,11 +138,13 @@ same normalized email and rejects an attempt to establish a different Owner:
 uv run --project server --frozen python -m app.cli --actor local-operator owner-bootstrap --email <YOUR_ADMIN_EMAIL>
 ```
 
-Start the local API from the same PowerShell process so it receives the loaded
-environment:
+Start the local API from a fresh PowerShell process; it imports the ignored
+repository `.env` for that child process and then starts Uvicorn on its local
+development bind:
 
 ```powershell
-uv run --project server --frozen python -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
+Set-Location D:\learning\skybeat\skybeat
+PowerShell -ExecutionPolicy Bypass -File .\start-skybeat-local.ps1
 ```
 
 Open `http://localhost:8000`, select Google login, and authenticate with the

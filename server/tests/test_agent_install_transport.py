@@ -28,7 +28,7 @@ def test_https_agent_origin_is_accepted_without_a_local_override():
 @pytest.mark.parametrize(
     "origin",
     [
-        "http://192.168.1.20:8000",
+        "http://192.168.1.43:8000",
         "http://10.0.0.4",
         "http://127.0.0.1:8000",
     ],
@@ -46,8 +46,8 @@ def test_private_or_loopback_http_requires_explicit_local_override(origin: str):
     [
         "http://monitor.example.test",
         "http://8.8.8.8",
-        "http://user@192.168.1.20",
-        "http://192.168.1.20/path",
+        "http://user@192.168.1.43",
+        "http://192.168.1.43/path",
         "https://monitor.example.test/path",
     ],
 )

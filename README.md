@@ -29,7 +29,15 @@ python -m alembic upgrade head
 python -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-On Windows, use `.venv\Scripts\python.exe` and load the corresponding environment variables using a protected local configuration mechanism. Do not paste real secrets into a recorded terminal or shared shell history.
+On Windows, keep the protected local configuration in the ignored repository
+`.env` and start the local API with `PowerShell -ExecutionPolicy Bypass -File
+.\start-skybeat-local.ps1`. The launcher imports the file into its child
+process and performs a non-secret Settings preflight. With an HTTPS private-IP
+agent endpoint, it starts Caddy on that LAN IP and leaves Uvicorn loopback-only
+on `127.0.0.1:8000`, preserving the local `http://localhost:8000` browser/OIDC
+callback path. Explicit development-only HTTP remains available only for a
+literal private/loopback endpoint plus its explicit opt-in. Do not paste real
+secrets into a recorded terminal or shared shell history.
 
 Migrations are explicit and are not run during API startup. Use a schema-scoped migration account for migrations and a separate runtime account with only the required data permissions for deployment. Never reset a database to fix a migration. Upgrading an existing production database requires the separate operational approval and backup procedure described in [AGENTS.md](AGENTS.md) and [deployment documentation](docs/DEPLOYMENT.md).
 

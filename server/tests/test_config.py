@@ -183,30 +183,56 @@ def test_development_dashboard_bypass_is_opt_in_and_rejected_outside_development
         Settings(**production)
 
 
-def test_agent_http_origin_requires_development_mode_private_ip_and_explicit_opt_in():
+@pytest.mark.parametrize("agent_server_url", ["http://192.168.1.43:8000", "http://127.0.0.1:8000"])
+def test_agent_http_origin_accepts_development_private_or_loopback_ip_with_explicit_opt_in(
+    agent_server_url,
+):
     config = Settings(
         env="development",
         database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_development",
         public_base_url="http://localhost:8000",
-        agent_server_url="http://192.168.1.20:8000",
+        agent_server_url=agent_server_url,
         allow_insecure_local_agent_server=True,
     )
 
-    assert config.agent_server_url == "http://192.168.1.20:8000"
+    assert config.agent_server_url == agent_server_url
+
+
+@pytest.mark.parametrize(
+    ("env", "agent_server_url", "allow_insecure_local_agent_server"),
+    [
+        ("development", "http://192.168.1.43:8000", False),
+        ("test", "http://192.168.1.43:8000", True),
+        ("production", "http://192.168.1.43:8000", True),
+        ("development", "http://8.8.8.8:8000", True),
+        ("development", "http://localhost:8000", True),
+        ("development", "http://0.0.0.0:8000", True),
+    ],
+)
+def test_agent_http_origin_rejects_insecure_or_nonlocal_configurations(
+    env, agent_server_url, allow_insecure_local_agent_server
+):
     with pytest.raises(ValidationError):
         Settings(
-            env="test",
-            database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
-            agent_server_url="http://192.168.1.20:8000",
-            allow_insecure_local_agent_server=True,
+            env=env,
+            database_url=f"mysql+pymysql://test:example@127.0.0.1/skybeat_{env}",
+            public_base_url="https://monitor.example.test"
+            if env == "production"
+            else "http://localhost:8000",
+            allowed_hosts=["monitor.example.test"] if env == "production" else None,
+            agent_server_url=agent_server_url,
+            allow_insecure_local_agent_server=allow_insecure_local_agent_server,
         )
-    with pytest.raises(ValidationError):
-        Settings(
-            env="development",
-            database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_development",
-            agent_server_url="http://8.8.8.8:8000",
-            allow_insecure_local_agent_server=True,
-        )
+
+
+def test_agent_https_origin_remains_valid_without_insecure_local_opt_in():
+    config = Settings(
+        env="development",
+        database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_development",
+        agent_server_url="https://monitor.example.test",
+    )
+
+    assert config.agent_server_url == "https://monitor.example.test"
 
 
 def test_production_dashboard_requires_oidc_and_session_secret_configuration():
