@@ -983,20 +983,20 @@ StarAgri
 Device:
 Warehouse-GPU-01
 
-Event:
-RECOVERED
+Status:
+Communication Restored
 
 Offline since:
 21-Sep-2026 14:10 UTC
 
-Recovered:
+Recovered at:
 21-Sep-2026 14:17 UTC
 
-Duration:
+Offline duration:
 7 minutes
 
-Current state:
-ONLINE
+Reference:
+Incident: <incident UUID>
 ```
 
 Use server timestamps.
@@ -1016,17 +1016,14 @@ StarAgri
 Device:
 Warehouse-GPU-01
 
-Event:
-OFFLINE
+Status:
+Offline
 
-Last heartbeat:
-21-Sep-2026 14:10 UTC
-
-Offline threshold reached:
+Offline detected:
 21-Sep-2026 14:13 UTC
 
-Current state:
-OFFLINE
+Reference:
+Incident: <incident UUID>
 ```
 
 Optionally include:
@@ -1044,19 +1041,19 @@ but clearly mark last-known telemetry as stale.
 Recommended:
 
 ```text id="xtbtl6"
-[SkyBeat] OFFLINE - StarAgri / Warehouse-GPU-01
+[SkyBeat] Device Offline — Warehouse-GPU-01
 ```
 
 Recovery:
 
 ```text id="q7a1lx"
-[SkyBeat] RECOVERED - StarAgri / Warehouse-GPU-01
+[SkyBeat] Communication Restored — Warehouse-GPU-01
 ```
 
 GPU:
 
 ```text id="i8qz6u"
-[SkyBeat] GPU DEGRADED - StarAgri / Warehouse-GPU-01
+[SkyBeat] GPU Degraded — Warehouse-GPU-01
 ```
 
 Keep subjects concise and operational.
