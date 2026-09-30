@@ -174,6 +174,9 @@ let pageLimit = DEFAULT_PAGE_LIMIT;
 let requestedProjectId = null;
 let activeFilterPopover = null;
 let filterOwner = null;
+let notificationProjects = [];
+let selectedNotificationProjectId = null;
+let notificationSaveMessage = "";
 
 function element(tag, text) {
   const node = document.createElement(tag);
@@ -1039,76 +1042,202 @@ async function refreshUsersView() {
   }
 }
 
-function notificationCheckbox(label, checked) {
+const ALERT_ROUTING_EVENTS = [
+  ["device_offline_enabled", "Device offline", "Device stops reporting to SkyBeat."],
+  ["device_recovered_enabled", "Device recovered", "Communication resumes after an offline incident."],
+  ["gpu_degraded_enabled", "GPU degraded", "SkyBeat detects confirmed GPU degradation."],
+  ["gpu_recovered_enabled", "GPU recovered", "GPU health returns to normal."],
+];
+
+function notificationEventControl(name, label, description, checked) {
   const control = document.createElement("label");
-  control.className = "checkbox-control";
+  control.className = "alert-routing-event";
   const input = document.createElement("input");
   input.type = "checkbox";
+  input.name = name;
   input.checked = checked;
-  control.append(input, document.createTextNode(` ${label}`));
+  const copy = document.createElement("span");
+  copy.className = "alert-routing-event__copy";
+  copy.append(element("strong", label), element("span", description));
+  control.append(copy, input);
   return [control, input];
 }
 
-function renderNotificationProjects(items) {
-  notificationsList.replaceChildren();
-  for (const project of items) {
-    const card = document.createElement("article");
-    card.className = "project-summary-card";
-    const title = element("h3", project.project_name);
-    const mode = element(
-      "p",
-      project.configured
-        ? "Project policy is active. Only these recipients can receive email."
-        : "Using deployment fallback until a project policy is saved.",
-    );
-    const recipients = document.createElement("textarea");
-    recipients.rows = 3;
-    recipients.placeholder = "ops@example.com, oncall@example.com";
-    recipients.value = project.recipients.join(", ");
-    recipients.setAttribute("aria-label", `${project.project_name} email recipients`);
-    const [offlineControl, offline] = notificationCheckbox(
-      "Device offline", project.device_offline_enabled,
-    );
-    const [recoveredControl, recovered] = notificationCheckbox(
-      "Device recovered", project.device_recovered_enabled,
-    );
-    const [gpuDegradedControl, gpuDegraded] = notificationCheckbox(
-      "GPU degraded", project.gpu_degraded_enabled,
-    );
-    const [gpuRecoveredControl, gpuRecovered] = notificationCheckbox(
-      "GPU recovered", project.gpu_recovered_enabled,
-    );
-    const controls = document.createElement("div");
-    controls.className = "management-form";
-    controls.append(recipients, offlineControl, recoveredControl, gpuDegradedControl, gpuRecoveredControl);
-    const status = element("p", "");
-    status.setAttribute("aria-live", "polite");
-    const save = element("button", "Save project policy");
-    save.type = "button";
-    save.className = "sb-button--primary";
-    save.addEventListener("click", async () => {
-      const values = recipients.value.split(/[;,\n]/).map((value) => value.trim()).filter(Boolean);
-      save.disabled = true;
-      status.textContent = "Saving…";
-      try {
-        await requestDashboardMutation(`/api/v1/notifications/${encodeURIComponent(project.project_id)}`, "PUT", {
-          recipients: values,
-          device_offline_enabled: offline.checked,
-          device_recovered_enabled: recovered.checked,
-          gpu_degraded_enabled: gpuDegraded.checked,
-          gpu_recovered_enabled: gpuRecovered.checked,
-        });
-        status.textContent = "Saved. This policy applies to newly created alert events.";
-        await refreshNotificationsView();
-      } catch (_) {
-        status.textContent = "The policy was not accepted. Check recipients and try again.";
-      } finally {
-        save.disabled = false;
-      }
+function isBasicEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function renderRecipientChips(container, recipientValues, onChange) {
+  container.replaceChildren();
+  for (const address of [...recipientValues].sort()) {
+    const recipientChip = document.createElement("span");
+    recipientChip.className = "recipient-chip";
+    recipientChip.textContent = address;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "recipient-chip__remove";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", `Remove ${address}`);
+    remove.addEventListener("click", () => {
+      recipientValues.delete(address);
+      onChange();
     });
-    card.append(title, mode, controls, save, status);
-    notificationsList.append(card);
+    recipientChip.append(remove);
+    container.append(recipientChip);
   }
+}
+
+function addRecipient(value, recipientValues, status) {
+  const address = value.trim().toLowerCase();
+  if (!address) return true;
+  if (!isBasicEmail(address)) {
+    status.textContent = "Enter a valid email address before saving.";
+    return false;
+  }
+  if (recipientValues.has(address)) {
+    status.textContent = "That recipient is already listed.";
+    return false;
+  }
+  recipientValues.add(address);
+  return true;
+}
+
+function renderNotificationProjects(items) {
+  notificationProjects = items;
+  if (
+    !selectedNotificationProjectId ||
+    !notificationProjects.some((project) => project.project_id === selectedNotificationProjectId)
+  ) {
+    selectedNotificationProjectId = notificationProjects[0]?.project_id ?? null;
+  }
+  notificationsList.replaceChildren();
+  if (!selectedNotificationProjectId) {
+    notificationsList.append(element("p", "No projects are available for alert routing."));
+    return;
+  }
+  const project = notificationProjects.find(
+    (item) => item.project_id === selectedNotificationProjectId,
+  );
+  if (!project) return;
+
+  const card = document.createElement("article");
+  card.className = "alert-routing-card sb-card";
+  const projectField = document.createElement("label");
+  projectField.className = "alert-routing-project";
+  projectField.append(element("span", "Project"));
+  const projectSelect = document.createElement("select");
+  projectSelect.id = "notification-project-select";
+  projectSelect.setAttribute("aria-label", "Project alert routing policy");
+  for (const item of notificationProjects) {
+    const option = element("option", item.project_name);
+    option.value = item.project_id;
+    option.selected = item.project_id === project.project_id;
+    projectSelect.append(option);
+  }
+  projectSelect.addEventListener("change", () => {
+    selectedNotificationProjectId = projectSelect.value;
+    notificationSaveMessage = "";
+    renderNotificationProjects(notificationProjects);
+  });
+  projectField.append(projectSelect);
+
+  const policyState = document.createElement("section");
+  policyState.className = "alert-routing-policy-state";
+  const badge = element("span", project.configured ? "Custom routing" : "Using fallback routing");
+  badge.className = `status-pill ${project.configured ? "status-ok" : "status-active"}`;
+  const stateCopy = element(
+    "p",
+    project.configured
+      ? "This project uses its own recipients and alert settings."
+      : "This project currently uses the deployment-wide recipients and alert settings. Saving changes creates a project-specific routing policy.",
+  );
+  policyState.append(badge, stateCopy);
+
+  const recipientsSection = document.createElement("section");
+  recipientsSection.className = "alert-routing-section";
+  recipientsSection.append(
+    element("h3", "Recipients"),
+    element("p", "People who should receive alerts for this project."),
+  );
+  const recipientValues = new Set(project.recipients);
+  const chipList = document.createElement("div");
+  chipList.className = "recipient-chip-list";
+  chipList.setAttribute("aria-label", "Selected alert recipients");
+  const recipientInput = document.createElement("input");
+  recipientInput.type = "text";
+  recipientInput.inputMode = "email";
+  recipientInput.autocomplete = "email";
+  recipientInput.placeholder = "Add email address…";
+  recipientInput.setAttribute("aria-label", "Add alert recipient email address");
+  const status = element("p", notificationSaveMessage);
+  status.className = "alert-routing-save-status";
+  status.setAttribute("aria-live", "polite");
+  const redrawRecipients = () => renderRecipientChips(chipList, recipientValues, redrawRecipients);
+  const consumeRecipientInput = () => {
+    const values = recipientInput.value.split(/[;,\n]/).map((value) => value.trim()).filter(Boolean);
+    if (!values.length) return true;
+    for (const value of values) {
+      if (!addRecipient(value, recipientValues, status)) return false;
+    }
+    recipientInput.value = "";
+    status.textContent = "";
+    redrawRecipients();
+    return true;
+  };
+  recipientInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      consumeRecipientInput();
+    }
+  });
+  recipientInput.addEventListener("blur", consumeRecipientInput);
+  recipientInput.addEventListener("paste", () => window.setTimeout(consumeRecipientInput, 0));
+  redrawRecipients();
+  recipientsSection.append(chipList, recipientInput);
+
+  const eventSection = document.createElement("section");
+  eventSection.className = "alert-routing-section";
+  eventSection.append(
+    element("h3", "Alert types"),
+    element("p", "Choose which events generate notifications."),
+  );
+  const eventControls = document.createElement("div");
+  eventControls.className = "alert-routing-events";
+  const eventInputs = {};
+  for (const [name, label, description] of ALERT_ROUTING_EVENTS) {
+    const [control, input] = notificationEventControl(name, label, description, project[name]);
+    eventInputs[name] = input;
+    eventControls.append(control);
+  }
+  eventSection.append(eventControls);
+
+  const save = element("button", "Save routing policy");
+  save.type = "button";
+  save.className = "sb-button--primary";
+  save.addEventListener("click", async () => {
+    if (!consumeRecipientInput()) return;
+    save.disabled = true;
+    status.textContent = "Saving routing policy…";
+    try {
+      await requestDashboardMutation(`/api/v1/notifications/${encodeURIComponent(project.project_id)}`, "PUT", {
+        recipients: [...recipientValues],
+        device_offline_enabled: eventInputs.device_offline_enabled.checked,
+        device_recovered_enabled: eventInputs.device_recovered_enabled.checked,
+        gpu_degraded_enabled: eventInputs.gpu_degraded_enabled.checked,
+        gpu_recovered_enabled: eventInputs.gpu_recovered_enabled.checked,
+      });
+      project.recipients = [...recipientValues];
+      project.configured = true;
+      for (const [name] of ALERT_ROUTING_EVENTS) project[name] = eventInputs[name].checked;
+      notificationSaveMessage = "Routing policy saved. Changes apply to newly created alert events.";
+      renderNotificationProjects(notificationProjects);
+    } catch (_) {
+      status.textContent = "The routing policy was not accepted. Check recipients and try again.";
+      save.disabled = false;
+    }
+  });
+  card.append(projectField, policyState, recipientsSection, eventSection, save, status);
+  notificationsList.append(card);
 }
 
 async function refreshNotificationsView() {
@@ -1117,7 +1246,7 @@ async function refreshNotificationsView() {
   try {
     const result = await requestNotifications();
     renderNotificationProjects(result.items);
-    notificationsStatus.textContent = `${result.items.length} project notification polic${result.items.length === 1 ? "y" : "ies"}.`;
+    notificationsStatus.textContent = `${result.items.length} project${result.items.length === 1 ? "" : "s"} available for alert routing.`;
     markDashboardFresh(null);
   } catch (_) {
     notificationsStatus.textContent = "Notification policies could not be loaded.";

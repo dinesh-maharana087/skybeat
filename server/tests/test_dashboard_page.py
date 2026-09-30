@@ -863,11 +863,229 @@ def test_dashboard_management_uses_same_origin_mutations_without_browser_storage
     assert '"/api/v1/agent-enrollments"' in script
     assert 'method: "POST"' in script
     assert '"PATCH"' in script
+    assert "sessionStorage" not in script
+    assert "history.pushState" not in script
+
+
+def test_alert_routing_page_uses_a_project_selector_and_a_polished_policy_editor():
+    template = dashboard_template()
+    script = dashboard_script()
+    styles = dashboard_styles()
+
+    assert '{% set page_title = "Alert Routing" %}' in template
+    assert "Choose who receives operational alerts for each project." in template
+    assert 'data-tooltip="Alert Routing"' in template
+    assert '<span class="nav-label">Alert Routing</span>' in template
+    assert 'id="notifications-list"' in template
+    assert "alert-routing-page" in template
+    assert "alert-routing-card" in script
+    assert "notification-project-select" in script
+    assert "Using fallback routing" in script
+    assert "Custom routing" in script
+    assert "Save routing policy" in script
+    assert "Device stops reporting to SkyBeat." in script
+    assert "Communication resumes after an offline incident." in script
+    assert "SkyBeat detects confirmed GPU degradation." in script
+    assert "GPU health returns to normal." in script
+    assert "function renderLegacyNotificationProjects" not in script
+    assert 'document.createElement("textarea")' not in script
+    assert (
+        "requestDashboardMutation(`/api/v1/notifications/${encodeURIComponent("
+        'project.project_id)}`, "PUT"' in script
+    )
+    assert ".alert-routing-page" in styles
+    assert ".recipient-chip" in styles
+    assert ".alert-routing-event" in styles
+
+
+def test_alert_routing_recipient_chips_keep_safe_array_payloads_and_client_validation():
+    script = dashboard_script()
+
+    assert "function addRecipient" in script
+    assert "function renderRecipientChips" in script
+    assert "function isBasicEmail" in script
+    assert "recipientValues.has" in script
+    assert "recipientValues.delete" in script
+    assert "split(/[;,\\n]/)" in script
+    assert "recipient-chip__remove" in script
+    assert "recipients: [...recipientValues]" in script
+    assert "recipientChip.textContent = address" in script
+    assert "recipientChip.innerHTML" not in script
     assert 'credentials: "same-origin"' in script
     assert 'const SIDEBAR_PREFERENCE_KEY = "skybeat.sidebar.v1"' in script
     assert "localStorage.setItem(SIDEBAR_PREFERENCE_KEY" in script
-    assert "sessionStorage" not in script
-    assert "history.pushState" not in script
+
+
+def test_alert_routing_project_selection_and_recipient_chips_preserve_the_existing_payload():
+    node = shutil.which("node")
+    assert node is not None
+    harness = textwrap.dedent(
+        """
+        import fs from "node:fs";
+        import vm from "node:vm";
+
+        const source = fs.readFileSync(0, "utf8");
+        const fallbackId = "11111111-1111-4111-8111-111111111111";
+        const customId = "22222222-2222-4222-8222-222222222222";
+        const listeners = new WeakMap();
+        const saved = [];
+
+        class Element {
+          constructor(id = "") {
+            this.id = id;
+            this.attributes = new Map();
+            this.children = [];
+            this.classList = { add() {}, contains() { return false; }, remove() {}, toggle() {} };
+            this.dataset = {};
+            this.disabled = false;
+            this.hidden = false;
+            this.checked = false;
+            this.open = false;
+            this.selectedOptions = [];
+            this.style = {};
+            this.textContent = "";
+            this.value = "";
+          }
+          addEventListener(type, listener) {
+            const byType = listeners.get(this) ?? new Map();
+            byType.set(type, listener);
+            listeners.set(this, byType);
+          }
+          emit(type, event = {}) {
+            const listener = listeners.get(this)?.get(type);
+            return listener?.({ preventDefault() {}, target: this, ...event });
+          }
+          append(...children) {
+            this.children.push(...children);
+            this.firstChild = this.children[0] ?? null;
+          }
+          appendChild(child) { this.append(child); return child; }
+          closest() { return null; }
+          focus() {}
+          getAttribute(name) { return this.attributes.get(name) ?? null; }
+          querySelectorAll() { return []; }
+          remove() {}
+          removeAttribute(name) { this.attributes.delete(name); }
+          replaceChildren(...children) {
+            this.children = children;
+            this.firstChild = children[0] ?? null;
+          }
+          reset() {}
+          setAttribute(name, value) { this.attributes.set(name, String(value)); }
+          showModal() { this.open = true; }
+          close() { this.open = false; this.emit("close"); }
+        }
+
+        const elements = new Map();
+        function elementFor(id) {
+          if (!elements.has(id)) elements.set(id, new Element(id));
+          return elements.get(id);
+        }
+        const document = {
+          body: Object.assign(elementFor("body"), {
+            dataset: {
+              dashboardView: "notifications",
+              dashboardRole: "ADMIN",
+              canManage: "true",
+            },
+          }),
+          addEventListener() {},
+          createElement(tag) { return new Element(tag); },
+          getElementById: elementFor,
+          hidden: false,
+          querySelector() { return elementFor("app-shell"); },
+        };
+        function response(payload) { return { ok: true, json: async () => payload }; }
+        async function fetch(path, options = {}) {
+          if (path === "/api/v1/notifications") {
+            return response({ items: [
+              {
+                project_id: fallbackId,
+                project_name: "Fallback project",
+                configured: false,
+                recipients: [],
+                device_offline_enabled: true,
+                device_recovered_enabled: true,
+                gpu_degraded_enabled: true,
+                gpu_recovered_enabled: true,
+              },
+              {
+                project_id: customId,
+                project_name: "Custom project",
+                configured: true,
+                recipients: ["custom@example.test"],
+                device_offline_enabled: true,
+                device_recovered_enabled: false,
+                gpu_degraded_enabled: true,
+                gpu_recovered_enabled: false,
+              },
+            ] });
+          }
+          if (String(path) === `/api/v1/notifications/${customId}` && options.method === "PUT") {
+            saved.push(JSON.parse(options.body));
+            return response({});
+          }
+          throw new Error(`unexpected request ${path}`);
+        }
+        const window = {
+          clearTimeout() {},
+          location: { assign() {}, origin: "https://testserver", search: "" },
+          matchMedia() { return { matches: false }; },
+          setTimeout() { return 1; },
+        };
+        const context = {
+          AbortController,
+          Element,
+          URL,
+          URLSearchParams,
+          console,
+          document,
+          fetch,
+          localStorage: { getItem() { return null; }, setItem() {} },
+          navigator: { clipboard: { writeText: async () => {} } },
+          window,
+        };
+        vm.runInNewContext(source, context);
+        for (let count = 0; count < 5; count += 1) await new Promise(setImmediate);
+
+        function descendants(node) {
+          return node.children.flatMap((child) => [child, ...descendants(child)]);
+        }
+        function currentNodes() { return descendants(elementFor("notifications-list")); }
+        function withText(text) { return currentNodes().find((node) => node.textContent === text); }
+
+        if (!withText("Using fallback routing")) throw new Error("fallback state was not rendered");
+        const selector = currentNodes().find((node) => node.id === "notification-project-select");
+        selector.value = customId;
+        selector.emit("change");
+        const input = currentNodes().find((node) => node.placeholder === "Add email address…");
+        input.value = "ops@example.test";
+        input.emit("keydown", { key: "Enter" });
+        if (!withText("ops@example.test")) throw new Error("recipient chip was not rendered");
+        const save = currentNodes().find((node) => node.textContent === "Save routing policy");
+        await save.emit("click");
+
+        if (saved.length !== 1) throw new Error("routing policy was not saved once");
+        const payload = saved[0];
+        if (payload.recipients.join(",") !== "custom@example.test,ops@example.test") {
+          throw new Error(`unexpected recipients payload ${JSON.stringify(payload.recipients)}`);
+        }
+        if (payload.device_recovered_enabled !== false || payload.gpu_recovered_enabled !== false) {
+          throw new Error("event toggles did not preserve the selected project's policy");
+        }
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=dashboard_script(),
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_dashboard_enrollment_credential_is_explicitly_transient_and_copy_only_on_action():
