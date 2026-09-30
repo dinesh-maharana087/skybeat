@@ -10,6 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 VALIDATOR = ROOT / "scripts" / "validate_deployment.py"
 INSTALLER = ROOT / "scripts" / "install-agent.sh"
+INSTALLER_LIBRARY = ROOT / "scripts" / "lib" / "skybeat_agent_install.sh"
 
 
 def _validate(root: Path) -> subprocess.CompletedProcess[str]:
@@ -30,6 +31,7 @@ def test_deployment_validator_reports_each_missing_required_artifact():
     assert "missing: deployment/mysql/01-create-migration-user.sh" in result.stderr
     assert "missing: deployment/production.env.example" in result.stderr
     assert "missing: scripts/install-agent.sh" in result.stderr
+    assert "missing: scripts/lib/skybeat_agent_install.sh" in result.stderr
 
 
 def test_deployment_validator_accepts_the_repository_hardened_artifacts():
@@ -76,33 +78,38 @@ def test_active_agent_unit_uses_standardized_path_and_least_privilege():
     assert "/opt/skybeat/venv/bin/skybeat-agent" in unit
     assert "/opt/skybeat-agent" not in unit
     assert "User=skybeat" in unit
-    assert "EnvironmentFile=/etc/skybeat-agent/agent.env" in unit
+    assert "EnvironmentFile=/etc/skybeat/agent.env" in unit
 
 
-def test_installer_is_required_and_contains_safe_argument_guards():
+def test_installer_uses_the_current_enrollment_token_and_secret_safe_guards():
     assert INSTALLER.is_file()
 
     text = INSTALLER.read_text(encoding="utf-8")
+    library = INSTALLER_LIBRARY.read_text(encoding="utf-8")
     assert "set -euo pipefail" in text
-    assert "--token" in text and "--credential" in text
-    assert "/opt/skybeat/venv" in text
-    assert "/etc/skybeat-agent/agent.env" in text
-    assert "set -x" not in text
-    assert '[[ "${EUID}" -eq 0 ]]' in text
-    assert "getent group skybeat" in text
+    assert "--token-file" in text
+    assert "--credential" not in text
+    assert "warning: use --token-file in production" in text
+    assert "/opt/skybeat/venv" in library
+    assert "/etc/skybeat/agent.env" in library
+    assert "install -m 0600 -o root -g root" in library
+    assert "set -x" not in text + library
+    assert "[[ ${EUID:-1} -eq 0 ]]" in library
+    assert "useradd --system --user-group" in library
 
 
 @pytest.mark.skipif(which("bash") is None, reason="Bash is unavailable on this host")
-def test_installer_rejects_unsafe_option_before_host_changes():
+def test_installer_rejects_the_legacy_credential_option_before_host_changes():
     result = subprocess.run(  # noqa: S603 -- invokes the committed installer only with rejected input.
-        [which("bash"), str(INSTALLER), "--token", "test-value"],
+        [which("bash"), str(INSTALLER), "--credential", "test-value"],
         check=False,
         capture_output=True,
         text=True,
     )
 
     assert result.returncode != 0
-    assert "credential command-line arguments are not accepted" in result.stderr
+    assert "usage:" in result.stderr
+    assert "test-value" not in result.stderr
 
 
 @pytest.mark.skipif(which("bash") is None, reason="Bash is unavailable on this host")
@@ -132,5 +139,6 @@ def test_status_records_operator_supplied_stage06_evidence_without_secrets():
 
     assert "operator-supplied stage 06 acceptance evidence" in status.lower()
     assert "NVIDIA GeForce RTX 5080" in status
-    assert "Current stage: Stage 11" in status
+    assert "Current stage: Stage 12B - Notification Assignment UX" in status
+    assert "Implemented Stage 12A Alert Routing UI polish" in status
     assert "Stage 07.1" in status

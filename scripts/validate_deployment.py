@@ -15,6 +15,7 @@ REQUIRED = (
     "deployment/systemd/agent.env.example",
     "deployment/production.env.example",
     "scripts/install-agent.sh",
+    "scripts/lib/skybeat_agent_install.sh",
 )
 
 
@@ -27,6 +28,10 @@ def validate(root: Path) -> list[str]:
     dockerfile = (root / "deployment/docker/Dockerfile.server").read_text(encoding="utf-8")
     unit = (root / "deployment/systemd/skybeat-agent.service").read_text(encoding="utf-8")
     installer = (root / "scripts/install-agent.sh").read_text(encoding="utf-8")
+    installer_library = (root / "scripts/lib/skybeat_agent_install.sh").read_text(
+        encoding="utf-8"
+    )
+    installer_tooling = f"{installer}\n{installer_library}"
     required_compose = ("mysql:", "migrate:", "api:", "worker:", "caddy:", "profiles:")
     errors.extend(f"compose missing: {item}" for item in required_compose if item not in compose)
     if "3306:3306" in compose or "8000:8000" in compose:
@@ -43,7 +48,7 @@ def validate(root: Path) -> list[str]:
         "User=skybeat",
         "Restart=on-failure",
         "NoNewPrivileges=true",
-        "EnvironmentFile=/etc/skybeat-agent/agent.env",
+        "EnvironmentFile=/etc/skybeat/agent.env",
         "ExecStart=/opt/skybeat/venv/bin/skybeat-agent",
     )
     errors.extend(f"agent unit missing: {item}" for item in required_unit if item not in unit)
@@ -51,19 +56,24 @@ def validate(root: Path) -> list[str]:
         errors.append("agent unit retains the legacy installation path")
     required_installer = (
         "set -euo pipefail",
-        '[[ "${EUID}" -eq 0 ]]',
-        "credential command-line arguments are not accepted",
-        "getent group skybeat",
+        "--token-file",
+        "warning: use --token-file in production",
+        "[[ ${EUID:-1} -eq 0 ]]",
+        "useradd --system --user-group",
         "/opt/skybeat/venv",
-        "/etc/skybeat-agent/agent.env",
+        "/etc/skybeat/agent.env",
         "install -m 0600",
         "systemctl daemon-reload",
         "systemctl enable --now skybeat-agent.service",
     )
     errors.extend(
-        f"agent installer missing: {item}" for item in required_installer if item not in installer
+        f"agent installer missing: {item}"
+        for item in required_installer
+        if item not in installer_tooling
     )
-    if "set -x" in installer or "verify=False" in installer:
+    if "--credential" in installer:
+        errors.append("agent installer accepts the deprecated credential option")
+    if "set -x" in installer_tooling or "verify=False" in installer_tooling:
         errors.append("agent installer contains an unsafe diagnostic or TLS setting")
     return errors
 

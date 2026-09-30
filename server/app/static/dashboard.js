@@ -176,7 +176,12 @@ let activeFilterPopover = null;
 let filterOwner = null;
 let notificationProjects = [];
 let selectedNotificationProjectId = null;
-let notificationSaveMessage = "";
+let notificationUsers = [];
+let notificationDraft = null;
+let notificationSaveState = "unchanged";
+let notificationSaveMessage = "No changes.";
+let notificationSaveInFlight = false;
+let notificationDirectoryAvailable = true;
 
 function element(tag, text) {
   const node = document.createElement(tag);
@@ -1063,46 +1068,104 @@ function notificationEventControl(name, label, description, checked) {
   return [control, input];
 }
 
-function isBasicEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+function notificationPolicy(project) {
+  return {
+    recipients: [...project.recipients].sort(),
+    device_offline_enabled: project.device_offline_enabled,
+    device_recovered_enabled: project.device_recovered_enabled,
+    gpu_degraded_enabled: project.gpu_degraded_enabled,
+    gpu_recovered_enabled: project.gpu_recovered_enabled,
+  };
 }
 
-function renderRecipientChips(container, recipientValues, onChange) {
+function notificationDraftFor(project) {
+  if (notificationDraft?.projectId !== project.project_id) {
+    const saved = notificationPolicy(project);
+    notificationDraft = {
+      projectId: project.project_id,
+      saved,
+      recipients: new Set(saved.recipients),
+      device_offline_enabled: saved.device_offline_enabled,
+      device_recovered_enabled: saved.device_recovered_enabled,
+      gpu_degraded_enabled: saved.gpu_degraded_enabled,
+      gpu_recovered_enabled: saved.gpu_recovered_enabled,
+    };
+  }
+  return notificationDraft;
+}
+
+function notificationDraftPayload(draft) {
+  return {
+    recipients: [...draft.recipients].sort(),
+    device_offline_enabled: draft.device_offline_enabled,
+    device_recovered_enabled: draft.device_recovered_enabled,
+    gpu_degraded_enabled: draft.gpu_degraded_enabled,
+    gpu_recovered_enabled: draft.gpu_recovered_enabled,
+  };
+}
+
+function notificationDraftIsDirty(draft) {
+  return JSON.stringify(notificationDraftPayload(draft)) !== JSON.stringify(draft.saved);
+}
+
+function selectedNotificationProject() {
+  return notificationProjects.find((project) => project.project_id === selectedNotificationProjectId);
+}
+
+function notificationUser(email) {
+  return notificationUsers.find((user) => user.email === email);
+}
+
+function markNotificationDraftUnsaved() {
+  const project = selectedNotificationProject();
+  if (!project) return;
+  const draft = notificationDraftFor(project);
+  notificationSaveState = notificationDraftIsDirty(draft) ? "unsaved" : "unchanged";
+  notificationSaveMessage =
+    notificationSaveState === "unsaved" ? "Unsaved changes" : "No changes.";
+  renderNotificationProjects();
+}
+
+function renderRecipientChips(container, project, draft) {
   container.replaceChildren();
-  for (const address of [...recipientValues].sort()) {
-    const recipientChip = document.createElement("span");
-    recipientChip.className = "recipient-chip";
-    recipientChip.textContent = address;
+  if (draft.recipients.size === 0) {
+    const empty = element("p", "No recipients assigned");
+    empty.className = "recipient-assignment-empty";
+    const explanation = element(
+      "p",
+      project.configured
+        ? "Alerts for this configured project policy will not have project recipients."
+        : "No project recipients are configured. The existing fallback remains active until you save this project policy.",
+    );
+    explanation.className = "recipient-assignment-empty__detail";
+    container.append(empty, explanation);
+    return;
+  }
+  for (const address of [...draft.recipients].sort()) {
+    const user = notificationUser(address);
+    const recipientChip = document.createElement("div");
+    recipientChip.className = "recipient-assignment";
+    const identity = document.createElement("span");
+    identity.className = "recipient-assignment__identity";
+    identity.append(
+      element("strong", user?.name || "Email recipient"),
+      element("span", address),
+    );
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "recipient-chip__remove";
     remove.textContent = "×";
-    remove.setAttribute("aria-label", `Remove ${address}`);
+    remove.setAttribute("aria-label", `Remove ${user?.name || address}`);
     remove.addEventListener("click", () => {
-      recipientValues.delete(address);
-      onChange();
+      draft.recipients.delete(address);
+      markNotificationDraftUnsaved();
     });
-    recipientChip.append(remove);
+    recipientChip.append(identity, remove);
     container.append(recipientChip);
   }
 }
 
-function addRecipient(value, recipientValues, status) {
-  const address = value.trim().toLowerCase();
-  if (!address) return true;
-  if (!isBasicEmail(address)) {
-    status.textContent = "Enter a valid email address before saving.";
-    return false;
-  }
-  if (recipientValues.has(address)) {
-    status.textContent = "That recipient is already listed.";
-    return false;
-  }
-  recipientValues.add(address);
-  return true;
-}
-
-function renderNotificationProjects(items) {
+function replaceNotificationProjects(items) {
   notificationProjects = items;
   if (
     !selectedNotificationProjectId ||
@@ -1110,15 +1173,18 @@ function renderNotificationProjects(items) {
   ) {
     selectedNotificationProjectId = notificationProjects[0]?.project_id ?? null;
   }
+  notificationDraft = null;
+}
+
+function renderNotificationProjects() {
   notificationsList.replaceChildren();
   if (!selectedNotificationProjectId) {
     notificationsList.append(element("p", "No projects are available for alert routing."));
     return;
   }
-  const project = notificationProjects.find(
-    (item) => item.project_id === selectedNotificationProjectId,
-  );
+  const project = selectedNotificationProject();
   if (!project) return;
+  const draft = notificationDraftFor(project);
 
   const card = document.createElement("article");
   card.className = "alert-routing-card sb-card";
@@ -1135,9 +1201,18 @@ function renderNotificationProjects(items) {
     projectSelect.append(option);
   }
   projectSelect.addEventListener("change", () => {
+    if (projectSelect.value === selectedNotificationProjectId) return;
+    if (notificationDraftIsDirty(draft)) {
+      notificationSaveState = "unsaved";
+      notificationSaveMessage = "Unsaved changes";
+      renderNotificationProjects();
+      return;
+    }
     selectedNotificationProjectId = projectSelect.value;
-    notificationSaveMessage = "";
-    renderNotificationProjects(notificationProjects);
+    notificationDraft = null;
+    notificationSaveState = "unchanged";
+    notificationSaveMessage = "No changes.";
+    renderNotificationProjects();
   });
   projectField.append(projectSelect);
 
@@ -1157,43 +1232,51 @@ function renderNotificationProjects(items) {
   recipientsSection.className = "alert-routing-section";
   recipientsSection.append(
     element("h3", "Recipients"),
-    element("p", "People who should receive alerts for this project."),
+    element("p", "Assign active SkyBeat users to receive alerts for this project."),
   );
-  const recipientValues = new Set(project.recipients);
   const chipList = document.createElement("div");
   chipList.className = "recipient-chip-list";
   chipList.setAttribute("aria-label", "Selected alert recipients");
-  const recipientInput = document.createElement("input");
-  recipientInput.type = "text";
-  recipientInput.inputMode = "email";
-  recipientInput.autocomplete = "email";
-  recipientInput.placeholder = "Add email address…";
-  recipientInput.setAttribute("aria-label", "Add alert recipient email address");
-  const status = element("p", notificationSaveMessage);
-  status.className = "alert-routing-save-status";
-  status.setAttribute("aria-live", "polite");
-  const redrawRecipients = () => renderRecipientChips(chipList, recipientValues, redrawRecipients);
-  const consumeRecipientInput = () => {
-    const values = recipientInput.value.split(/[;,\n]/).map((value) => value.trim()).filter(Boolean);
-    if (!values.length) return true;
-    for (const value of values) {
-      if (!addRecipient(value, recipientValues, status)) return false;
-    }
-    recipientInput.value = "";
-    status.textContent = "";
-    redrawRecipients();
-    return true;
-  };
-  recipientInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === ",") {
-      event.preventDefault();
-      consumeRecipientInput();
-    }
+  renderRecipientChips(chipList, project, draft);
+  const assignmentControls = document.createElement("div");
+  assignmentControls.className = "recipient-assignment-controls";
+  const recipientSelect = document.createElement("select");
+  recipientSelect.id = "notification-recipient-select";
+  recipientSelect.setAttribute("aria-label", "Assign an active SkyBeat user");
+  const eligibleUsers = notificationUsers.filter(
+    (user) => user.active && !draft.recipients.has(user.email),
+  );
+  const placeholder = element(
+    "option",
+    notificationDirectoryAvailable
+      ? "Choose an active SkyBeat user"
+      : "Active user directory is unavailable",
+  );
+  placeholder.value = "";
+  placeholder.selected = true;
+  recipientSelect.append(placeholder);
+  for (const user of eligibleUsers) {
+    const option = element("option", `${user.name || user.email} — ${user.email}`);
+    option.value = user.email;
+    recipientSelect.append(option);
+  }
+  recipientSelect.disabled = !notificationDirectoryAvailable || eligibleUsers.length === 0;
+  const assignRecipient = element("button", "Assign recipient");
+  assignRecipient.type = "button";
+  assignRecipient.className = "sb-button--secondary";
+  assignRecipient.disabled = recipientSelect.disabled;
+  assignRecipient.addEventListener("click", () => {
+    if (!recipientSelect.value) return;
+    draft.recipients.add(recipientSelect.value);
+    markNotificationDraftUnsaved();
   });
-  recipientInput.addEventListener("blur", consumeRecipientInput);
-  recipientInput.addEventListener("paste", () => window.setTimeout(consumeRecipientInput, 0));
-  redrawRecipients();
-  recipientsSection.append(chipList, recipientInput);
+  assignmentControls.append(recipientSelect, assignRecipient);
+  if (!notificationDirectoryAvailable) {
+    assignmentControls.append(
+      element("p", "The active user directory could not be loaded. Existing recipients remain visible."),
+    );
+  }
+  recipientsSection.append(chipList, assignmentControls);
 
   const eventSection = document.createElement("section");
   eventSection.className = "alert-routing-section";
@@ -1203,10 +1286,12 @@ function renderNotificationProjects(items) {
   );
   const eventControls = document.createElement("div");
   eventControls.className = "alert-routing-events";
-  const eventInputs = {};
   for (const [name, label, description] of ALERT_ROUTING_EVENTS) {
-    const [control, input] = notificationEventControl(name, label, description, project[name]);
-    eventInputs[name] = input;
+    const [control, input] = notificationEventControl(name, label, description, draft[name]);
+    input.addEventListener("change", () => {
+      draft[name] = input.checked;
+      markNotificationDraftUnsaved();
+    });
     eventControls.append(control);
   }
   eventSection.append(eventControls);
@@ -1214,29 +1299,52 @@ function renderNotificationProjects(items) {
   const save = element("button", "Save routing policy");
   save.type = "button";
   save.className = "sb-button--primary";
+  save.disabled = notificationSaveInFlight;
   save.addEventListener("click", async () => {
-    if (!consumeRecipientInput()) return;
-    save.disabled = true;
-    status.textContent = "Saving routing policy…";
+    if (notificationSaveInFlight) return;
+    if (!notificationDraftIsDirty(draft)) {
+      notificationSaveState = "unchanged";
+      notificationSaveMessage = "No changes.";
+      renderNotificationProjects();
+      return;
+    }
+    notificationSaveInFlight = true;
+    notificationSaveState = "saving";
+    notificationSaveMessage = "Saving";
+    renderNotificationProjects();
     try {
-      await requestDashboardMutation(`/api/v1/notifications/${encodeURIComponent(project.project_id)}`, "PUT", {
-        recipients: [...recipientValues],
-        device_offline_enabled: eventInputs.device_offline_enabled.checked,
-        device_recovered_enabled: eventInputs.device_recovered_enabled.checked,
-        gpu_degraded_enabled: eventInputs.gpu_degraded_enabled.checked,
-        gpu_recovered_enabled: eventInputs.gpu_recovered_enabled.checked,
-      });
-      project.recipients = [...recipientValues];
-      project.configured = true;
-      for (const [name] of ALERT_ROUTING_EVENTS) project[name] = eventInputs[name].checked;
-      notificationSaveMessage = "Routing policy saved. Changes apply to newly created alert events.";
-      renderNotificationProjects(notificationProjects);
+      await requestDashboardMutation(
+        `/api/v1/notifications/${encodeURIComponent(project.project_id)}`,
+        "PUT",
+        notificationDraftPayload(draft),
+      );
+      const reloaded = await requestNotifications();
+      notificationSaveInFlight = false;
+      replaceNotificationProjects(reloaded.items);
+      notificationSaveState = "saved";
+      notificationSaveMessage = "Saved";
+      renderNotificationProjects();
     } catch (_) {
-      status.textContent = "The routing policy was not accepted. Check recipients and try again.";
-      save.disabled = false;
+      notificationSaveInFlight = false;
+      notificationSaveState = "failed";
+      notificationSaveMessage = "Save failed. Your unsaved changes are still shown.";
+      renderNotificationProjects();
     }
   });
-  card.append(projectField, policyState, recipientsSection, eventSection, save, status);
+  const discard = element("button", "Discard changes");
+  discard.type = "button";
+  discard.className = "sb-button--ghost";
+  discard.disabled = notificationSaveInFlight || !notificationDraftIsDirty(draft);
+  discard.addEventListener("click", () => {
+    notificationDraft = null;
+    notificationSaveState = "unchanged";
+    notificationSaveMessage = "Changes discarded.";
+    renderNotificationProjects();
+  });
+  const status = element("p", notificationSaveMessage);
+  status.className = `alert-routing-save-status alert-routing-save-status--${notificationSaveState}`;
+  status.setAttribute("aria-live", "polite");
+  card.append(projectField, policyState, recipientsSection, eventSection, save, discard, status);
   notificationsList.append(card);
 }
 
@@ -1245,7 +1353,16 @@ async function refreshNotificationsView() {
   refreshing = true;
   try {
     const result = await requestNotifications();
-    renderNotificationProjects(result.items);
+    try {
+      const users = await requestUsers();
+      notificationUsers = users.items;
+      notificationDirectoryAvailable = true;
+    } catch (_) {
+      notificationUsers = [];
+      notificationDirectoryAvailable = false;
+    }
+    replaceNotificationProjects(result.items);
+    renderNotificationProjects();
     notificationsStatus.textContent = `${result.items.length} project${result.items.length === 1 ? "" : "s"} available for alert routing.`;
     markDashboardFresh(null);
   } catch (_) {

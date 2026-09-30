@@ -889,34 +889,36 @@ def test_alert_routing_page_uses_a_project_selector_and_a_polished_policy_editor
     assert "GPU health returns to normal." in script
     assert "function renderLegacyNotificationProjects" not in script
     assert 'document.createElement("textarea")' not in script
-    assert (
-        "requestDashboardMutation(`/api/v1/notifications/${encodeURIComponent("
-        'project.project_id)}`, "PUT"' in script
-    )
+    assert "notificationDraftPayload(draft)" in script
+    assert "const reloaded = await requestNotifications()" in script
+    assert "Discard changes" in script
+    assert "Save failed. Your unsaved changes are still shown." in script
     assert ".alert-routing-page" in styles
     assert ".recipient-chip" in styles
+    assert ".recipient-assignment-controls" in styles
     assert ".alert-routing-event" in styles
 
 
-def test_alert_routing_recipient_chips_keep_safe_array_payloads_and_client_validation():
+def test_alert_routing_assignment_controls_use_the_existing_active_user_directory():
     script = dashboard_script()
 
-    assert "function addRecipient" in script
     assert "function renderRecipientChips" in script
-    assert "function isBasicEmail" in script
-    assert "recipientValues.has" in script
-    assert "recipientValues.delete" in script
-    assert "split(/[;,\\n]/)" in script
+    assert "notification-recipient-select" in script
+    assert "requestUsers()" in script
+    assert "user.active && !draft.recipients.has(user.email)" in script
+    assert "No recipients assigned" in script
+    assert "recipient-assignment" in script
     assert "recipient-chip__remove" in script
-    assert "recipients: [...recipientValues]" in script
-    assert "recipientChip.textContent = address" in script
+    assert "draft.recipients.delete(address)" in script
+    assert 'element("span", address)' in script
     assert "recipientChip.innerHTML" not in script
+    assert "Add email address" not in script
     assert 'credentials: "same-origin"' in script
     assert 'const SIDEBAR_PREFERENCE_KEY = "skybeat.sidebar.v1"' in script
     assert "localStorage.setItem(SIDEBAR_PREFERENCE_KEY" in script
 
 
-def test_alert_routing_project_selection_and_recipient_chips_preserve_the_existing_payload():
+def test_alert_routing_assigns_active_users_and_keeps_project_drafts_isolated():
     node = shutil.which("node")
     assert node is not None
     harness = textwrap.dedent(
@@ -926,9 +928,43 @@ def test_alert_routing_project_selection_and_recipient_chips_preserve_the_existi
 
         const source = fs.readFileSync(0, "utf8");
         const fallbackId = "11111111-1111-4111-8111-111111111111";
-        const customId = "22222222-2222-4222-8222-222222222222";
+        const assignedId = "22222222-2222-4222-8222-222222222222";
+        const zeroId = "33333333-3333-4333-8333-333333333333";
         const listeners = new WeakMap();
         const saved = [];
+        let rejectNextSave = false;
+        const projects = [
+          {
+            project_id: fallbackId,
+            project_name: "Fallback project",
+            configured: false,
+            recipients: [],
+            device_offline_enabled: true,
+            device_recovered_enabled: true,
+            gpu_degraded_enabled: true,
+            gpu_recovered_enabled: true,
+          },
+          {
+            project_id: assignedId,
+            project_name: "Assigned project",
+            configured: true,
+            recipients: ["alice@example.test", "legacy@example.test"],
+            device_offline_enabled: true,
+            device_recovered_enabled: false,
+            gpu_degraded_enabled: true,
+            gpu_recovered_enabled: false,
+          },
+          {
+            project_id: zeroId,
+            project_name: "Zero-recipient project",
+            configured: true,
+            recipients: [],
+            device_offline_enabled: true,
+            device_recovered_enabled: true,
+            gpu_degraded_enabled: true,
+            gpu_recovered_enabled: true,
+          },
+        ];
 
         class Element {
           constructor(id = "") {
@@ -996,34 +1032,56 @@ def test_alert_routing_project_selection_and_recipient_chips_preserve_the_existi
           querySelector() { return elementFor("app-shell"); },
         };
         function response(payload) { return { ok: true, json: async () => payload }; }
+        function failedResponse() { return { ok: false, json: async () => ({}) }; }
         async function fetch(path, options = {}) {
           if (path === "/api/v1/notifications") {
+            return response({ items: projects.map((project) => ({
+              ...project,
+              recipients: [...project.recipients],
+            })) });
+          }
+          if (path === "/api/v1/users") {
             return response({ items: [
               {
-                project_id: fallbackId,
-                project_name: "Fallback project",
-                configured: false,
-                recipients: [],
-                device_offline_enabled: true,
-                device_recovered_enabled: true,
-                gpu_degraded_enabled: true,
-                gpu_recovered_enabled: true,
+                user_id: 1,
+                name: "Alice Example",
+                email: "alice@example.test",
+                role: "USER",
+                active: true,
+                created_at: "2026-09-30T00:00:00Z",
+                updated_at: "2026-09-30T00:00:00Z",
               },
               {
-                project_id: customId,
-                project_name: "Custom project",
-                configured: true,
-                recipients: ["custom@example.test"],
-                device_offline_enabled: true,
-                device_recovered_enabled: false,
-                gpu_degraded_enabled: true,
-                gpu_recovered_enabled: false,
+                user_id: 2,
+                name: "Bob Example",
+                email: "bob@example.test",
+                role: "ADMIN",
+                active: true,
+                created_at: "2026-09-30T00:00:00Z",
+                updated_at: "2026-09-30T00:00:00Z",
+              },
+              {
+                user_id: 3,
+                name: "Inactive Example",
+                email: "inactive@example.test",
+                role: "USER",
+                active: false,
+                created_at: "2026-09-30T00:00:00Z",
+                updated_at: "2026-09-30T00:00:00Z",
               },
             ] });
           }
-          if (String(path) === `/api/v1/notifications/${customId}` && options.method === "PUT") {
-            saved.push(JSON.parse(options.body));
-            return response({});
+          if (String(path) === `/api/v1/notifications/${zeroId}` && options.method === "PUT") {
+            const payload = JSON.parse(options.body);
+            saved.push(payload);
+            if (rejectNextSave) return failedResponse();
+            const project = projects.find((item) => item.project_id === zeroId);
+            Object.assign(project, payload, { configured: true });
+            return response({ notification: {
+              project_id: zeroId,
+              configured: true,
+              recipients: payload.recipients,
+            } });
           }
           throw new Error(`unexpected request ${path}`);
         }
@@ -1055,23 +1113,82 @@ def test_alert_routing_project_selection_and_recipient_chips_preserve_the_existi
         function withText(text) { return currentNodes().find((node) => node.textContent === text); }
 
         if (!withText("Using fallback routing")) throw new Error("fallback state was not rendered");
-        const selector = currentNodes().find((node) => node.id === "notification-project-select");
-        selector.value = customId;
+        let selector = currentNodes().find((node) => node.id === "notification-project-select");
+        selector.value = assignedId;
         selector.emit("change");
-        const input = currentNodes().find((node) => node.placeholder === "Add email address…");
-        input.value = "ops@example.test";
-        input.emit("keydown", { key: "Enter" });
-        if (!withText("ops@example.test")) throw new Error("recipient chip was not rendered");
+        if (!withText("Alice Example")) throw new Error("assigned user name was not rendered");
+        if (!withText("Email recipient") || !withText("legacy@example.test")) {
+          throw new Error("existing email-only recipient was not preserved");
+        }
+        let recipientSelect = currentNodes().find(
+          (node) => node.id === "notification-recipient-select",
+        );
+        if (currentNodes().some((node) => node.textContent.includes("Inactive Example"))) {
+          throw new Error("inactive users must not be assignment choices");
+        }
+        recipientSelect.value = "bob@example.test";
+        withText("Assign recipient").emit("click");
+        if (!withText("Bob Example")) throw new Error("selected user was not assigned");
+
+        selector = currentNodes().find((node) => node.id === "notification-project-select");
+        selector.value = zeroId;
+        selector.emit("change");
+        if (!withText("Unsaved changes") || !withText("Alice Example")) {
+          throw new Error("dirty project draft was not protected before switching");
+        }
+        withText("Discard changes").emit("click");
+        selector = currentNodes().find((node) => node.id === "notification-project-select");
+        selector.value = zeroId;
+        selector.emit("change");
+        if (!withText("No recipients assigned") || withText("Alice Example")) {
+          throw new Error("zero-recipient project leaked the prior project draft");
+        }
+
+        recipientSelect = currentNodes().find(
+          (node) => node.id === "notification-recipient-select",
+        );
+        recipientSelect.value = "bob@example.test";
+        withText("Assign recipient").emit("click");
+        const gpuDegraded = currentNodes().find(
+          (node) => node.name === "gpu_degraded_enabled",
+        );
+        gpuDegraded.checked = false;
+        gpuDegraded.emit("change");
         const save = currentNodes().find((node) => node.textContent === "Save routing policy");
         await save.emit("click");
 
         if (saved.length !== 1) throw new Error("routing policy was not saved once");
         const payload = saved[0];
-        if (payload.recipients.join(",") !== "custom@example.test,ops@example.test") {
+        if (payload.recipients.join(",") !== "bob@example.test") {
           throw new Error(`unexpected recipients payload ${JSON.stringify(payload.recipients)}`);
         }
-        if (payload.device_recovered_enabled !== false || payload.gpu_recovered_enabled !== false) {
-          throw new Error("event toggles did not preserve the selected project's policy");
+        if (payload.gpu_degraded_enabled !== false) {
+          throw new Error("changed notification event policy was not persisted");
+        }
+        if (
+          payload.device_offline_enabled !== true ||
+          payload.device_recovered_enabled !== true ||
+          payload.gpu_recovered_enabled !== true
+        ) {
+          throw new Error("unchanged notification event policy values were not preserved");
+        }
+        if (!withText("Saved") || !withText("Bob Example")) {
+          throw new Error("saved server state was not rendered after reload");
+        }
+        const removeBob = currentNodes().find(
+          (node) => node.getAttribute("aria-label") === "Remove Bob Example",
+        );
+        removeBob.emit("click");
+        rejectNextSave = true;
+        const retrySave = currentNodes().find(
+          (node) => node.textContent === "Save routing policy",
+        );
+        await retrySave.emit("click");
+        if (!withText("Save failed. Your unsaved changes are still shown.")) {
+          throw new Error("failed save was presented as successful");
+        }
+        if (!withText("No recipients assigned") || saved.length !== 2) {
+          throw new Error("failed save did not retain the visible recipient draft");
         }
         """
     )

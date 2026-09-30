@@ -1,10 +1,10 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-09-30
-Current stage: Stage 12A - Alert Routing UI Polish
-Current UI stage: Stage 12A - Alert Routing UI Polish
-Current milestone: The existing notification-management page has a polished, project-focused routing editor using the unchanged API contract.
-Status: Stage 12A implementation and automated verification are complete; live browser acceptance remains environment-pending.
+Current stage: Stage 12B - Notification Assignment UX
+Current UI stage: Stage 12B - Notification Assignment UX
+Current milestone: The existing notification-management page has a project-isolated assignment editor and a clean automated regression baseline using the unchanged API contract.
+Status: Stage 12B implementation and automated verification are complete; live browser acceptance remains environment-pending.
 
 ## Completed
 
@@ -48,6 +48,7 @@ Status: Stage 12A implementation and automated verification are complete; live b
 - Implemented Stage 08H final dashboard shell polish: the collapsed rail now has an explicit icon-only SkyBeat brand composition, centered navigation/toggle alignment, retained navigation tooltips, and no horizontal overflow. The existing `assert_logo.png` asset is a subtle expanded-footer `Powered by Assert AI` treatment and is hidden with the footer when collapsed. No API, database, telemetry, agent, authentication, enrollment, or business functionality changed.
 - Implemented Stage 09 RBAC: an additive `application_users` migration with database-enforced sole Owner; local idempotent Owner bootstrap; Google OIDC plus configured admission policy plus active durable-user resolution on every request; reusable server-side role dependencies; audited user list/create/update APIs; and a role-aware Users dashboard. OWNER manages ADMIN/USER, ADMIN manages USER only, and USER is read-only. Owner mutation/assignment/transfer is unavailable through browser/API.
 - Implemented Stage 12A Alert Routing UI polish: the existing `/dashboard/notifications` view is now a focused per-project routing editor with explicit fallback/custom policy status, recipient chips, concise event descriptions, accessible feedback, and responsive local styling. It continues to use only the existing GET/PUT notification-management API and preserves fallback, zero-recipient, and event-toggle semantics.
+- Implemented Stage 12B Notification Assignment UX: the existing alert-routing editor now assigns active SkyBeat users from the existing directory, preserves stored email-only recipients, keeps drafts isolated per selected project, requires explicit save/discard before switching away from a dirty draft, re-fetches the existing project policy after a successful save, and retains failed-save drafts. No schema, model, route, notification-domain, or persistence behavior changed.
 
 ## In Progress
 
@@ -56,11 +57,12 @@ Status: Stage 12A implementation and automated verification are complete; live b
   development-only literal-IP HTTP agent policy. Final local startup remains
   blocked in this checkout because the ignored `.venv` references a removed
   Python 3.12 installation; no environment was recreated automatically.
-- Stage 12A live visual/browser acceptance remains pending because no browser surface is available in this environment.
+- Stage 12B live visual/browser acceptance remains pending because no browser surface is available in this environment.
 
 ## Verification Completed
 
 - Stage 12A verification: notification page/API regressions passed (96 tests), including a Node interaction harness for project selection, recipient chips, and the existing PUT payload. Ruff check and format check passed (96 files); strict mypy passed for 56 server source files; `node --check server/app/static/dashboard.js` and `git diff --check` passed. Full server suite: 461 passed, 43 environment skips, and 3 existing deployment-artifact failures in untouched agent unit/installer files.
+- Stage 12B verification: notification/dashboard/RBAC/email regressions passed (111 tests), including the Node assignment/draft interaction harness. The corrected deployment-artifact and current installer regression suite passed (15 passed, 2 Bash-unavailable skips). Ruff check and format check passed (96 files); strict mypy passed for 56 server source files; `node --check server/app/static/dashboard.js` and `git diff --check` passed. Full server suite: 464 passed, 43 environment skips, 0 failed.
 - Stage 10 Task 1 focused enrollment primitives/model tests: 7 passed; one lifecycle integration test skipped only because `SKYBEAT_TEST_DATABASE_URL` is not configured. Ruff check/format and strict mypy passed for the affected server source. `git diff --check` passed.
 - Stage 10 Tasks 1-2 focused enrollment/API/dashboard regression tests: 32 passed, one real-MySQL lifecycle test skipped only because `SKYBEAT_TEST_DATABASE_URL` is not configured; Ruff check/format and strict mypy passed for 8 affected server source files. Alembic reports sole head `d12e7f9c43a0`.
 - Stage 10 Task 3 dashboard source/Node regression tests: 54 passed. The dialog uses the authenticated same-origin intent endpoint, holds the returned `sbe1` value only in transient memory/DOM for the open dialog, and clears it on close. The Python linter is not a JavaScript/HTML linter and was not treated as a meaningful check for those assets.
@@ -135,6 +137,7 @@ Status: Stage 12A implementation and automated verification are complete; live b
 ## Files Changed
 
 - Stage 12A: `server/app/templates/dashboard.html`, `server/app/static/dashboard.js`, `server/app/static/dashboard.css`, focused dashboard page tests, and this checkpoint.
+- Stage 12B: `server/app/static/dashboard.js`, `server/app/static/dashboard.css`, focused dashboard page tests, `scripts/validate_deployment.py`, deployment-artifact tests, and this checkpoint.
 - Stage 10 Task 1: `docs/superpowers/specs/2026-09-25-stage-10-edge-deployment-design.md`, `docs/superpowers/plans/2026-09-25-stage-10-edge-deployment.md`, `server/app/enrollment/`, `server/app/models/auth.py`, `server/app/models/__init__.py`, `server/app/devices/service.py`, migration `d12e7f9c43a0`, focused enrollment tests, and this checkpoint.
 - Stage 10 Task 2: `server/app/api/enrollment.py`, `server/app/schemas/enrollment.py`, `server/app/main.py`, `server/app/config.py`, `.env.example`, focused API tests, and this checkpoint.
 - Stage 10 Task 3: `server/app/templates/dashboard.html`, `server/app/static/dashboard.js`, focused dashboard page/Node tests, and this checkpoint.
@@ -177,11 +180,12 @@ Status: Stage 12A implementation and automated verification are complete; live b
 - The development auth bypass adds no schema change or Alembic revision; it retains the existing monitoring and read API semantics.
 - Stage 07.6 adds no schema change or Alembic revision; `a58c71d904ef` remains the verified sole head.
 - Stage 07.6B adds no schema change or Alembic revision; `a58c71d904ef` remains the verified sole head.
+- Stage 12B adds no schema change or Alembic revision.
 - No production database was accessed. No downgrade, drop, reset or destructive database action occurred.
 
 ## Known Issues
 
-- Stage 12A has no automated software blocker. Live browser acceptance remains pending because the environment exposes neither a browser surface nor an in-app browser; the three deployment-artifact test failures are unchanged in untouched files and outside this UI scope.
+- Stage 12B has no automated software blocker. The full server suite is clean; live browser acceptance remains pending because the environment exposes neither a browser surface nor an in-app browser.
 - Stage 10 real-MySQL lifecycle/migration verification is pending solely because `SKYBEAT_TEST_DATABASE_URL` is unavailable. The skipped test covers consumption/replay/receipt scope and fresh-heartbeat verification; no substitute database claim is made.
 - The Linux installer cannot be executed safely on this Windows workspace: Bash/systemd, Ubuntu 24.04 platform checks, offline wheelhouse acquisition, real enrollment exchange, service startup, and verification-receipt polling remain supported-Ubuntu acceptance work. No release bundle was published and no host installation occurred.
 
@@ -243,7 +247,7 @@ Status: Stage 12A implementation and automated verification are complete; live b
 
 ## Next Action
 
-- Perform the documented Stage 12A browser acceptance on a local authenticated/dev-bypass SkyBeat instance: desktop and narrow layouts, fallback/custom policy states, recipient add/remove, event toggles, save/reload, and browser-console review. Do not alter notification semantics or deployment artifacts for this acceptance.
+- Perform the documented Stage 12B browser acceptance on a local authenticated/dev-bypass SkyBeat instance: desktop and narrow layouts, project switching, active-user assignment/removal, zero recipients, save/reload, failed-save feedback, and browser-console review. Do not alter notification semantics or deployment artifacts for this acceptance.
 - Finish Stage 10 runbook/documentation and supported Ubuntu acceptance. Add receipt-poll execution coverage before claiming the installer production-accepted. Read this checkpoint, the approved Stage 10 design/plan, and inspect the current Git diff before continuing.
 
 ## Prior Stage Completion
