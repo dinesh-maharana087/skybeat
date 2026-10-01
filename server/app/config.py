@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     google_client_secret: SecretStr | None = Field(default=None, repr=False)
     session_encryption_key: SecretStr | None = Field(default=None, repr=False)
     oidc_timeout_seconds: int = Field(default=5, ge=1, le=15)
-    agent_enrollment_ttl_seconds: int = Field(default=600, ge=60, le=1800)
+    agent_enrollment_ttl_seconds: int = Field(default=86_400, ge=86_400, le=86_400)
     agent_enrollment_verification_ttl_seconds: int = Field(default=600, ge=60, le=1800)
     agent_release_dir: Path | None = None
     agent_server_url: str | None = None

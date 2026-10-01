@@ -22,6 +22,7 @@ from app.enrollment.service import (
     EnrollmentStatus,
     EnrollmentToken,
     ReceiptRejected,
+    ToInstallEnrollment,
     TokenRejected,
 )
 from app.schemas.enrollment import AgentEnrollmentIntentRequest
@@ -94,6 +95,21 @@ def _status_projection(status: EnrollmentStatus) -> dict[str, object]:
         "device_id": status.device_id,
         "last_seen_at": status.last_seen_at.isoformat() if status.last_seen_at else None,
     }
+
+
+def _to_install_projection(intent: ToInstallEnrollment) -> dict[str, object]:
+    return {
+        "enrollment_id": intent.enrollment_id,
+        "state": intent.state.value,
+        "project_name": intent.project_name,
+        "device_name": intent.device_name,
+    }
+
+
+@router.get("")
+async def to_install_enrollments(request: Request, user: ManagementUserDependency) -> JSONResponse:
+    intents = await asyncio.to_thread(_service(request, user.email).list_to_install)
+    return JSONResponse({"items": [_to_install_projection(item) for item in intents]})
 
 
 @router.post("")
@@ -253,7 +269,7 @@ async def enrollment_status(
 
 
 @router.delete("/{enrollment_id}")
-async def revoke_unused_enrollment(
+async def delete_unused_enrollment(
     request: Request, enrollment_id: str, user: ManagementUserDependency
 ) -> JSONResponse:
     if not same_origin(request):
@@ -265,7 +281,7 @@ async def revoke_unused_enrollment(
     try:
         enrollment_uuid = str(UUID(enrollment_id))
         status = await asyncio.to_thread(
-            _service(request, user.email).revoke_unused, enrollment_uuid
+            _service(request, user.email).delete_unused, enrollment_uuid
         )
     except (ValueError, NotFound, Conflict) as error:
         status_code = (

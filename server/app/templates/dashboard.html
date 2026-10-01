@@ -4,6 +4,9 @@
 {% elif active_view == "projects" %}
 {% set page_title = "Projects" %}
 {% set page_description = "Organize monitored devices by operational project." %}
+{% elif active_view == "deployments" %}
+{% set page_title = "Deployments" %}
+{% set page_description = "Prepare approved agent installation for devices that are not enrolled yet." %}
 {% elif active_view == "notifications" %}
 {% set page_title = "Alert Routing" %}
 {% set page_description = "Choose who receives operational alerts for each project." %}
@@ -20,7 +23,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SkyBeat Operations</title>
-    <link rel="stylesheet" href="/static/dashboard.css">
+    <link rel="stylesheet" href="/static/dashboard.css?v=stage12c-deployments-2">
     <link rel="stylesheet" href="/static/dashboard-shell.css">
   </head>
   <body data-dashboard-view="{{ active_view }}" data-dashboard-role="{{ user_role }}" data-can-manage="{{ 'true' if can_manage else 'false' }}">
@@ -43,6 +46,7 @@
           <a href="/dashboard/devices" data-nav-destination="devices" data-tooltip="Devices"{% if active_view == "devices" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 12h8M8 17h5"/></svg><span class="nav-label">Devices</span></a>
           <a href="/dashboard/projects" data-nav-destination="projects" data-tooltip="Projects"{% if active_view == "projects" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M4 12h16M8 20v-4h8v4"/></svg><span class="nav-label">Projects</span></a>
           {% if can_manage %}
+          <a href="/dashboard/deployments" data-nav-destination="deployments" data-tooltip="Deployments"{% if active_view == "deployments" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg><span class="nav-label">Deployments</span></a>
           <a href="/dashboard/notifications" data-nav-destination="notifications" data-tooltip="Alert Routing"{% if active_view == "notifications" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 22a2.5 2.5 0 0 0 2.4-2h-4.8A2.5 2.5 0 0 0 12 22ZM18 16v-5a6 6 0 0 0-5-5.91V4a1 1 0 0 0-2 0v1.09A6 6 0 0 0 6 11v5l-2 2h16l-2-2Z"/></svg><span class="nav-label">Alert Routing</span></a>
           <a href="/dashboard/users" data-nav-destination="users" data-tooltip="Users"{% if active_view == "users" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-label">Users</span></a>
           {% endif %}
@@ -222,6 +226,24 @@
             <p class="alert-routing-introduction">Choose who receives operational alerts for each project.</p>
             <p id="notifications-status" aria-live="polite">Loading alert routing policies…</p>
             <div id="notifications-list" aria-live="polite"></div>
+          </section>
+          {% endif %}
+
+          {% if active_view == "deployments" %}
+          <section class="deployment-workspace" aria-labelledby="deployments-heading">
+            <div class="section-heading deployment-workspace__heading"><div><p class="eyebrow">Agent installation</p><h2 id="deployments-heading">To Install</h2></div><a class="sb-button--primary deployment-workspace__prepare" href="/dashboard/devices">+ Prepare Device</a></div>
+            <p class="deployments-introduction">Prepared devices remain here until their single-use enrollment authorization is exchanged.</p>
+            <p id="deployments-status" class="deployment-release-status" aria-live="polite">Loading pending deployments…</p>
+            <div id="deployments-list" class="deployment-grid" aria-live="polite"></div>
+            <p id="deployments-empty" hidden>No devices waiting for installation.</p>
+            <dialog id="deployment-delete-dialog" aria-labelledby="deployment-delete-title">
+              <form method="dialog" class="management-form" novalidate>
+                <div class="dialog-heading"><div><p class="eyebrow">Prepared device</p><h2 id="deployment-delete-title">Delete prepared device?</h2></div></div>
+                <p>This removes this pending deployment from To Install. The device has not been enrolled.</p>
+                <p id="deployment-delete-status" role="status" aria-live="polite"></p>
+                <div class="dialog-actions"><button id="deployment-delete-confirm" class="sb-button--danger" type="button">Delete</button><button id="deployment-delete-cancel" class="sb-button--secondary" type="button">Cancel</button></div>
+              </form>
+            </dialog>
           </section>
           {% endif %}
 

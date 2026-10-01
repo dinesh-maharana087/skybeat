@@ -138,6 +138,13 @@ const userClose = document.getElementById("user-close");
 const userCancel = document.getElementById("user-cancel");
 const notificationsList = document.getElementById("notifications-list");
 const notificationsStatus = document.getElementById("notifications-status");
+const deploymentsList = document.getElementById("deployments-list");
+const deploymentsStatus = document.getElementById("deployments-status");
+const deploymentsEmpty = document.getElementById("deployments-empty");
+const deploymentDeleteDialog = document.getElementById("deployment-delete-dialog");
+const deploymentDeleteStatus = document.getElementById("deployment-delete-status");
+const deploymentDeleteConfirm = document.getElementById("deployment-delete-confirm");
+const deploymentDeleteCancel = document.getElementById("deployment-delete-cancel");
 
 let refreshTimer = null;
 let searchTimer = null;
@@ -182,6 +189,9 @@ let notificationSaveState = "unchanged";
 let notificationSaveMessage = "No changes.";
 let notificationSaveInFlight = false;
 let notificationDirectoryAvailable = true;
+let toInstallDeployments = [];
+let deploymentRelease = null;
+let pendingDeploymentDeletion = null;
 
 function element(tag, text) {
   const node = document.createElement(tag);
@@ -341,6 +351,14 @@ async function requestNotifications() {
   const response = await fetch("/api/v1/notifications", { credentials: "same-origin" });
   if (!response.ok) throw new Error("notifications request failed");
   return response.json();
+}
+
+async function requestToInstallDeployments() {
+  const response = await fetch("/api/v1/agent-enrollments", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("deployment request failed");
+  const payload = await response.json();
+  if (!Array.isArray(payload?.items)) throw new Error("deployment response was invalid");
+  return payload.items;
 }
 
 async function requestRecentIncidents() {
@@ -1373,6 +1391,108 @@ async function refreshNotificationsView() {
   }
 }
 
+function deploymentStateLabel(state) {
+  return { PENDING: "READY", EXPIRED: "TOKEN EXPIRED", REVOKED: "REVOKED" }[state] ?? "UNAVAILABLE";
+}
+
+function deploymentDeleteIcon() {
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("aria-hidden", "true");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M4 7h16M10 11v6M14 11v6M9 7l1-3h4l1 3M6 7l1 13h10l1-13");
+  icon.append(path);
+  return icon;
+}
+
+function renderDeployments() {
+  deploymentsList.replaceChildren();
+  deploymentsEmpty.hidden = toInstallDeployments.length !== 0;
+  for (const deployment of toInstallDeployments) {
+    const card = document.createElement("article");
+    card.className = "deployment-card";
+    const heading = document.createElement("div");
+    heading.className = "deployment-card__header";
+    const identity = document.createElement("div");
+    identity.append(element("h3", deployment.device_name), element("p", deployment.project_name));
+    const cardHeaderActions = document.createElement("div");
+    cardHeaderActions.className = "deployment-card__header-actions";
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "sb-button--ghost sb-button--icon deployment-card__delete";
+    remove.setAttribute("aria-label", `Delete prepared device ${deployment.device_name}`);
+    remove.title = "Delete prepared device";
+    remove.append(deploymentDeleteIcon());
+    remove.addEventListener("click", () => openDeploymentDeleteDialog(deployment));
+    cardHeaderActions.append(statusPill(deploymentStateLabel(deployment.state)), remove);
+    heading.append(identity, cardHeaderActions);
+    const actions = document.createElement("div");
+    actions.className = "deployment-card__actions";
+    const isReady = deployment.state === "PENDING";
+    const download = element("button", "Agent Package");
+    download.type = "button";
+    download.className = "sb-button--primary";
+    download.disabled = !isReady || deploymentRelease === null;
+    download.addEventListener("click", () => window.location.assign("/api/v1/agent-releases/current/download"));
+    const copyInstructions = element("button", "Copy Instruction");
+    copyInstructions.type = "button";
+    copyInstructions.className = "sb-button--secondary";
+    copyInstructions.disabled = !isReady || deploymentRelease === null;
+    copyInstructions.addEventListener("click", () => navigator.clipboard.writeText(installationInstructions(deploymentRelease)).catch(() => { deploymentsStatus.textContent = "Installation instructions could not be copied."; }));
+    actions.append(download, copyInstructions);
+    card.append(heading, actions);
+    deploymentsList.append(card);
+  }
+}
+
+function openDeploymentDeleteDialog(deployment) {
+  pendingDeploymentDeletion = deployment;
+  deploymentDeleteStatus.textContent = "";
+  deploymentDeleteConfirm.disabled = false;
+  deploymentDeleteDialog.showModal();
+}
+
+function closeDeploymentDeleteDialog() {
+  deploymentDeleteDialog.close();
+  pendingDeploymentDeletion = null;
+}
+
+async function deleteDeployment() {
+  if (pendingDeploymentDeletion === null) return;
+  deploymentDeleteConfirm.disabled = true;
+  deploymentDeleteStatus.textContent = "Deleting prepared device…";
+  try {
+    await requestDashboardMutation(`/api/v1/agent-enrollments/${encodeURIComponent(pendingDeploymentDeletion.enrollment_id)}`, "DELETE", {});
+    closeDeploymentDeleteDialog();
+    await refreshDeploymentsView();
+    deploymentsStatus.textContent = "Prepared device deleted.";
+  } catch (_) {
+    deploymentDeleteConfirm.disabled = false;
+    deploymentDeleteStatus.textContent = "Prepared device could not be deleted. It remains in To Install.";
+  }
+}
+
+async function refreshDeploymentsView() {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    const [items, release] = await Promise.allSettled([requestToInstallDeployments(), requestReleaseMetadata()]);
+    if (items.status !== "fulfilled") throw new Error("deployment refresh failed");
+    toInstallDeployments = items.value.filter((item) => item && typeof item.enrollment_id === "string" && typeof item.device_name === "string" && typeof item.project_name === "string" && typeof item.state === "string");
+    deploymentRelease = release.status === "fulfilled" ? release.value : null;
+    renderDeployments();
+    if (deploymentRelease === null) {
+      deploymentsStatus.className = "deployment-release-status deployment-release-status--warning";
+      deploymentsStatus.textContent = "Approved agent package unavailable.";
+    } else {
+      deploymentsStatus.className = "deployment-release-status";
+      deploymentsStatus.textContent = `${toInstallDeployments.length} device${toInstallDeployments.length === 1 ? "" : "s"} waiting for installation.`;
+    }
+    markDashboardFresh(null);
+  } catch (_) { deploymentsStatus.textContent = "Pending deployments could not be loaded. Existing data may be stale."; markDashboardStale(); }
+  finally { refreshing = false; scheduleRefresh(); }
+}
+
 function openUserDialog(user = null) {
   editingUserId = user?.user_id ?? null;
   userForm.reset();
@@ -1427,6 +1547,7 @@ async function refreshActiveView() {
   if (dashboardView === "devices") return refreshDashboard();
   if (dashboardView === "projects") return refreshProjectsView();
   if (dashboardView === "users") return refreshUsersView();
+  if (dashboardView === "deployments") return refreshDeploymentsView();
   if (dashboardView === "notifications") return refreshNotificationsView();
   return refreshOverviewView();
 }
@@ -2566,6 +2687,27 @@ refreshActiveView();
   const preference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
   if (preference === "collapsed") setSidebarCollapsed(true);
   else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);
+  refreshActiveView();
+} else if (dashboardView === "deployments") {
+  sidebarToggle.addEventListener("click", () => toggleSidebar());
+  logout.addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+    window.location.assign("/login");
+  });
+  const preference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
+  if (preference === "collapsed") setSidebarCollapsed(true);
+  else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);
+  deploymentDeleteConfirm.addEventListener("click", () => void deleteDeployment());
+  deploymentDeleteCancel.addEventListener("click", closeDeploymentDeleteDialog);
+  deploymentDeleteDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeDeploymentDeleteDialog();
+  });
+  document.addEventListener("visibilitychange", () => {
+    window.clearTimeout(refreshTimer);
+    if (!document.hidden) void refreshActiveView();
+    else scheduleRefresh();
+  });
   refreshActiveView();
 } else {
   sidebarToggle.addEventListener("click", () => {

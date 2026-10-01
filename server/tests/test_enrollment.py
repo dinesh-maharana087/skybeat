@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pytest
 
 
@@ -72,6 +74,8 @@ def test_enrollment_exchange_is_single_use_and_receipt_is_scoped(mysql_database,
         policy=GPUPolicy(),
     )
 
+    assert intent.enrollment.expires_at - intent.enrollment.created_at == timedelta(hours=24)
+
     exchanged = service.exchange(intent.token.value)
 
     assert exchanged.device.name == "enrollment-service-device"
@@ -143,6 +147,16 @@ def test_enrollment_management_status_is_evidence_driven_and_revocation_is_unuse
         assert row is not None
         row.expires_at = row.created_at
     assert service.status(expired.enrollment.public_id).state is EnrollmentLifecycle.EXPIRED
+    assert expired.enrollment.public_id in {
+        item.enrollment_id for item in service.list_to_install()
+    }
+    deleted = service.delete_unused(expired.enrollment.public_id)
+    assert deleted.state is EnrollmentLifecycle.REVOKED
+    assert expired.enrollment.public_id not in {
+        item.enrollment_id for item in service.list_to_install()
+    }
+    with pytest.raises(EnrollmentRejected):
+        service.exchange(expired.token.value)
 
     enrolled = service.create_intent(
         mode=EnrollmentMode.NEW,

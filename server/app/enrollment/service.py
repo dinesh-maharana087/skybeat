@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.db import Database, database_utc
@@ -129,7 +129,15 @@ class EnrollmentStatus:
     last_seen_at: datetime | None
 
 
-ENROLLMENT_TTL = timedelta(minutes=10)
+@dataclass(frozen=True)
+class ToInstallEnrollment:
+    enrollment_id: str
+    state: EnrollmentLifecycle
+    project_name: str
+    device_name: str
+
+
+ENROLLMENT_TTL = timedelta(hours=24)
 VERIFICATION_TTL = timedelta(minutes=10)
 
 
@@ -148,8 +156,8 @@ class AgentEnrollmentService:
         self.database = database
         self.identity = IdentityService(database, actor=actor)
         self.actor = self.identity.actor
-        self._require_ttl(enrollment_lifetime)
-        self._require_ttl(verification_lifetime)
+        self._require_enrollment_ttl(enrollment_lifetime)
+        self._require_verification_ttl(verification_lifetime)
         self.enrollment_lifetime = enrollment_lifetime
         self.verification_lifetime = verification_lifetime
         if not isinstance(offline_after_seconds, int) or offline_after_seconds < 1:
@@ -157,11 +165,16 @@ class AgentEnrollmentService:
         self.offline_after = timedelta(seconds=offline_after_seconds)
 
     @staticmethod
-    def _require_ttl(value: timedelta) -> None:
+    def _require_enrollment_ttl(value: timedelta) -> None:
+        if value != ENROLLMENT_TTL:
+            raise ValueError("Enrollment lifetime is invalid.")
+
+    @staticmethod
+    def _require_verification_ttl(value: timedelta) -> None:
         if not isinstance(value, timedelta) or not timedelta(seconds=1) <= value <= timedelta(
             minutes=30
         ):
-            raise ValueError("Enrollment lifetime is invalid.")
+            raise ValueError("Verification lifetime is invalid.")
 
     @staticmethod
     def _project(session: Session, project_uuid: str) -> Project:
@@ -199,7 +212,7 @@ class AgentEnrollmentService:
         lifetime: timedelta | None = None,
     ) -> IssuedEnrollmentIntent:
         lifetime = self.enrollment_lifetime if lifetime is None else lifetime
-        self._require_ttl(lifetime)
+        self._require_enrollment_ttl(lifetime)
         token = EnrollmentToken.generate("sbe1")
         with self.database.transaction() as session:
             now = database_utc(session)
@@ -390,6 +403,20 @@ class AgentEnrollmentService:
             is not None
         )
 
+    @staticmethod
+    def _was_deleted(session: Session, enrollment: AgentEnrollment) -> bool:
+        return (
+            session.scalar(
+                select(AuditEvent.id)
+                .where(
+                    AuditEvent.action == "agent_enrollment.deleted",
+                    AuditEvent.details["enrollment_id"].as_string() == enrollment.public_id,
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
     def _status(
         self, session: Session, enrollment: AgentEnrollment, now: datetime
     ) -> EnrollmentStatus:
@@ -433,6 +460,37 @@ class AgentEnrollmentService:
             enrollment = self._enrollment(session, enrollment_id)
             return self._status(session, enrollment, database_utc(session))
 
+    def list_to_install(self) -> tuple[ToInstallEnrollment, ...]:
+        """Return only safe, unconsumed device-preparation enrollment intents."""
+        with self.database.transaction() as session:
+            now = database_utc(session)
+            rows = session.execute(
+                select(AgentEnrollment, Project)
+                .join(Project, AgentEnrollment.project_id == Project.id)
+                .where(
+                    AgentEnrollment.used_at.is_(None),
+                    AgentEnrollment.project_id.is_not(None),
+                    AgentEnrollment.device_name.is_not(None),
+                    AgentEnrollment.gpu_monitoring_enabled.is_not(None),
+                    AgentEnrollment.expected_gpu_min_count.is_not(None),
+                )
+                .order_by(desc(AgentEnrollment.created_at))
+                .limit(200)
+            ).all()
+            result: list[ToInstallEnrollment] = []
+            for enrollment, project in rows:
+                if enrollment.device_name is None or self._was_deleted(session, enrollment):
+                    continue
+                result.append(
+                    ToInstallEnrollment(
+                        enrollment_id=enrollment.public_id,
+                        state=self._status(session, enrollment, now).state,
+                        project_name=project.name,
+                        device_name=enrollment.device_name,
+                    )
+                )
+            return tuple(result)
+
     def revoke_unused(self, enrollment_id: str) -> EnrollmentStatus:
         with self.database.transaction() as session:
             enrollment = self._enrollment(session, enrollment_id, locked=True)
@@ -443,4 +501,19 @@ class AgentEnrollmentService:
                 raise Conflict("Enrollment is no longer valid.")
             enrollment.expires_at = now
             self._audit(session, "agent_enrollment.revoked", now, enrollment)
+            return self._status(session, enrollment, now)
+
+    def delete_unused(self, enrollment_id: str) -> EnrollmentStatus:
+        """Remove an unconsumed deployment from To Install and invalidate its token."""
+        with self.database.transaction() as session:
+            enrollment = self._enrollment(session, enrollment_id, locked=True)
+            now = database_utc(session)
+            if enrollment.used_at is not None:
+                raise Conflict("Enrollment has already issued a device credential.")
+            if not self._was_revoked(session, enrollment):
+                if enrollment.expires_at > now:
+                    enrollment.expires_at = now
+                self._audit(session, "agent_enrollment.revoked", now, enrollment)
+            if not self._was_deleted(session, enrollment):
+                self._audit(session, "agent_enrollment.deleted", now, enrollment)
             return self._status(session, enrollment, now)

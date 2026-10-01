@@ -178,6 +178,89 @@ def test_authenticated_dashboard_routes_render_selected_view_controls_and_requir
     assert 'id="new-project-from-enroll"' in devices.text
 
 
+def test_admin_deployments_page_is_management_only_and_has_to_install_workspace():
+    from app.users.service import UserRole
+
+    class Authenticated:
+        def __init__(self, role):
+            self.role = role
+
+        def authenticate_session(self, token):
+            return DashboardUser("google", "ops@example.test", None, 1, self.role)
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Authenticated(UserRole.ADMIN)
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        allowed = client.get("/dashboard/deployments")
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Authenticated(UserRole.USER)
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        denied = client.get("/dashboard/deployments")
+
+    assert allowed.status_code == 200
+    assert 'data-dashboard-view="deployments"' in allowed.text
+    assert 'id="deployments-list"' in allowed.text
+    assert 'id="deployment-delete-dialog"' in allowed.text
+    assert 'id="deployment-delete-confirm"' in allowed.text
+    assert "No devices waiting for installation." in allowed.text
+    assert denied.status_code == 403
+
+
+def test_deployment_cards_are_minimal_and_use_the_authoritative_pending_state():
+    source = dashboard_script()
+    styles = dashboard_styles()
+    template = dashboard_template()
+    deployment_section = source[
+        source.index("function deploymentStateLabel") : source.index("function openUserDialog")
+    ]
+
+    assert 'PENDING: "READY"' in deployment_section
+    assert 'EXPIRED: "TOKEN EXPIRED"' in deployment_section
+    assert 'element("button", "Agent Package")' in deployment_section
+    assert 'element("button", "Copy Instruction")' in deployment_section
+    assert "deploymentDeleteIcon" in deployment_section
+    assert (
+        'remove.setAttribute("aria-label", `Delete prepared device ${deployment.device_name}`);'
+        in deployment_section
+    )
+    assert 'const isReady = deployment.state === "PENDING";' in deployment_section
+    assert "download.disabled = !isReady || deploymentRelease === null;" in deployment_section
+    assert (
+        "copyInstructions.disabled = !isReady || deploymentRelease === null;" in deployment_section
+    )
+    assert "GPU monitoring" not in deployment_section
+    assert "Minimum expected GPUs" not in deployment_section
+    assert "Token expires" not in deployment_section
+    assert "Created" not in deployment_section
+    assert "Refresh status" not in deployment_section
+    assert "Reissue token" not in deployment_section
+    assert "transientDeploymentTokens" not in deployment_section
+    assert "sbe1." not in deployment_section
+    assert '<section class="deployment-workspace"' in template
+    assert 'id="deployments-list" class="deployment-grid"' in template
+    assert 'card.className = "deployment-card";' in deployment_section
+    assert 'heading.className = "deployment-card__header";' in deployment_section
+    assert 'actions.className = "deployment-card__actions";' in deployment_section
+    assert 'class="deployment-release-status"' in template
+    assert ".deployment-workspace .deployment-grid" in styles
+    assert "repeat(3,minmax(0,1fr))" in styles
+    assert "@media (max-width:1000px)" in styles
+    assert "repeat(2,minmax(0,1fr))" in styles
+    assert "@media (max-width:720px)" in styles
+    assert "grid-template-columns:1fr" in styles
+    assert ".deployment-card{" in styles
+    assert "min-height:11rem" in styles
+    assert ".deployment-card__actions" in styles
+    assert ".deployment-card__delete" in styles
+    assert ".status-ready" in styles
+    assert ".status-token-expired" in styles
+
+
 def test_dashboard_shell_serves_the_company_logo_on_every_dashboard_view():
     class Authenticated:
         def authenticate_session(self, token):

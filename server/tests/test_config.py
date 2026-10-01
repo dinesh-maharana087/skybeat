@@ -17,6 +17,21 @@ def test_settings_load_prefixed_environment(monkeypatch):
     assert "example" not in repr(config)
 
 
+def test_new_device_enrollment_authorizations_are_fixed_at_twenty_four_hours():
+    config = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+    )
+
+    assert config.agent_enrollment_ttl_seconds == 86_400
+    with pytest.raises(ValidationError):
+        Settings(
+            env="test",
+            database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+            agent_enrollment_ttl_seconds=600,
+        )
+
+
 def test_global_alert_email_recipients_are_normalized_and_validate_header_safety():
     config = Settings(
         env="test",

@@ -24,10 +24,15 @@ dist/
 .coverage
 htmlcov/
 .tmp
+.tmp/
 .skybeat-local-runtime/
+.tmp-pytest-deployment-ui
+.tmp-pytest-cache/
 
 # Editor/OS state
 .idea/
 .vscode/
 Thumbs.db
 .DS_Store
+
+AGENTS.md

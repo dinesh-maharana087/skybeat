@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.dashboard.service import DashboardUser
+from app.enrollment.service import EnrollmentLifecycle
 from app.main import create_app
 from app.users.service import UserRole
 
@@ -60,6 +61,16 @@ class FakeEnrollmentService:
     def verify_receipt(self, token: object) -> SimpleNamespace:
         assert token == VERIFICATION_TOKEN
         return SimpleNamespace(accepted_heartbeat=False)
+
+    def list_to_install(self) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(
+                enrollment_id="e3e70682-c209-4cac-a29f-6fbed82c07cd",
+                state=EnrollmentLifecycle.PENDING,
+                project_name="Production & Support",
+                device_name="GPU 01",
+            )
+        ]
 
 
 def client_for(role: UserRole) -> TestClient:
@@ -121,6 +132,25 @@ def test_user_and_unauthenticated_callers_cannot_create_enrollment_intents():
 
     assert user_response.status_code == 403
     assert anonymous_response.status_code == 401
+
+
+def test_management_to_install_list_is_token_free_and_user_is_denied():
+    with client_for(UserRole.ADMIN) as client:
+        allowed = client.get("/api/v1/agent-enrollments")
+    with client_for(UserRole.USER) as client:
+        denied = client.get("/api/v1/agent-enrollments")
+
+    assert allowed.status_code == 200
+    item = allowed.json()["items"][0]
+    assert item == {
+        "enrollment_id": "e3e70682-c209-4cac-a29f-6fbed82c07cd",
+        "state": "PENDING",
+        "project_name": "Production & Support",
+        "device_name": "GPU 01",
+    }
+    assert ENROLLMENT_TOKEN not in str(allowed.json())
+    assert "digest" not in str(allowed.json())
+    assert denied.status_code == 403
 
 
 def test_exchange_and_receipt_routes_are_anonymous_but_strictly_scoped():

@@ -433,7 +433,7 @@ def test_deployment_release_routes_reject_user_before_release_service_execution(
     assert response.headers["cache-control"] == "no-store"
 
 
-def test_deployment_enrollment_status_and_unused_revocation_use_management_identity():
+def test_deployment_enrollment_status_and_unused_deletion_use_management_identity():
     from app.dashboard.service import DashboardUser
     from app.enrollment.service import EnrollmentLifecycle, EnrollmentStatus
     from app.users.service import UserRole
@@ -455,8 +455,8 @@ def test_deployment_enrollment_status_and_unused_revocation_use_management_ident
                 None,
             )
 
-        def revoke_unused(self, enrollment_id):
-            calls.append(("revoke", enrollment_id))
+        def delete_unused(self, enrollment_id):
+            calls.append(("delete", enrollment_id))
             return EnrollmentStatus(
                 enrollment_id,
                 EnrollmentLifecycle.REVOKED,
@@ -484,7 +484,7 @@ def test_deployment_enrollment_status_and_unused_revocation_use_management_ident
     assert revoked.status_code == 200
     assert revoked.json()["enrollment"]["state"] == "REVOKED"
     assert all(response.headers["cache-control"] == "no-store" for response in (status, revoked))
-    assert calls == [("status", enrollment_id), ("revoke", enrollment_id)]
+    assert calls == [("status", enrollment_id), ("delete", enrollment_id)]
 
 
 @pytest.mark.parametrize("role", ["OWNER", "ADMIN"])

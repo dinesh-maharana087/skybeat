@@ -1,10 +1,10 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-09-30
-Current stage: Stage 12B - Notification Assignment UX
-Current UI stage: Stage 12B - Notification Assignment UX
-Current milestone: The existing notification-management page has a project-isolated assignment editor and a clean automated regression baseline using the unchanged API contract.
-Status: Stage 12B implementation and automated verification are complete; live browser acceptance remains environment-pending.
+Last updated: 2026-10-01
+Current stage: Stage 12C - Deployment To Install Workflow
+Current UI stage: Stage 12C - Deployment To Install Workflow
+Current milestone: Refined deployment cards use the existing enrollment and Stage 10 release contracts with a fixed 24-hour temporary authorization lifetime.
+Status: Stage 12C automated verification is complete; live browser and isolated-MySQL acceptance remain environment-pending.
 
 ## Completed
 
@@ -49,6 +49,7 @@ Status: Stage 12B implementation and automated verification are complete; live b
 - Implemented Stage 09 RBAC: an additive `application_users` migration with database-enforced sole Owner; local idempotent Owner bootstrap; Google OIDC plus configured admission policy plus active durable-user resolution on every request; reusable server-side role dependencies; audited user list/create/update APIs; and a role-aware Users dashboard. OWNER manages ADMIN/USER, ADMIN manages USER only, and USER is read-only. Owner mutation/assignment/transfer is unavailable through browser/API.
 - Implemented Stage 12A Alert Routing UI polish: the existing `/dashboard/notifications` view is now a focused per-project routing editor with explicit fallback/custom policy status, recipient chips, concise event descriptions, accessible feedback, and responsive local styling. It continues to use only the existing GET/PUT notification-management API and preserves fallback, zero-recipient, and event-toggle semantics.
 - Implemented Stage 12B Notification Assignment UX: the existing alert-routing editor now assigns active SkyBeat users from the existing directory, preserves stored email-only recipients, keeps drafts isolated per selected project, requires explicit save/discard before switching away from a dirty draft, re-fetches the existing project policy after a successful save, and retains failed-save drafts. No schema, model, route, notification-domain, or persistence behavior changed.
+- Implemented Stage 12C Deployment To Install Workflow: Owner/Admin users can view safe, unconsumed enrollment-intent metadata at `/dashboard/deployments`; exchanged intents remain excluded and authoritative under Devices. New-device temporary authorizations are fixed at 24 hours. Minimal responsive cards show only device/project, status, delete, agent package, and copy-instruction controls; explicit delete revokes the unconsumed authorization and excludes it from To Install. The UI retains the existing `--token-file` installation instructions without exposing tokens in the list projection.
 
 ## In Progress
 
@@ -63,6 +64,7 @@ Status: Stage 12B implementation and automated verification are complete; live b
 
 - Stage 12A verification: notification page/API regressions passed (96 tests), including a Node interaction harness for project selection, recipient chips, and the existing PUT payload. Ruff check and format check passed (96 files); strict mypy passed for 56 server source files; `node --check server/app/static/dashboard.js` and `git diff --check` passed. Full server suite: 461 passed, 43 environment skips, and 3 existing deployment-artifact failures in untouched agent unit/installer files.
 - Stage 12B verification: notification/dashboard/RBAC/email regressions passed (111 tests), including the Node assignment/draft interaction harness. The corrected deployment-artifact and current installer regression suite passed (15 passed, 2 Bash-unavailable skips). Ruff check and format check passed (96 files); strict mypy passed for 56 server source files; `node --check server/app/static/dashboard.js` and `git diff --check` passed. Full server suite: 464 passed, 43 environment skips, 0 failed.
+- Stage 12C refinement verification: focused configuration/enrollment/API/dashboard tests passed (146 passed, 2 isolated-MySQL skips); full server suite passed (468 passed, 43 environment skips, 0 failed). Ruff check, format check, strict mypy for 56 source files, Node syntax check, and `git diff --check` passed. Browser visual acceptance remains pending because no browser surface is available.
 - Stage 10 Task 1 focused enrollment primitives/model tests: 7 passed; one lifecycle integration test skipped only because `SKYBEAT_TEST_DATABASE_URL` is not configured. Ruff check/format and strict mypy passed for the affected server source. `git diff --check` passed.
 - Stage 10 Tasks 1-2 focused enrollment/API/dashboard regression tests: 32 passed, one real-MySQL lifecycle test skipped only because `SKYBEAT_TEST_DATABASE_URL` is not configured; Ruff check/format and strict mypy passed for 8 affected server source files. Alembic reports sole head `d12e7f9c43a0`.
 - Stage 10 Task 3 dashboard source/Node regression tests: 54 passed. The dialog uses the authenticated same-origin intent endpoint, holds the returned `sbe1` value only in transient memory/DOM for the open dialog, and clears it on close. The Python linter is not a JavaScript/HTML linter and was not treated as a meaningful check for those assets.
