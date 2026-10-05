@@ -231,7 +231,10 @@
 
           {% if active_view == "deployments" %}
           <section class="deployment-workspace" aria-labelledby="deployments-heading">
-            <div class="section-heading deployment-workspace__heading"><div><p class="eyebrow">Agent installation</p><h2 id="deployments-heading">To Install</h2></div><a class="sb-button--primary deployment-workspace__prepare" href="/dashboard/devices">+ Prepare Device</a></div>
+            <div class="deployment-workspace__title">
+              <p class="eyebrow">Agent installation</p>
+              <div class="section-heading deployment-workspace__heading"><h2 id="deployments-heading">To Install</h2><a class="sb-button--primary deployment-workspace__prepare" href="/dashboard/devices">+ Prepare Device</a></div>
+            </div>
             <p class="deployments-introduction">Prepared devices remain here until their single-use enrollment authorization is exchanged.</p>
             <p id="deployments-status" class="deployment-release-status" aria-live="polite">Loading pending deployments…</p>
             <div id="deployments-list" class="deployment-grid" aria-live="polite"></div>

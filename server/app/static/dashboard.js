@@ -244,7 +244,7 @@ function timestampNode(value) {
 
 function statusPill(value) {
   const node = element("span", displayValue(value));
-  node.className = `status-pill status-${displayValue(value).toLowerCase().replaceAll("_", "-")}`;
+  node.className = `status-pill status-${displayValue(value).toLowerCase().replaceAll(/[ _]/g, "-")}`;
   return node;
 }
 

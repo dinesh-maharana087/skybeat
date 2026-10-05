@@ -249,7 +249,7 @@ def test_deployment_cards_are_minimal_and_use_the_authoritative_pending_state():
     assert 'class="deployment-release-status"' in template
     assert ".deployment-workspace .deployment-grid" in styles
     assert "repeat(3,minmax(0,1fr))" in styles
-    assert "@media (max-width:1000px)" in styles
+    assert "@media (max-width:1200px){.deployment-workspace .deployment-grid" in styles
     assert "repeat(2,minmax(0,1fr))" in styles
     assert "@media (max-width:720px)" in styles
     assert "grid-template-columns:1fr" in styles
@@ -864,7 +864,7 @@ def test_dashboard_stage08a_foundations_keep_status_text_focus_and_density():
     assert ":focus-visible" in styles
     assert re.search(r"position:\s*sticky", styles)
     assert re.search(r"overflow-x:\s*auto", styles)
-    assert 'status-${displayValue(value).toLowerCase().replaceAll("_", "-")}' in script
+    assert 'status-${displayValue(value).toLowerCase().replaceAll(/[ _]/g, "-")}' in script
 
 
 def test_dashboard_stage08a_reuses_css_tokens_for_history_and_preserves_safe_dom():

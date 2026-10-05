@@ -1,10 +1,10 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-10-01
+Last updated: 2026-10-05
 Current stage: Stage 12C - Deployment To Install Workflow
 Current UI stage: Stage 12C - Deployment To Install Workflow
-Current milestone: Refined deployment cards use the existing enrollment and Stage 10 release contracts with a fixed 24-hour temporary authorization lifetime.
-Status: Stage 12C automated verification is complete; live browser and isolated-MySQL acceptance remain environment-pending.
+Current milestone: Stage 12C-UX.1 final visual polish and acceptance.
+Status: Stage 12C-UX.1 frontend polish passes focused checks; browser visual acceptance remains pending.
 
 ## Completed
 
@@ -53,6 +53,7 @@ Status: Stage 12C automated verification is complete; live browser and isolated-
 
 ## In Progress
 
+- Stage 12C-UX.1 desktop, medium, and mobile browser visual acceptance is pending; no browser surface was available in this session.
 - Local Windows launcher hardening: `start-skybeat-local.ps1` now has a
   repository-relative, secret-safe preflight and preserves the existing
   development-only literal-IP HTTP agent policy. Final local startup remains
@@ -62,6 +63,7 @@ Status: Stage 12C automated verification is complete; live browser and isolated-
 
 ## Verification Completed
 
+- Stage 12C-UX.1 dashboard page/API tests: 95 passed. JavaScript syntax, focused Ruff lint/formatter checks, and `git diff --check` passed. READY and TOKEN EXPIRED class paths, disabled controls, safe text rendering, and responsive CSS were inspected in source; no browser visual result is claimed.
 - Stage 12A verification: notification page/API regressions passed (96 tests), including a Node interaction harness for project selection, recipient chips, and the existing PUT payload. Ruff check and format check passed (96 files); strict mypy passed for 56 server source files; `node --check server/app/static/dashboard.js` and `git diff --check` passed. Full server suite: 461 passed, 43 environment skips, and 3 existing deployment-artifact failures in untouched agent unit/installer files.
 - Stage 12B verification: notification/dashboard/RBAC/email regressions passed (111 tests), including the Node assignment/draft interaction harness. The corrected deployment-artifact and current installer regression suite passed (15 passed, 2 Bash-unavailable skips). Ruff check and format check passed (96 files); strict mypy passed for 56 server source files; `node --check server/app/static/dashboard.js` and `git diff --check` passed. Full server suite: 464 passed, 43 environment skips, 0 failed.
 - Stage 12C refinement verification: focused configuration/enrollment/API/dashboard tests passed (146 passed, 2 isolated-MySQL skips); full server suite passed (468 passed, 43 environment skips, 0 failed). Ruff check, format check, strict mypy for 56 source files, Node syntax check, and `git diff --check` passed. Browser visual acceptance remains pending because no browser surface is available.
@@ -138,6 +140,7 @@ Status: Stage 12C automated verification is complete; live browser and isolated-
 
 ## Files Changed
 
+- Stage 12C-UX.1: `server/app/static/dashboard.css`, `server/app/static/dashboard.js`, `server/app/templates/dashboard.html`, one focused dashboard page test, and this checkpoint. No backend or migration changes.
 - Stage 12A: `server/app/templates/dashboard.html`, `server/app/static/dashboard.js`, `server/app/static/dashboard.css`, focused dashboard page tests, and this checkpoint.
 - Stage 12B: `server/app/static/dashboard.js`, `server/app/static/dashboard.css`, focused dashboard page tests, `scripts/validate_deployment.py`, deployment-artifact tests, and this checkpoint.
 - Stage 10 Task 1: `docs/superpowers/specs/2026-09-25-stage-10-edge-deployment-design.md`, `docs/superpowers/plans/2026-09-25-stage-10-edge-deployment.md`, `server/app/enrollment/`, `server/app/models/auth.py`, `server/app/models/__init__.py`, `server/app/devices/service.py`, migration `d12e7f9c43a0`, focused enrollment tests, and this checkpoint.
@@ -249,6 +252,7 @@ Status: Stage 12C automated verification is complete; live browser and isolated-
 
 ## Next Action
 
+- Visually inspect READY and TOKEN EXPIRED cards, the warning banner, header alignment, focus/disabled states, and overflow at desktop, medium, and mobile widths in a safe authenticated browser fixture. Mark Stage 12C-UX.1 COMPLETE / ACCEPTED only after this passes; do not start 12C-UX.2.
 - Perform the documented Stage 12B browser acceptance on a local authenticated/dev-bypass SkyBeat instance: desktop and narrow layouts, project switching, active-user assignment/removal, zero recipients, save/reload, failed-save feedback, and browser-console review. Do not alter notification semantics or deployment artifacts for this acceptance.
 - Finish Stage 10 runbook/documentation and supported Ubuntu acceptance. Add receipt-poll execution coverage before claiming the installer production-accepted. Read this checkpoint, the approved Stage 10 design/plan, and inspect the current Git diff before continuing.
 
