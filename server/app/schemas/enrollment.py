@@ -12,6 +12,7 @@ class AgentEnrollmentIntentRequest(DashboardManagementRequest):
     project_id: str | None = None
     device_id: str | None = None
     name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=512)
     gpu_monitoring_enabled: bool | None = None
     expected_gpu_min_count: int | None = Field(default=None, ge=0, le=64)
 
@@ -24,6 +25,15 @@ class AgentEnrollmentIntentRequest(DashboardManagementRequest):
     @classmethod
     def device_name(cls, value: object) -> str | None:
         return None if value is None else _label(value)
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def device_description(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("invalid description")
+        return _label(value) if value.strip() else None
 
     @model_validator(mode="after")
     def target_is_complete_and_unambiguous(self) -> "AgentEnrollmentIntentRequest":
@@ -40,6 +50,7 @@ class AgentEnrollmentIntentRequest(DashboardManagementRequest):
             self.device_id is None
             or self.project_id is not None
             or self.name is not None
+            or self.description is not None
             or self.gpu_monitoring_enabled is not None
             or self.expected_gpu_min_count is not None
         ):

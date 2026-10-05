@@ -137,6 +137,7 @@ async def create_intent(
             project_uuid=payload.project_id,
             replacement_device_uuid=payload.device_id,
             device_name=payload.name,
+            description=payload.description,
             policy=policy,
         )
     except NotFound as error:

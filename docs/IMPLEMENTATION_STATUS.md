@@ -2,12 +2,13 @@
 
 Last updated: 2026-10-05
 Current stage: Stage 12C - Deployment To Install Workflow
-Current UI stage: Stage 12C - Deployment To Install Workflow
-Current milestone: Stage 12C-UX.1 final visual polish and acceptance.
-Status: Stage 12C-UX.1 frontend polish passes focused checks; browser visual acceptance remains pending.
+Current UI stage: Stage 12C-UX.2 - Simplified Add Device Workflow
+Current milestone: Local worker startup restored by applying the pending description migration; browser acceptance pending.
+Status: Stage 12C-UX.2 implementation, local launcher restart, real-MySQL migration, and transactional backend checks passed. Authenticated browser Add Device/download/navigation and notification UI acceptance remain pending; Stage 12C-UX.1 browser acceptance also remains pending.
 
 ## Completed
 
+- Stage 12C-UX.2: added nullable, 512-character descriptions to pending enrollment intents and devices; NEW exchange copies the description, while REPLACE remains unchanged. Add Device now accepts name, project, and optional description, uses server GPU defaults, downloads the transient token file, and navigates to Deployments after initiating the download.
 - Stage 01 foundation, device identity, credential lifecycle, MySQL setup and local operator CLI remain verified.
 - Implemented strict schema-v1 heartbeat parsing: 128 KiB body bound, duplicate-key/non-finite/invalid-Unicode/nesting rejection, bounded telemetry, canonical identity/timestamps, null-versus-zero preservation, and normalized SHA-256 idempotency hashing.
 - Implemented authenticated `POST /api/v1/heartbeats` with safe errors, committed acknowledgements, credential revalidation, device-identity rejection, and per-device in-process rate limiting.
@@ -53,6 +54,7 @@ Status: Stage 12C-UX.1 frontend polish passes focused checks; browser visual acc
 
 ## In Progress
 
+- Stage 12C-UX.2 browser acceptance remains pending. Confirm token file download before Deployments navigation, retry of a blocked download without a second intent, and responsive/keyboard behavior.
 - Stage 12C-UX.1 desktop, medium, and mobile browser visual acceptance is pending; no browser surface was available in this session.
 - Local Windows launcher hardening: `start-skybeat-local.ps1` now has a
   repository-relative, secret-safe preflight and preserves the existing
@@ -63,6 +65,8 @@ Status: Stage 12C-UX.1 frontend polish passes focused checks; browser visual acc
 
 ## Verification Completed
 
+- Stage 12C-UX.2 local runtime diagnosis: worker exited on MySQL error 1054, `Unknown column 'devices.description'`; database was at `e43a8c9b0d11` while code expected `81be693a0806`. After migration, the fresh launcher reported Configuration OK, worker started, and Uvicorn running; rerun reported worker restarted with one launcher-owned root and one Windows child process. Local `/livez`, `/readyz`, and `/login` returned 200; unauthenticated `/dashboard` returned 303. HTTPS `/livez` returned 200 with the existing Caddy root CA explicitly trusted. Real MySQL NEW description/defaults, token replay rejection, and REPLACE description preservation passed inside a rolled-back transaction; no acceptance device remained. Focused regressions: 89 passed, 3 isolated-test-URL skips; Ruff, format, Node syntax, and `git diff --check` passed.
+- Stage 12C-UX.2: focused dashboard tests 69 passed; focused enrollment/API tests 20 passed, 3 isolated-MySQL skips. Full server suite 477 passed, 44 environment skips. Strict mypy passed for 56 source files; Ruff lint and format passed for 11 affected Python files; Node syntax and `git diff --check` passed. New migration offline DDL test and Alembic sole-head check passed. No browser or real-MySQL execution was available.
 - Stage 12C-UX.1 dashboard page/API tests: 95 passed. JavaScript syntax, focused Ruff lint/formatter checks, and `git diff --check` passed. READY and TOKEN EXPIRED class paths, disabled controls, safe text rendering, and responsive CSS were inspected in source; no browser visual result is claimed.
 - Stage 12A verification: notification page/API regressions passed (96 tests), including a Node interaction harness for project selection, recipient chips, and the existing PUT payload. Ruff check and format check passed (96 files); strict mypy passed for 56 server source files; `node --check server/app/static/dashboard.js` and `git diff --check` passed. Full server suite: 461 passed, 43 environment skips, and 3 existing deployment-artifact failures in untouched agent unit/installer files.
 - Stage 12B verification: notification/dashboard/RBAC/email regressions passed (111 tests), including the Node assignment/draft interaction harness. The corrected deployment-artifact and current installer regression suite passed (15 passed, 2 Bash-unavailable skips). Ruff check and format check passed (96 files); strict mypy passed for 56 server source files; `node --check server/app/static/dashboard.js` and `git diff --check` passed. Full server suite: 464 passed, 43 environment skips, 0 failed.
@@ -115,6 +119,7 @@ Status: Stage 12C-UX.1 frontend polish passes focused checks; browser visual acc
 
 ## Verification Pending
 
+- Stage 12C-UX.2: the isolated-MySQL test suite still needs `SKYBEAT_TEST_DATABASE_URL`. Authenticated browser verification of existing data and notification settings, token download, navigation, retry, keyboard, and responsive layout remains pending because no browser surface is available. The real-MySQL backend check used a rollback transaction and did not exercise a committed UI enrollment.
 - The retained isolated MySQL instance could not be started in this final session because its existing data files are not writable. ACLs, retained data, initialization and reset were deliberately left untouched. The prior successful real-MySQL 8.4.10/InnoDB evidence above remains the accepted Stage 02 database/vertical verification; a fresh repeat is environment-specific pending.
 - Stage 03 real-MySQL migration, availability race, incident deduplication, delivery claiming and rollback verification are pending only because that retained instance cannot safely start. The tests are present; no substitute is treated as proof of MySQL behavior.
 - Stage 04 real-MySQL migration and durable OAuth-transaction/session lifecycle verification are pending only because that retained instance cannot safely start. The tests are present; fake OIDC tests validate the application boundary but are not represented as real-Google or real-MySQL evidence.
@@ -140,6 +145,7 @@ Status: Stage 12C-UX.1 frontend polish passes focused checks; browser visual acc
 
 ## Files Changed
 
+- Stage 12C-UX.2: enrollment API/service/schema, device service and models, additive migration `81be693a0806`, dashboard template/CSS/JavaScript, focused enrollment/API/page/Node tests, and this checkpoint.
 - Stage 12C-UX.1: `server/app/static/dashboard.css`, `server/app/static/dashboard.js`, `server/app/templates/dashboard.html`, one focused dashboard page test, and this checkpoint. No backend or migration changes.
 - Stage 12A: `server/app/templates/dashboard.html`, `server/app/static/dashboard.js`, `server/app/static/dashboard.css`, focused dashboard page tests, and this checkpoint.
 - Stage 12B: `server/app/static/dashboard.js`, `server/app/static/dashboard.css`, focused dashboard page tests, `scripts/validate_deployment.py`, deployment-artifact tests, and this checkpoint.
@@ -169,6 +175,7 @@ Status: Stage 12C-UX.1 frontend polish passes focused checks; browser visual acc
 
 ## Migrations Applied/Tested
 
+- Stage 12C-UX.2 additive revision `81be693a0806` adds nullable `VARCHAR(512)` descriptions to `agent_enrollments` and `devices`. Its offline MySQL DDL test passed. Local MySQL moved from `e43a8c9b0d11` to sole head `81be693a0806`; both nullable columns were inspected and existing project/device/user/enrollment/notification row counts were unchanged. No database reset or downgrade occurred.
 - Additive Stage 10 revision `d12e7f9c43a0` chains from Stage 09 `b31d2ef4a1c9` and creates durable enrollment intents. It has not been applied here because the required isolated MySQL 8 test URL is unavailable. No database was modified.
 
 - Stage 01 revision `614a53a9e2cb` remains applied to isolated local `skybeat_test` on MySQL 8.4.10/InnoDB.
@@ -190,6 +197,7 @@ Status: Stage 12C-UX.1 frontend polish passes focused checks; browser visual acc
 
 ## Known Issues
 
+- Stage 12C-UX.2 cannot confirm actual disk completion from a scripted browser download; browser acceptance must verify the token file and navigation. The one-time token stays in modal memory for a retry if download initiation throws, with no second enrollment POST.
 - Stage 12B has no automated software blocker. The full server suite is clean; live browser acceptance remains pending because the environment exposes neither a browser surface nor an in-app browser.
 - Stage 10 real-MySQL lifecycle/migration verification is pending solely because `SKYBEAT_TEST_DATABASE_URL` is unavailable. The skipped test covers consumption/replay/receipt scope and fresh-heartbeat verification; no substitute database claim is made.
 - The Linux installer cannot be executed safely on this Windows workspace: Bash/systemd, Ubuntu 24.04 platform checks, offline wheelhouse acquisition, real enrollment exchange, service startup, and verification-receipt polling remain supported-Ubuntu acceptance work. No release bundle was published and no host installation occurred.
@@ -219,6 +227,7 @@ Status: Stage 12C-UX.1 frontend polish passes focused checks; browser visual acc
 
 ## Security Notes
 
+- Stage 12C-UX.2 keeps the one-time `sbe1` token out of persistent browser storage, URLs, and deployment-list projections. A failed download initiation retains it only in the open dialog for retry; no credential rotation or production operation occurred.
 - Stage 10 Tasks 1-2 persist only SHA-256 digests for `sbe1` enrollment and `sbv1` verification values. Exchange consumes an intent under a row lock and creates/rotates its permanent credential, receipt, audit record, and consumed state in one transaction. Owner/Admin intent creation requires the existing authenticated same-origin dependency; anonymous exchange and receipt routes are per-source rate bounded, bearer-only, no-store, and accept only their respective opaque token prefix. A receipt reports only a post-exchange accepted-heartbeat boolean and cannot be exchanged.
 - Stage 10 release tooling builds a wheel, creates a hash-locked offline wheelhouse and manifest, and verifies all release hashes before the installer creates a venv. The installer rejects source-tree inputs, PyPI access, non-HTTPS endpoints, malformed checksum/token inputs, and unsafe token-file links; it writes only the permanent `sb1` value into root-owned mode-0600 `/etc/skybeat/agent.env`. Normal reinstallation retains an existing config unless `--re-enroll` is explicit.
 
@@ -252,7 +261,8 @@ Status: Stage 12C-UX.1 frontend polish passes focused checks; browser visual acc
 
 ## Next Action
 
-- Visually inspect READY and TOKEN EXPIRED cards, the warning banner, header alignment, focus/disabled states, and overflow at desktop, medium, and mobile widths in a safe authenticated browser fixture. Mark Stage 12C-UX.1 COMPLETE / ACCEPTED only after this passes; do not start 12C-UX.2.
+- Run Stage 12C-UX.2 authenticated browser acceptance when a controllable browser session is available. Verify the token file and Deployments redirect together, existing project/device/user and notification settings views, and the failed-download retry. Keep the stage pending acceptance; do not start UX.3.
+- The prior Stage 12C-UX.1 checkpoint still lacks recorded browser inspection of READY and TOKEN EXPIRED cards, the warning banner, header alignment, focus/disabled states, and overflow at desktop, medium, and mobile widths.
 - Perform the documented Stage 12B browser acceptance on a local authenticated/dev-bypass SkyBeat instance: desktop and narrow layouts, project switching, active-user assignment/removal, zero recipients, save/reload, failed-save feedback, and browser-console review. Do not alter notification semantics or deployment artifacts for this acceptance.
 - Finish Stage 10 runbook/documentation and supported Ubuntu acceptance. Add receipt-poll execution coverage before claiming the installer production-accepted. Read this checkpoint, the approved Stage 10 design/plan, and inspect the current Git diff before continuing.
 

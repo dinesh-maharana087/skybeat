@@ -338,10 +338,10 @@
           <dialog id="device-enroll-dialog" aria-labelledby="device-enroll-title">
             <form id="device-enroll-form" class="management-form" novalidate>
               <div class="dialog-heading">
-                <div><p class="eyebrow">Enrollment</p><h2 id="device-enroll-title">Add device</h2></div>
+                <div><p class="eyebrow">Device preparation</p><h2 id="device-enroll-title">Add device</h2></div>
                 <button id="device-enroll-close" class="dialog-close" type="button" aria-label="Close add device dialog"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
               </div>
-              <p class="dialog-description">Create a short-lived, single-use installer enrollment token. The device record is created only when the installer exchanges it.</p>
+              <p class="dialog-description">Prepare a device for installation. Save the downloaded enrollment token file before installing the agent.</p>
               <label for="enroll-name">Device name
                 <input id="enroll-name" name="name" maxlength="128" autocomplete="off" required>
               </label>
@@ -349,23 +349,11 @@
                 <select id="enroll-project" name="project_id" required><option value="">Select a project</option></select>
               </label>
               <button id="new-project-from-enroll" class="sb-button--ghost" type="button">+ New Project</button>
-              <label class="checkbox-control" for="enroll-gpu-enabled">
-                <input id="enroll-gpu-enabled" name="gpu_monitoring_enabled" type="checkbox" checked>
-                Monitor GPUs on this device
-              </label>
-              <label for="enroll-gpu-count">Minimum expected GPUs
-                <input id="enroll-gpu-count" name="expected_gpu_min_count" type="number" min="0" max="64" value="1" required>
+              <label for="enroll-description">Description (optional)
+                <textarea id="enroll-description" name="description" rows="2" maxlength="512"></textarea>
               </label>
               <p id="enrollment-status" role="status" aria-live="polite"></p>
-              <div id="enrollment-credential-panel" hidden>
-                <p class="credential-warning">Save this enrollment token now. It is short-lived, single use, and cannot be recovered or used as a device credential.</p>
-                <code id="enrollment-credential"></code>
-                <div class="dialog-actions"><button id="save-enrollment-token" type="button" disabled>Save enrollment token</button><button id="copy-enrollment-credential" type="button" disabled>Copy installer token</button><button id="download-agent-package" type="button" disabled>Download Agent Package</button></div>
-                <p id="enrollment-lifecycle-status" role="status" aria-live="polite"></p>
-                <pre id="enrollment-install-instructions"></pre>
-                <div class="dialog-actions"><button id="refresh-enrollment-status" type="button" disabled>Refresh status</button><button id="revoke-enrollment" class="sb-button--secondary" type="button" disabled>Revoke unused token</button><button id="reissue-enrollment" class="sb-button--secondary" type="button" disabled>Reissue</button></div>
-              </div>
-              <div class="dialog-actions"><button id="enroll-submit" class="sb-button--primary" type="submit">Create installer token</button><button id="enroll-cancel" class="sb-button--secondary" type="button">Cancel</button></div>
+              <div class="dialog-actions"><button id="enroll-submit" class="sb-button--primary" type="submit">Prepare Device</button><button id="enroll-cancel" class="sb-button--secondary" type="button">Cancel</button></div>
             </form>
           </dialog>
 

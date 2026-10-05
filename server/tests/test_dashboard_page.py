@@ -926,10 +926,8 @@ def test_dashboard_management_dialogs_expose_safe_canonical_controls():
         "device-enroll-form",
         "enroll-name",
         "enroll-project",
-        "enroll-gpu-enabled",
-        "enroll-gpu-count",
-        "enrollment-credential",
-        "copy-enrollment-credential",
+        "enroll-description",
+        "enroll-submit",
         "detail-change-project",
         "detail-toggle-monitoring",
         "move-device-dialog",
@@ -937,6 +935,28 @@ def test_dashboard_management_dialogs_expose_safe_canonical_controls():
     ):
         assert f'id="{identifier}"' in template
     assert "data-credential" not in template
+
+
+def test_add_device_preparation_modal_has_only_operator_identity_fields():
+    template = dashboard_template()
+    modal = template.split('<dialog id="device-enroll-dialog"', 1)[1].split("</dialog>", 1)[0]
+    assert 'id="enroll-name"' in modal
+    assert 'id="enroll-project"' in modal
+    assert 'id="enroll-description"' in modal
+    assert 'id="enroll-description" name="description"' in modal
+    assert "Prepare Device" in modal
+    for removed in (
+        "enroll-gpu-enabled",
+        "enroll-gpu-count",
+        "enrollment-credential",
+        "save-enrollment-token",
+        "copy-enrollment-credential",
+        "download-agent-package",
+        "refresh-enrollment-status",
+        "revoke-enrollment",
+        "reissue-enrollment",
+    ):
+        assert removed not in modal
 
 
 def test_dashboard_management_uses_same_origin_mutations_without_browser_storage():
@@ -1288,28 +1308,20 @@ def test_alert_routing_assigns_active_users_and_keeps_project_drafts_isolated():
     assert result.returncode == 0, result.stderr
 
 
-def test_dashboard_enrollment_credential_is_explicitly_transient_and_copy_only_on_action():
+def test_dashboard_enrollment_credential_is_transient_until_token_file_handoff():
     script = dashboard_script()
 
     assert "clearEnrollmentCredential" in script
-    assert "navigator.clipboard.writeText" in script
     assert "enrollmentCredential = null" in script
+    assert 'window.location.assign("/dashboard/deployments")' in script
     assert "deviceEnrollDialog.close" in script
 
 
-def test_dashboard_deployment_flow_uses_validated_release_metadata_and_a_local_token_file_only():
+def test_dashboard_deployment_flow_keeps_release_metadata_and_local_token_file_contract():
     template = dashboard_template()
     script = dashboard_script()
 
-    for identifier in (
-        "download-agent-package",
-        "save-enrollment-token",
-        "enrollment-install-instructions",
-        "refresh-enrollment-status",
-        "revoke-enrollment",
-        "reissue-enrollment",
-    ):
-        assert f'id="{identifier}"' in template
+    assert 'id="deployments-list" class="deployment-grid"' in template
     assert 'fetch("/api/v1/agent-releases/current", { credentials: "same-origin" })' in script
     assert '"/api/v1/agent-releases/current/download"' in script
     assert "release.wheel_filename" in script
@@ -1320,8 +1332,7 @@ def test_dashboard_deployment_flow_uses_validated_release_metadata_and_a_local_t
     assert "new Blob([enrollmentCredential]" in script
     assert "URL.createObjectURL" in script
     assert "URL.revokeObjectURL" in script
-    assert "`/api/v1/agent-enrollments/${encodeURIComponent(enrollmentId)}`" in script
-    assert "if (!(await revokeEnrollment())) return;" in script
+    assert 'window.location.assign("/dashboard/deployments")' in script
     enrollment_section = script[
         script.index("function submitEnrollment") : script.index("function openMoveDialog")
     ]
@@ -1471,180 +1482,3 @@ def test_dashboard_stage08f_polishes_the_existing_add_device_enrollment_dialog()
     assert ".dialog-close" in styles
     assert ".dialog-description" in styles
     assert ".dialog-actions" in styles
-
-
-def test_dashboard_stage08g_keeps_successful_enrollment_truthful_when_inventory_refresh_fails():
-    node = shutil.which("node")
-    assert node is not None
-    harness = textwrap.dedent(
-        """
-        import fs from "node:fs";
-        import vm from "node:vm";
-
-        const source = fs.readFileSync(0, "utf8");
-        const projectId = "e3e70682-c209-4cac-a29f-6fbed82c07cd";
-        const enrollmentToken = "sbe1.e3e70682-c209-4cac-a29f-6fbed82c07cd.test-secret";
-        const listeners = new WeakMap();
-        let failRendering = false;
-
-        class Element {
-          constructor(id = "") {
-            this.id = id;
-            this.attributes = new Map();
-            this.children = [];
-            this.classList = { add() {}, contains() { return false; }, remove() {}, toggle() {} };
-            this.dataset = {};
-            this.disabled = false;
-            this.hidden = false;
-            this.checked = false;
-            this.open = false;
-            this.selectedOptions = [];
-            this.style = {};
-            this.textContent = "";
-            this.value = "";
-          }
-          addEventListener(type, listener) {
-            const byType = listeners.get(this) ?? new Map();
-            byType.set(type, listener);
-            listeners.set(this, byType);
-          }
-          emit(type) {
-            const listener = listeners.get(this)?.get(type);
-            return listener?.({ key: "", preventDefault() {}, target: this });
-          }
-          append(...children) {
-            this.children.push(...children);
-            this.firstChild = this.children[0] ?? null;
-          }
-          appendChild(child) { this.append(child); return child; }
-          closest() { return null; }
-          focus() {}
-          getAttribute(name) { return this.attributes.get(name) ?? null; }
-          querySelectorAll() { return []; }
-          remove() {}
-          removeAttribute(name) { this.attributes.delete(name); }
-          replaceChildren(...children) {
-            this.children = children;
-            this.firstChild = children[0] ?? null;
-          }
-          reset() {}
-          setAttribute(name, value) { this.attributes.set(name, String(value)); }
-          showModal() { this.open = true; }
-          close() { this.open = false; this.emit("close"); }
-        }
-
-        const elements = new Map();
-        const intentionallyAbsent = new Set(["new-project"]);
-        function elementFor(id) {
-          if (!elements.has(id)) elements.set(id, new Element(id));
-          return elements.get(id);
-        }
-        function pageElement(id) {
-          return intentionallyAbsent.has(id) ? null : elementFor(id);
-        }
-        elementFor("enroll-gpu-enabled").checked = true;
-        elementFor("enroll-gpu-count").value = "1";
-        elementFor("page-size").value = "50";
-
-        const document = {
-          body: Object.assign(elementFor("body"), { dataset: { dashboardView: "devices" } }),
-          addEventListener() {},
-          createElement(tag) {
-            if (failRendering) throw new Error("inventory render failed");
-            return new Element(tag);
-          },
-          getElementById: pageElement,
-          hidden: false,
-          querySelector() { return elementFor("app-shell"); },
-        };
-        const response = (payload) => ({ ok: true, json: async () => payload });
-            async function fetch(path, options = {}) {
-              if (path === "/api/v1/agent-releases/current") {
-                return response({ release: {
-                  wheel_filename: "skybeat_agent-1.0.0-cp312-none-any.whl",
-                  wheel_sha256: "a".repeat(64),
-                  archive_filename: "skybeat-agent-1.0.0-linux.zip",
-                  archive_root: "skybeat-agent-1.0.0",
-                  server_url: "https://testserver",
-                  allow_insecure_local_server: false,
-                }});
-              }
-              if (path === "/api/v1/agent-enrollments" && options.method === "POST") {
-            const payload = JSON.parse(options.body);
-            if (
-              payload.mode !== "NEW" ||
-              payload.name !== "GPU node" ||
-              payload.project_id !== projectId ||
-              payload.gpu_monitoring_enabled !== true ||
-              payload.expected_gpu_min_count !== 1
-            ) throw new Error("unexpected enrollment payload");
-                return response({
-                  token: enrollmentToken,
-                  enrollment: { enrollment_id: projectId },
-                });
-          }
-          if (String(path).startsWith("/api/v1/projects")) {
-            return response({
-              items: [{ project_id: projectId, name: "GPU Lab", device_counts: {} }],
-              server_time: "2026-09-25T00:00:00Z",
-            });
-          }
-          if (String(path).startsWith("/api/v1/dashboard/overview")) {
-            return response({ counts: { total: 0 }, server_time: "2026-09-25T00:00:00Z" });
-          }
-          if (String(path).startsWith("/api/v1/devices?")) {
-            return response({ items: [], next_cursor: null, server_time: "2026-09-25T00:00:00Z" });
-          }
-          throw new Error(`unexpected request ${path}`);
-        }
-        const window = {
-          clearTimeout() {},
-          location: { assign() {}, origin: "https://testserver", search: "" },
-          matchMedia() { return { matches: false }; },
-          setTimeout() { return 1; },
-        };
-        const context = {
-          AbortController,
-          Element,
-          URL,
-          URLSearchParams,
-          console,
-          document,
-          fetch,
-          localStorage: { getItem() { return null; }, setItem() {} },
-          navigator: { clipboard: { writeText: async () => {} } },
-          window,
-        };
-        vm.runInNewContext(source, context);
-        for (let count = 0; count < 10; count += 1) await new Promise(setImmediate);
-
-        elementFor("add-device").emit("click");
-        elementFor("enroll-name").value = "GPU node";
-        elementFor("enroll-project").value = projectId;
-        failRendering = true;
-        elementFor("device-enroll-form").emit("submit");
-        for (let count = 0; count < 10; count += 1) await new Promise(setImmediate);
-
-        if (elementFor("enrollment-credential").textContent !== enrollmentToken) {
-          throw new Error("successful enrollment did not retain the installer token");
-        }
-        if (elementFor("enrollment-credential-panel").hidden) {
-          throw new Error("successful enrollment hid the one-time installer token");
-        }
-        if (!elementFor("enrollment-status").textContent.startsWith("Installer token created.")) {
-          const message = elementFor("enrollment-status").textContent;
-          throw new Error(`enrollment reported a false failure: ${message}`);
-        }
-        """
-    )
-    result = subprocess.run(  # noqa: S603 - the test runs the locally discovered Node executable
-        [node, "--input-type=module", "--eval", harness],
-        check=False,
-        input=dashboard_script(),
-        capture_output=True,
-        encoding="utf-8",
-        text=True,
-        timeout=15,
-    )
-
-    assert result.returncode == 0, result.stderr

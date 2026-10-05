@@ -28,12 +28,14 @@ class AuthorizedSession:
 
 class FakeEnrollmentService:
     last_expected_replacement_device_uuid: str | None = None
+    last_create_request: dict[str, object] = {}
 
     def __init__(self, database: object, *, actor: str) -> None:
         self.database = database
         self.actor = actor
 
     def create_intent(self, **request: object) -> SimpleNamespace:
+        type(self).last_create_request = request
         return SimpleNamespace(
             enrollment=SimpleNamespace(
                 public_id="e3e70682-c209-4cac-a29f-6fbed82c07cd",
@@ -111,6 +113,71 @@ def test_owner_and_admin_can_create_one_time_enrollment_intents(role: UserRole):
         },
         "token": ENROLLMENT_TOKEN,
     }
+
+
+def test_new_intent_accepts_optional_description_and_server_gpu_defaults():
+    with client_for(UserRole.ADMIN) as client:
+        response = client.post(
+            "/api/v1/agent-enrollments",
+            headers={"Origin": "https://testserver"},
+            json={
+                "mode": "NEW",
+                "project_id": "e3e70682-c209-4cac-a29f-6fbed82c07cd",
+                "name": "GPU node",
+                "description": "  Packing line GPU  ",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert FakeEnrollmentService.last_create_request["description"] == "Packing line GPU"
+    policy = FakeEnrollmentService.last_create_request["policy"]
+    assert policy.monitoring_enabled is True
+    assert policy.min_count == 1
+
+
+@pytest.mark.parametrize("description", ["", "   ", None])
+def test_new_intent_normalizes_blank_description_to_null(description):
+    with client_for(UserRole.OWNER) as client:
+        response = client.post(
+            "/api/v1/agent-enrollments",
+            headers={"Origin": "https://testserver"},
+            json={
+                "mode": "NEW",
+                "project_id": "e3e70682-c209-4cac-a29f-6fbed82c07cd",
+                "name": "GPU node",
+                "description": description,
+            },
+        )
+
+    assert response.status_code == 200
+    assert FakeEnrollmentService.last_create_request["description"] is None
+
+
+def test_new_intent_rejects_oversized_description_and_replacement_description():
+    with client_for(UserRole.OWNER) as client:
+        oversized = client.post(
+            "/api/v1/agent-enrollments",
+            headers={"Origin": "https://testserver"},
+            json={
+                "mode": "NEW",
+                "project_id": "e3e70682-c209-4cac-a29f-6fbed82c07cd",
+                "name": "GPU node",
+                "description": "x" * 513,
+            },
+        )
+        replacement = client.post(
+            "/api/v1/agent-enrollments",
+            headers={"Origin": "https://testserver"},
+            json={
+                "mode": "REPLACE",
+                "device_id": "e3e70682-c209-4cac-a29f-6fbed82c07cd",
+                "description": "Should not replace existing description",
+            },
+        )
+
+    assert oversized.status_code == 422
+    assert replacement.status_code == 422
 
 
 def test_user_and_unauthenticated_callers_cannot_create_enrollment_intents():

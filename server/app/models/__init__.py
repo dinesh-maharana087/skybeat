@@ -68,6 +68,7 @@ class Device(Base):
         ForeignKey("projects.id", ondelete="RESTRICT"), index=True
     )
     name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     monitoring_enabled: Mapped[bool] = mapped_column(
         Boolean(name="monitoring", create_constraint=True)
     )

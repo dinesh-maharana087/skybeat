@@ -1,6 +1,35 @@
+import importlib.util
 from datetime import timedelta
+from io import StringIO
+from pathlib import Path
 
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+
+
+def test_device_description_migration_emits_only_nullable_mysql_columns(monkeypatch):
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "migrations/versions/81be693a0806_stage12c_device_description.py"
+    )
+    spec = importlib.util.spec_from_file_location("device_description_migration", migration)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.down_revision == "e43a8c9b0d11"
+
+    output = StringIO()
+    context = MigrationContext.configure(
+        dialect_name="mysql", opts={"as_sql": True, "output_buffer": output}
+    )
+    monkeypatch.setattr(module, "op", Operations(context))
+    module.upgrade()
+    statements = output.getvalue()
+    assert "ALTER TABLE agent_enrollments ADD COLUMN description VARCHAR(512)" in statements
+    assert "ALTER TABLE devices ADD COLUMN description VARCHAR(512)" in statements
+    assert "NOT NULL" not in statements
+    assert "UPDATE " not in statements
 
 
 def test_enrollment_token_is_opaque_and_parses_only_its_expected_prefix():
@@ -38,7 +67,7 @@ def test_enrollment_token_rejects_malformed_input_without_echoing_it(value):
 
 
 def test_durable_enrollment_model_has_separate_single_use_and_receipt_digests():
-    from app.models import AgentEnrollment
+    from app.models import AgentEnrollment, Device
 
     columns = AgentEnrollment.__table__.c
 
@@ -47,6 +76,9 @@ def test_durable_enrollment_model_has_separate_single_use_and_receipt_digests():
     )
     assert columns.enrollment_digest.unique
     assert columns.verification_digest.unique
+    assert columns.description.nullable
+    assert Device.__table__.c.description.nullable
+    assert columns.description.type.length == Device.__table__.c.description.type.length == 512
     constraint_sql = [
         str(constraint.sqltext)
         for constraint in AgentEnrollment.__table__.constraints
@@ -71,14 +103,17 @@ def test_enrollment_exchange_is_single_use_and_receipt_is_scoped(mysql_database,
         mode=EnrollmentMode.NEW,
         project_uuid=project.public_id,
         device_name="enrollment-service-device",
+        description="  Packing line GPU  ",
         policy=GPUPolicy(),
     )
 
     assert intent.enrollment.expires_at - intent.enrollment.created_at == timedelta(hours=24)
+    assert intent.enrollment.description == "Packing line GPU"
 
     exchanged = service.exchange(intent.token.value)
 
     assert exchanged.device.name == "enrollment-service-device"
+    assert exchanged.device.description == "Packing line GPU"
     assert not service.verify_receipt(exchanged.verification_token.value).accepted_heartbeat
     with pytest.raises(EnrollmentRejected):
         service.exchange(intent.token.value)
@@ -93,6 +128,29 @@ def test_enrollment_exchange_is_single_use_and_receipt_is_scoped(mysql_database,
         device.last_seen_at = database_utc(session)
 
     assert service.verify_receipt(exchanged.verification_token.value).accepted_heartbeat
+
+
+def test_replacement_exchange_preserves_existing_device_description(mysql_database, identity):
+    from app.devices.service import GPUPolicy
+    from app.enrollment.service import AgentEnrollmentService, EnrollmentMode
+
+    project = identity.create_project("Replacement description project")
+    service = AgentEnrollmentService(mysql_database, actor="owner@example.com")
+    initial = service.create_intent(
+        mode=EnrollmentMode.NEW,
+        project_uuid=project.public_id,
+        device_name="description-device",
+        description="Packing line GPU",
+        policy=GPUPolicy(),
+    )
+    first = service.exchange(initial.token.value)
+    replacement = service.create_intent(
+        mode=EnrollmentMode.REPLACE, replacement_device_uuid=first.device.device_uuid
+    )
+    second = service.exchange(replacement.token.value)
+
+    assert second.device.id == first.device.id
+    assert second.device.description == "Packing line GPU"
 
 
 def test_enrollment_management_status_is_evidence_driven_and_revocation_is_unused_only(

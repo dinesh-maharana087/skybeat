@@ -113,6 +113,7 @@ class AgentEnrollment(Base):
         ForeignKey("devices.id", ondelete="RESTRICT"), index=True
     )
     device_name: Mapped[str | None] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     gpu_monitoring_enabled: Mapped[bool | None] = mapped_column(Boolean(create_constraint=True))
     expected_gpu_min_count: Mapped[int | None] = mapped_column(BIGINT(unsigned=True))
     created_by: Mapped[str] = mapped_column(String(128))

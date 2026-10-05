@@ -231,12 +231,14 @@ class IdentityService:
         project_uuid: str,
         name: str,
         *,
+        description: str | None = None,
         policy: GPUPolicy = DEFAULT_GPU_POLICY,
         expires_at: datetime | None = None,
         now: datetime,
     ) -> Enrollment:
         """Create a device and credential inside a caller-owned transaction."""
         name = _label(name)
+        description = _label(description, 512) if description and description.strip() else None
         project = self._project(session, project_uuid)
         if not project.is_active:
             raise Conflict("Project is inactive.")
@@ -245,6 +247,7 @@ class IdentityService:
             device_uuid=str(uuid4()),
             project_id=project.id,
             name=name,
+            description=description,
             monitoring_enabled=True,
             monitoring_started_at=now,
             gpu_monitoring_enabled=policy.monitoring_enabled,

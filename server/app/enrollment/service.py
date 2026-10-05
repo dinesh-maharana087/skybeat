@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Database, database_utc
 from app.devices.credentials import GeneratedCredential
-from app.devices.service import Conflict, GPUPolicy, IdentityService, NotFound, lock_device
+from app.devices.service import Conflict, GPUPolicy, IdentityService, NotFound, _label, lock_device
 from app.models import AgentEnrollment, AuditEvent, Device, Project
 
 
@@ -208,12 +208,14 @@ class AgentEnrollmentService:
         project_uuid: str | None = None,
         replacement_device_uuid: str | None = None,
         device_name: str | None = None,
+        description: str | None = None,
         policy: GPUPolicy | None = None,
         lifetime: timedelta | None = None,
     ) -> IssuedEnrollmentIntent:
         lifetime = self.enrollment_lifetime if lifetime is None else lifetime
         self._require_enrollment_ttl(lifetime)
         token = EnrollmentToken.generate("sbe1")
+        description = _label(description, 512) if description and description.strip() else None
         with self.database.transaction() as session:
             now = database_utc(session)
             project_id: int | None = None
@@ -229,6 +231,7 @@ class AgentEnrollmentService:
                     replacement_device_uuid is None
                     or project_uuid is not None
                     or device_name is not None
+                    or description is not None
                     or policy is not None
                 ):
                     raise ValueError("Replacement enrollment intent is incomplete.")
@@ -244,6 +247,7 @@ class AgentEnrollmentService:
                 replacement_device_id=replacement_device_id,
                 issued_device_id=None,
                 device_name=device_name,
+                description=description,
                 gpu_monitoring_enabled=policy.monitoring_enabled if policy else None,
                 expected_gpu_min_count=policy.min_count if policy else None,
                 created_by=self.actor,
@@ -317,6 +321,7 @@ class AgentEnrollmentService:
                     session,
                     project.public_id,
                     enrollment.device_name,
+                    description=enrollment.description,
                     policy=GPUPolicy(
                         monitoring_enabled=enrollment.gpu_monitoring_enabled,
                         min_count=enrollment.expected_gpu_min_count,
