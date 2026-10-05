@@ -83,21 +83,57 @@ def prime_cpu_sample() -> None:
 
 def _operating_system() -> dict[str, str | None]:
     try:
-        release = platform.freedesktop_os_release()
-        name = release.get("NAME") or None
-        version = release.get("VERSION_ID") or None
-    except (AttributeError, OSError):
-        name = None
-        version = None
-    try:
-        kernel = platform.release() or None
+        family = platform.system() or None
     except OSError:
-        kernel = None
+        family = None
+    name = family
+    version = None
+    kernel = None
+    if family == "Linux":
+        try:
+            release = platform.freedesktop_os_release()
+            name = release.get("NAME") or family
+            version = release.get("VERSION_ID") or None
+        except (AttributeError, OSError, ValueError):
+            pass
+        try:
+            kernel = platform.release() or None
+        except OSError:
+            pass
+    elif family == "Windows":
+        try:
+            version = platform.release() or None
+        except OSError:
+            pass
+        try:
+            kernel = platform.version() or None
+        except OSError:
+            pass
+    else:
+        try:
+            version = platform.release() or None
+        except OSError:
+            pass
+        try:
+            kernel = platform.version() or None
+        except OSError:
+            pass
     try:
         architecture = platform.machine() or None
     except OSError:
         architecture = None
-    return {"name": name, "version": version, "kernel": kernel, "architecture": architecture}
+    values = {"name": name, "version": version, "kernel": kernel, "architecture": architecture}
+    limits = {"name": 128, "version": 128, "kernel": 128, "architecture": 32}
+    return {
+        key: (
+            value[: limits[key]]
+            if isinstance(value, str)
+            and value
+            and all(ord(char) >= 32 and ord(char) != 127 for char in value)
+            else None
+        )
+        for key, value in values.items()
+    }
 
 
 def collect_system(mountpoints: tuple[str, ...]) -> dict[str, Any]:

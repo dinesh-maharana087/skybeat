@@ -35,6 +35,16 @@ def test_approved_example_preserves_identity_and_collected_at():
     assert heartbeat.gpus[0].uuid == "GPU-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
 
+def test_older_heartbeat_without_os_identity_is_accepted():
+    payload = heartbeat_payload()
+    del payload["os"]
+
+    heartbeat = parse_heartbeat(encode(payload))
+
+    assert heartbeat.os is None
+    assert normalized_payload(heartbeat)["os"] is None
+
+
 def test_minimum_payload_preserves_null_as_distinct_from_zero():
     payload = heartbeat_payload()
     payload["ip_addresses"] = []
@@ -196,8 +206,8 @@ def test_invalid_contract_fields_are_rejected(path, value):
     assert result.value.code == "validation_error"
 
 
-@pytest.mark.parametrize("field", list(heartbeat_payload()))
-def test_all_documented_top_level_fields_are_required(field):
+@pytest.mark.parametrize("field", [key for key in heartbeat_payload() if key != "os"])
+def test_required_top_level_fields_are_present(field):
     payload = heartbeat_payload()
     del payload[field]
     with pytest.raises(HeartbeatValidationError):

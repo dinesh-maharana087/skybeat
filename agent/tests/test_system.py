@@ -19,6 +19,7 @@ def test_system_collection_uses_primed_cpu_and_linux_os_semantics(monkeypatch):
     )
     monkeypatch.setattr(system.psutil, "boot_time", lambda: 1.0)
     monkeypatch.setattr(system.socket, "gethostname", lambda: "edge")
+    monkeypatch.setattr(system.platform, "system", lambda: "Linux")
     monkeypatch.setattr(
         system.platform,
         "freedesktop_os_release",
@@ -35,6 +36,47 @@ def test_system_collection_uses_primed_cpu_and_linux_os_semantics(monkeypatch):
     assert result["os"] == {
         "name": "Ubuntu",
         "version": "24.04",
+        "kernel": "6.8.0",
+        "architecture": "x86_64",
+    }
+
+
+def test_os_identity_uses_native_windows_values_and_degrades_without_release_file(monkeypatch):
+    monkeypatch.setattr(system.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        system.platform,
+        "freedesktop_os_release",
+        lambda: (_ for _ in ()).throw(OSError()),
+    )
+    monkeypatch.setattr(system.platform, "release", lambda: "11")
+    monkeypatch.setattr(system.platform, "version", lambda: "10.0.22631")
+    monkeypatch.setattr(system.platform, "machine", lambda: "AMD64")
+
+    assert system._operating_system() == {
+        "name": "Windows",
+        "version": "11",
+        "kernel": "10.0.22631",
+        "architecture": "AMD64",
+    }
+
+    monkeypatch.setattr(system.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(system.platform, "release", lambda: "6.8.0")
+    assert system._operating_system()["name"] == "Linux"
+
+
+def test_os_identity_bounds_optional_platform_text_without_losing_other_fields(monkeypatch):
+    monkeypatch.setattr(system.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        system.platform,
+        "freedesktop_os_release",
+        lambda: {"NAME": "U" * 150, "VERSION_ID": "bad\nversion"},
+    )
+    monkeypatch.setattr(system.platform, "release", lambda: "6.8.0")
+    monkeypatch.setattr(system.platform, "machine", lambda: "x86_64")
+
+    assert system._operating_system() == {
+        "name": "U" * 128,
+        "version": None,
         "kernel": "6.8.0",
         "architecture": "x86_64",
     }

@@ -789,17 +789,24 @@ def test_dashboard_stage08d_devices_workspace_reuses_canonical_inventory_contrac
     assert "No devices have been enrolled." in script
     assert "No devices match the current search or filters." in script
     assert "Unable to refresh the device list. Displayed device data was retained." in script
-    assert 'const headers = ["Project", "Device / Host", "Availability", "GPU State"' in script
-    assert "device-identity__uuid" in script
-    assert "Inspect device" in script
+    assert (
+        'const headers = ["Device", "Project", "Status", "OS", "GPU", "Last Seen", "Attention"]'
+        in script
+    )
+    assert "device-identity__hostname" in script
+    assert "function conciseOsLabel" in script
+    assert "function deviceAttention" in script
     for selector in (
         ".devices-workspace-summary",
         ".devices-summary-cards",
         ".device-identity",
         ".device-row--attention",
+        ".device-attention__item--communication",
+        ".device-attention__item--gpu",
         ".device-loading",
     ):
         assert selector in styles
+    assert "#device-status-table th:nth-child(2)" in styles
     for unsafe_api in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
         assert unsafe_api not in script
 

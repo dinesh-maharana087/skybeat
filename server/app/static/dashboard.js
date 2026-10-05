@@ -596,14 +596,14 @@ async function refreshCanonicalDashboard() {
 function tableHeader() {
   const table = document.createElement("table");
   table.id = "device-status-table";
-  const headers = ["Project", "Device / Host", "Availability", "GPU State", "Last Seen", "CPU", "Memory", "GPU Count", "Network", "Agent", "Latest telemetry", "Action"];
+  const headers = ["Device", "Project", "Status", "OS", "GPU", "Last Seen", "Attention"];
   const row = document.createElement("tr");
   for (const name of headers) {
     const cell = document.createElement("th");
     const filterName = {
       Project: "project_id",
-      Availability: "state",
-      "GPU State": "gpu_state",
+      Status: "state",
+      GPU: "gpu_state",
     }[name];
     if (filterName) {
       const button = element("button", `${name} ▾`);
@@ -715,14 +715,31 @@ function openFilterPopover(name, owner) {
   popover.querySelector("button")?.focus();
 }
 
+function conciseOsLabel(os) {
+  const name = typeof os?.name === "string" ? os.name.trim() : "";
+  const version = typeof os?.version === "string" ? os.version.trim() : "";
+  if (!name) return "Not reported";
+  return version && !name.includes(version) ? `${name} ${version}` : name;
+}
+
+function deviceAttention(item) {
+  const notices = [];
+  if (item.state === "OFFLINE" || item.state === "SUSPECT") {
+    notices.push({ label: `Communication: ${item.state}`, kind: "communication" });
+  }
+  const gpuState = item.gpu_health?.effective;
+  if (item.latest_received_at && ["GPU_MISSING", "NVIDIA_SMI_FAILED", "DRIVER_ERROR", "UNKNOWN"].includes(gpuState)) {
+    notices.push({ label: `GPU: ${gpuState.replaceAll("_", " ")}`, kind: "gpu" });
+  }
+  return notices;
+}
+
 function deviceRow(item) {
   const row = document.createElement("tr");
   if (item.telemetry_stale === true) row.classList.add("telemetry-stale");
-  const gpuState = displayValue(item.gpu_health?.effective);
-  if (["SUSPECT", "OFFLINE"].includes(item.state) || !["OK", "NOT_MONITORED", "—"].includes(gpuState)) {
-    row.classList.add("device-row--attention");
-  }
-  row.append(element("td", displayValue(item.project?.name)));
+  const notices = deviceAttention(item);
+  if (notices.length) row.classList.add("device-row--attention");
+  if (notices.some((notice) => notice.kind === "communication")) row.classList.add("device-row--communication");
   const deviceCell = document.createElement("td");
   deviceCell.className = "device-identity";
   const detailButton = element("button", displayValue(item.name));
@@ -730,36 +747,32 @@ function deviceRow(item) {
   detailButton.ariaLabel = `View details for ${displayValue(item.name)}`;
   detailButton.className = "device-identity__name";
   detailButton.addEventListener("click", () => openDetail(item.device_id, detailButton));
-  const hostname = element("span", displayValue(item.hostname));
-  hostname.className = "device-identity__hostname";
-  const uuid = element("code", displayValue(item.device_id));
-  uuid.className = "device-identity__uuid";
-  deviceCell.append(detailButton, hostname, uuid);
-  row.append(deviceCell);
+  deviceCell.append(detailButton);
+  if (item.hostname && item.hostname !== item.name && item.hostname !== "unknown") {
+    const hostname = element("span", item.hostname);
+    hostname.className = "device-identity__hostname";
+    deviceCell.append(hostname);
+  }
+  row.append(deviceCell, element("td", displayValue(item.project?.name)));
   const availability = document.createElement("td");
   availability.append(statusPill(item.state));
   row.append(availability);
+  row.append(element("td", conciseOsLabel(item.os)));
+  const gpuHealth = document.createElement("td");
+  gpuHealth.append(statusPill(item.gpu_health?.effective));
+  row.append(gpuHealth);
   const lastSeen = document.createElement("td");
   lastSeen.append(timestampNode(item.last_seen_at));
   row.append(lastSeen);
-  row.append(element("td", formatPercent(item.cpu?.utilization_percent)));
-  row.append(element("td", formatPercent(item.memory?.utilization_percent)));
-  const gpuHealth = document.createElement("td");
-  gpuHealth.append(statusPill(gpuState));
-  row.append(gpuHealth);
-  row.append(element("td", displayValue(item.gpu_count)));
-  row.append(element("td", displayValue(item.primary_ip)));
-  row.append(element("td", displayValue(item.agent_version)));
-  const latestTelemetry = document.createElement("td");
-  latestTelemetry.append(timestampNode(item.latest_received_at));
-  row.append(latestTelemetry);
-  const action = document.createElement("td");
-  const inspect = element("button", "Inspect device");
-  inspect.type = "button";
-  inspect.ariaLabel = `Inspect ${displayValue(item.name)}`;
-  inspect.addEventListener("click", () => openDetail(item.device_id, inspect));
-  action.append(inspect);
-  row.append(action);
+  const attention = document.createElement("td");
+  attention.className = "device-attention";
+  for (const notice of notices) {
+    const label = element("span", notice.label);
+    label.className = `device-attention__item device-attention__item--${notice.kind}`;
+    attention.append(label);
+  }
+  if (!notices.length) attention.append(element("span", "—"));
+  row.append(attention);
   return row;
 }
 
@@ -1713,7 +1726,8 @@ function renderDetail(device) {
     ["Hostname", device.hostname],
     ["Primary IP", device.primary_ip],
     ["IP addresses", Array.isArray(device.ip_addresses) ? device.ip_addresses.join(", ") : null],
-    ["Operating system", os.name],
+    ["Operating system", conciseOsLabel(os)],
+    ["Kernel", os.kernel],
     ["Architecture", os.architecture],
     ["Agent version", device.agent_version],
     ["Uptime", formatDuration(device.uptime_seconds)],

@@ -51,6 +51,7 @@ def test_device_view_preserves_nulls_multiple_inventory_and_marks_offline_teleme
     assert len(view["disks"]) == 2
     assert len(view["gpus"]) == 2
     assert view["gpu_health"]["effective"] == "DRIVER_ERROR"
+    assert view["os"] == {"name": "Ubuntu"}
 
 
 def test_device_view_uses_awaiting_first_heartbeat_without_fabricating_telemetry():
@@ -78,3 +79,4 @@ def test_device_view_uses_awaiting_first_heartbeat_without_fabricating_telemetry
     assert view["disks"] == []
     assert view["gpus"] == []
     assert view["gpu_health"]["effective"] == "NOT MONITORED"
+    assert view["os"] == {}

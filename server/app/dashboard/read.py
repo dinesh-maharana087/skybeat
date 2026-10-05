@@ -349,6 +349,7 @@ def device_view(
             "latest_received_at": None,
             "telemetry_stale": False,
             "agent_version": None,
+            "os": {},
             "uptime_seconds": None,
             "cpu": None,
             "memory": None,

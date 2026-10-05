@@ -25,12 +25,20 @@
 .devices-summary-card--suspect { border-left-color: var(--sb-warning); }
 .devices-summary-card--offline { border-left-color: var(--sb-danger); }
 .devices-summary-card--awaiting-first-heartbeat { border-left-color: var(--sb-info); }
-.device-identity { display: grid; gap: var(--sb-space-1); min-width: 13rem; }
+.device-identity { display: grid; gap: var(--sb-space-1); min-width: 0; }
 .device-identity__name { font-weight: 750; justify-self: start; }
-.device-identity__hostname { color: var(--sb-text-secondary); font-size: var(--sb-font-size-sm); }
-.device-identity__uuid { color: var(--sb-text-muted); font-size: var(--sb-font-size-xs); }
+.device-identity__hostname { color: var(--sb-text-secondary); font-size: var(--sb-font-size-sm); overflow-wrap: anywhere; }
 .device-row--attention td:first-child { box-shadow: inset .2rem 0 0 var(--sb-warning); }
-.device-row--attention:has(.status-offline) td:first-child, .device-row--attention:has(.status-driver-error) td:first-child, .device-row--attention:has(.status-gpu-missing) td:first-child, .device-row--attention:has(.status-nvidia-smi-failed) td:first-child { box-shadow: inset .2rem 0 0 var(--sb-danger); }
+.device-row--communication:has(.status-offline) td:first-child { box-shadow: inset .2rem 0 0 var(--sb-danger); }
+.device-attention__item { display: block; font-size: var(--sb-font-size-xs); font-weight: 700; line-height: 1.45; }
+.device-attention__item + .device-attention__item { margin-top: var(--sb-space-1); }
+.device-attention__item--communication { color: var(--sb-danger); }
+.device-attention__item--gpu { color: var(--sb-warning); }
+#device-status-table { min-width: 880px; table-layout: fixed; }
+#device-status-table th:first-child { width: 22%; }
+#device-status-table th:nth-child(2), #device-status-table th:nth-child(4) { width: 15%; }
+#device-status-table th:nth-child(7) { width: 18%; }
+.devices-workspace-summary { margin-top: var(--sb-space-3); }
 .device-loading, .devices-result-context { margin: 0 0 var(--sb-space-2); }
 .sidebar-collapsed .nav-label, .sidebar-collapsed .brand-subtitle { display: none; }
 
@@ -124,6 +132,14 @@
 }
 
 @media (max-width: 720px) {
+  #device-status-table { min-width: 0; }
+  #device-status-table th:nth-child(2), #device-status-table td:nth-child(2),
+  #device-status-table th:nth-child(4), #device-status-table td:nth-child(4),
+  #device-status-table th:nth-child(5), #device-status-table td:nth-child(5),
+  #device-status-table th:nth-child(6), #device-status-table td:nth-child(6) { display: none; }
+  #device-status-table th:first-child { width: 38%; }
+  #device-status-table th:nth-child(3) { width: 26%; }
+  #device-status-table th:nth-child(7) { width: 36%; }
   .controls { align-items: stretch; }
   .controls label[for="search"] { flex-basis: 100%; }
   .filter-actions, .page-controls { align-items: stretch; flex-direction: column; }

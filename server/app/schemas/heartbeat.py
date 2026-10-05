@@ -237,7 +237,7 @@ class Heartbeat(WireModel):
     collected_at: datetime
     hostname: str
     ip_addresses: list[str] = Field(max_length=16)
-    os: OperatingSystem
+    os: OperatingSystem | None = None
     uptime_seconds: float | None
     cpu: CPU
     memory: Memory

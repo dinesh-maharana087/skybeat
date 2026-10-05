@@ -2,12 +2,13 @@
 
 Last updated: 2026-10-05
 Current stage: Stage 12C - Deployment To Install Workflow
-Current UI stage: Stage 12C-UX.2 - Simplified Add Device Workflow
-Current milestone: Local worker startup restored by applying the pending description migration; browser acceptance pending.
-Status: Stage 12C-UX.2 implementation, local launcher restart, real-MySQL migration, and transactional backend checks passed. Authenticated browser Add Device/download/navigation and notification UI acceptance remain pending; Stage 12C-UX.1 browser acceptance also remains pending.
+Current UI stage: Stage 12C-UX.3 - Devices Table + OS Identity
+Current milestone: Compact Devices table and compatible OS identity flow implemented.
+Status: Stage 12C-UX.3 implemented but not accepted. Automated and rollback-only local MySQL checks passed; authenticated browser/responsive and updated Ubuntu-agent heartbeat acceptance remain pending. Earlier UX.1/UX.2 browser acceptance remains pending.
 
 ## Completed
 
+- Stage 12C-UX.3: Devices now leads with a seven-column operational table, a single keyboard-accessible detail action, separate communication/GPU attention, and a neutral missing-OS label. The existing heartbeat OS name/version/kernel/architecture and hostname are reused; the agent now supplies Windows identity and Linux fallback. Older heartbeats may omit `os`. Existing latest-device JSON stores the current report, so no schema or endpoint was added.
 - Stage 12C-UX.2: added nullable, 512-character descriptions to pending enrollment intents and devices; NEW exchange copies the description, while REPLACE remains unchanged. Add Device now accepts name, project, and optional description, uses server GPU defaults, downloads the transient token file, and navigates to Deployments after initiating the download.
 - Stage 01 foundation, device identity, credential lifecycle, MySQL setup and local operator CLI remain verified.
 - Implemented strict schema-v1 heartbeat parsing: 128 KiB body bound, duplicate-key/non-finite/invalid-Unicode/nesting rejection, bounded telemetry, canonical identity/timestamps, null-versus-zero preservation, and normalized SHA-256 idempotency hashing.
@@ -54,6 +55,7 @@ Status: Stage 12C-UX.2 implementation, local launcher restart, real-MySQL migrat
 
 ## In Progress
 
+- Stage 12C-UX.3 needs authenticated desktop/mobile browser review and a real heartbeat from the updated Ubuntu agent; no controllable browser or agent host session was available here.
 - Stage 12C-UX.2 browser acceptance remains pending. Confirm token file download before Deployments navigation, retry of a blocked download without a second intent, and responsive/keyboard behavior.
 - Stage 12C-UX.1 desktop, medium, and mobile browser visual acceptance is pending; no browser surface was available in this session.
 - Local Windows launcher hardening: `start-skybeat-local.ps1` now has a
@@ -65,6 +67,7 @@ Status: Stage 12C-UX.2 implementation, local launcher restart, real-MySQL migrat
 
 ## Verification Completed
 
+- Stage 12C-UX.3: full server suite 478 passed, 45 environment skips; full agent suite 72 passed. Focused server heartbeat/dashboard suite 237 passed. Strict mypy passed for 56 server and 11 agent source files; affected Ruff lint/format, Node syntax, `git diff --check`, and Alembic sole-head checks passed. Configured local MySQL `81be693a0806` accepted OS-bearing and legacy heartbeats, projected latest OS only for the authenticated device, and left zero test devices after rollback.
 - Stage 12C-UX.2 local runtime diagnosis: worker exited on MySQL error 1054, `Unknown column 'devices.description'`; database was at `e43a8c9b0d11` while code expected `81be693a0806`. After migration, the fresh launcher reported Configuration OK, worker started, and Uvicorn running; rerun reported worker restarted with one launcher-owned root and one Windows child process. Local `/livez`, `/readyz`, and `/login` returned 200; unauthenticated `/dashboard` returned 303. HTTPS `/livez` returned 200 with the existing Caddy root CA explicitly trusted. Real MySQL NEW description/defaults, token replay rejection, and REPLACE description preservation passed inside a rolled-back transaction; no acceptance device remained. Focused regressions: 89 passed, 3 isolated-test-URL skips; Ruff, format, Node syntax, and `git diff --check` passed.
 - Stage 12C-UX.2: focused dashboard tests 69 passed; focused enrollment/API tests 20 passed, 3 isolated-MySQL skips. Full server suite 477 passed, 44 environment skips. Strict mypy passed for 56 source files; Ruff lint and format passed for 11 affected Python files; Node syntax and `git diff --check` passed. New migration offline DDL test and Alembic sole-head check passed. No browser or real-MySQL execution was available.
 - Stage 12C-UX.1 dashboard page/API tests: 95 passed. JavaScript syntax, focused Ruff lint/formatter checks, and `git diff --check` passed. READY and TOKEN EXPIRED class paths, disabled controls, safe text rendering, and responsive CSS were inspected in source; no browser visual result is claimed.
@@ -119,6 +122,7 @@ Status: Stage 12C-UX.2 implementation, local launcher restart, real-MySQL migrat
 
 ## Verification Pending
 
+- Stage 12C-UX.3 isolated-MySQL fixture test remains skipped without `SKYBEAT_TEST_DATABASE_URL`; local rollback verification is separate. Authenticated browser rendering, focus, narrow layout, and a deployed Ubuntu agent heartbeat are pending. No new agent package was installed or existing agent restarted.
 - Stage 12C-UX.2: the isolated-MySQL test suite still needs `SKYBEAT_TEST_DATABASE_URL`. Authenticated browser verification of existing data and notification settings, token download, navigation, retry, keyboard, and responsive layout remains pending because no browser surface is available. The real-MySQL backend check used a rollback transaction and did not exercise a committed UI enrollment.
 - The retained isolated MySQL instance could not be started in this final session because its existing data files are not writable. ACLs, retained data, initialization and reset were deliberately left untouched. The prior successful real-MySQL 8.4.10/InnoDB evidence above remains the accepted Stage 02 database/vertical verification; a fresh repeat is environment-specific pending.
 - Stage 03 real-MySQL migration, availability race, incident deduplication, delivery claiming and rollback verification are pending only because that retained instance cannot safely start. The tests are present; no substitute is treated as proof of MySQL behavior.
@@ -145,6 +149,7 @@ Status: Stage 12C-UX.2 implementation, local launcher restart, real-MySQL migrat
 
 ## Files Changed
 
+- Stage 12C-UX.3: `agent/src/skybeat_agent/collectors/system.py`, agent system tests, `server/app/schemas/heartbeat.py`, `server/app/dashboard/read.py`, dashboard template/JavaScript/shell CSS, focused heartbeat/dashboard tests, and this checkpoint.
 - Stage 12C-UX.2: enrollment API/service/schema, device service and models, additive migration `81be693a0806`, dashboard template/CSS/JavaScript, focused enrollment/API/page/Node tests, and this checkpoint.
 - Stage 12C-UX.1: `server/app/static/dashboard.css`, `server/app/static/dashboard.js`, `server/app/templates/dashboard.html`, one focused dashboard page test, and this checkpoint. No backend or migration changes.
 - Stage 12A: `server/app/templates/dashboard.html`, `server/app/static/dashboard.js`, `server/app/static/dashboard.css`, focused dashboard page tests, and this checkpoint.
@@ -175,6 +180,7 @@ Status: Stage 12C-UX.2 implementation, local launcher restart, real-MySQL migrat
 
 ## Migrations Applied/Tested
 
+- Stage 12C-UX.3 adds no migration; OS identity remains in the existing latest-heartbeat JSON. Configured local MySQL and Alembic still report sole head `81be693a0806`.
 - Stage 12C-UX.2 additive revision `81be693a0806` adds nullable `VARCHAR(512)` descriptions to `agent_enrollments` and `devices`. Its offline MySQL DDL test passed. Local MySQL moved from `e43a8c9b0d11` to sole head `81be693a0806`; both nullable columns were inspected and existing project/device/user/enrollment/notification row counts were unchanged. No database reset or downgrade occurred.
 - Additive Stage 10 revision `d12e7f9c43a0` chains from Stage 09 `b31d2ef4a1c9` and creates durable enrollment intents. It has not been applied here because the required isolated MySQL 8 test URL is unavailable. No database was modified.
 
@@ -261,6 +267,7 @@ Status: Stage 12C-UX.2 implementation, local launcher restart, real-MySQL migrat
 
 ## Next Action
 
+- Complete Stage 12C-UX.3 authenticated browser and real Ubuntu-agent acceptance when those surfaces are available. Keep UX.3 unaccepted until then; do not start UX.4.
 - Run Stage 12C-UX.2 authenticated browser acceptance when a controllable browser session is available. Verify the token file and Deployments redirect together, existing project/device/user and notification settings views, and the failed-download retry. Keep the stage pending acceptance; do not start UX.3.
 - The prior Stage 12C-UX.1 checkpoint still lacks recorded browser inspection of READY and TOKEN EXPIRED cards, the warning banner, header alignment, focus/disabled states, and overflow at desktop, medium, and mobile widths.
 - Perform the documented Stage 12B browser acceptance on a local authenticated/dev-bypass SkyBeat instance: desktop and narrow layouts, project switching, active-user assignment/removal, zero recipients, save/reload, failed-save feedback, and browser-console review. Do not alter notification semantics or deployment artifacts for this acceptance.

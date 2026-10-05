@@ -61,6 +61,34 @@ def test_acceptance_persists_all_rows_and_original_ack(endpoint, mysql_database)
         assert receipt.received_at != latest.collected_at
 
 
+def test_os_identity_updates_only_authenticated_device_and_old_agent_without_os_stays_compatible(
+    endpoint, mysql_database
+):
+    from app.models.heartbeat import DeviceLatest
+
+    _, identity, enrolled = endpoint
+    other = identity.enroll(identity.create_project("Other OS project").public_id, "Other device")
+    payload = sample(enrolled.device.device_uuid)
+    payload["os"] = {
+        "name": "Ubuntu",
+        "version": "22.04",
+        "kernel": "5.15.0-generic",
+        "architecture": "x86_64",
+    }
+    assert send(endpoint, payload).status_code == 200
+    with mysql_database.transaction() as session:
+        latest = session.get(DeviceLatest, enrolled.device.id)
+        assert latest is not None and latest.payload["os"] == payload["os"]
+        assert session.get(DeviceLatest, other.device.id) is None
+
+    older = sample(enrolled.device.device_uuid)
+    del older["os"]
+    assert send(endpoint, older).status_code == 200
+    with mysql_database.transaction() as session:
+        latest = session.get(DeviceLatest, enrolled.device.id)
+        assert latest is not None and latest.payload["os"] is None
+
+
 def test_identical_retry_keeps_latest_and_liveness_after_newer_snapshot(endpoint, mysql_database):
     payload = sample(endpoint[2].device.device_uuid)
     original = send(endpoint, payload)
