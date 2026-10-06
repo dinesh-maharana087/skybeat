@@ -1,4 +1,7 @@
-{% if active_view == "devices" %}
+{% if active_view == "device_detail" %}
+{% set page_title = "Device detail" %}
+{% set page_description = "Current server-authoritative device status." %}
+{% elif active_view == "devices" %}
 {% set page_title = "Devices" %}
 {% set page_description = "Search, filter, and inspect the current fleet." %}
 {% elif active_view == "projects" %}
@@ -43,7 +46,7 @@
         </button>
         <nav class="sidebar-nav" aria-label="Dashboard sections">
           <a href="/dashboard" data-nav-destination="overview" data-tooltip="Overview"{% if active_view == "overview" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z"/></svg><span class="nav-label">Overview</span></a>
-          <a href="/dashboard/devices" data-nav-destination="devices" data-tooltip="Devices"{% if active_view == "devices" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 12h8M8 17h5"/></svg><span class="nav-label">Devices</span></a>
+          <a href="/dashboard/devices" data-nav-destination="devices" data-tooltip="Devices"{% if active_view == "devices" or active_view == "device_detail" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 12h8M8 17h5"/></svg><span class="nav-label">Devices</span></a>
           <a href="/dashboard/projects" data-nav-destination="projects" data-tooltip="Projects"{% if active_view == "projects" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M4 12h16M8 20v-4h8v4"/></svg><span class="nav-label">Projects</span></a>
           {% if can_manage %}
           <a href="/dashboard/deployments" data-nav-destination="deployments" data-tooltip="Deployments"{% if active_view == "deployments" %} aria-current="page"{% endif %}><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg><span class="nav-label">Deployments</span></a>
@@ -85,6 +88,42 @@
               Dashboard data may be stale — refresh failed.
             </p>
           </section>
+
+          {% if active_view == "device_detail" %}
+          {% set os_name = selected_device.os.name if selected_device.os.name else 'Not reported' %}
+          {% set os_label = os_name ~ (' ' ~ selected_device.os.version if selected_device.os.version and selected_device.os.version not in os_name else '') %}
+          {% set gpu_state = selected_device.gpu_health.effective %}
+          <article id="device-detail-page" class="device-detail-page" data-device-id="{{ selected_device.device_id }}" aria-labelledby="device-page-name">
+            <nav class="device-breadcrumb" aria-label="Breadcrumb"><a href="/dashboard/devices">Devices</a><span aria-hidden="true">/</span><span id="device-breadcrumb-name">{{ selected_device.name }}</span></nav>
+            <header class="device-page-hero">
+              <p class="eyebrow">Device status</p>
+              <h2 id="device-page-name">{{ selected_device.name }}</h2>
+              <p id="device-page-context">{{ selected_device.project.name }}{% if selected_device.hostname %} · {{ selected_device.hostname }}{% endif %}</p>
+              <div class="device-page-pills"><span id="device-page-availability" class="status-pill status-{{ selected_device.state|lower|replace('_', '-') }}">{{ selected_device.state }}</span><span id="device-page-gpu" class="status-pill status-{{ selected_device.gpu_health.effective|lower|replace('_', '-') }}">{{ selected_device.gpu_health.effective }}</span></div>
+              <p id="device-page-hero-meta">{{ os_label }} · Last seen: {{ selected_device.last_seen_at or 'Awaiting first heartbeat' }}</p>
+              <p id="device-page-stale" role="status"{% if not selected_device.telemetry_stale %} hidden{% endif %}>Latest-known telemetry; this device is not currently online.</p>
+            </header>
+            <p id="device-page-status" role="status" aria-live="polite">Current device state loaded.</p>
+            <section class="device-page-summary" aria-label="Current operational summary">
+              <article><h3>Communication</h3><dl id="device-page-communication"><dt>Availability</dt><dd>{{ selected_device.state }}</dd><dt>Last heartbeat</dt><dd>{{ selected_device.last_seen_at or 'Awaiting first heartbeat' }}</dd></dl></article>
+              <article><h3>System</h3><dl id="device-page-system"><dt>Operating system</dt><dd>{{ os_label }}</dd><dt>Hostname</dt><dd>{{ selected_device.hostname or 'Not reported' }}</dd><dt>Kernel</dt><dd>{{ selected_device.os.kernel or 'Not reported' }}</dd><dt>Architecture</dt><dd>{{ selected_device.os.architecture or 'Not reported' }}</dd></dl></article>
+              <article><h3>GPU</h3><dl id="device-page-gpu-summary"><dt>Current GPU state</dt><dd>{{ gpu_state }}</dd><dt>Reported GPU state</dt><dd>{{ selected_device.gpu_health.reported or 'Not reported' }}</dd></dl></article>
+              <article><h3>Project</h3><dl id="device-page-project"><dt>Assigned project</dt><dd>{{ selected_device.project.name }}</dd></dl></article>
+            </section>
+            <section class="device-page-attention" aria-labelledby="device-page-attention-heading"><h3 id="device-page-attention-heading">Current attention</h3><div id="device-page-attention"><div class="detail-fact"><span>Communication</span><strong>{{ selected_device.state if selected_device.state in ('OFFLINE', 'SUSPECT') else 'No current attention' }}</strong></div><div class="detail-fact"><span>GPU</span><strong>{% if not selected_device.latest_received_at %}Awaiting telemetry{% elif gpu_state in ('GPU_MISSING', 'NVIDIA_SMI_FAILED', 'DRIVER_ERROR', 'UNKNOWN') %}{{ gpu_state|replace('_', ' ') }}{% else %}No current attention{% endif %}</strong></div></div></section>
+            <div class="device-page-tabs" role="tablist" aria-label="Device detail sections">
+              <button id="device-tab-log-watch" type="button" role="tab" aria-selected="true" aria-controls="device-panel-log-watch" tabindex="0">Log Watch</button>
+              <button id="device-tab-analyze" type="button" role="tab" aria-selected="false" aria-controls="device-panel-analyze" tabindex="-1">Analyze</button>
+            </div>
+            <section id="device-panel-log-watch" role="tabpanel" aria-labelledby="device-tab-log-watch" tabindex="0" class="device-page-panel">
+              <h3>Log Watch</h3><p>Log collection is not enabled for this device yet.</p>
+              <ul class="device-log-sources"><li><strong>SkyBeat Agent</strong><span>Not configured</span></li><li><strong>System Journal</strong><span>Not configured</span></li><li><strong>Kernel / dmesg</strong><span>Not configured</span></li></ul>
+            </section>
+            <section id="device-panel-analyze" role="tabpanel" aria-labelledby="device-tab-analyze" tabindex="0" class="device-page-panel" hidden>
+              <h3>Inspect device</h3><p>Current reported state and known attention conditions.</p><dl id="device-page-inspection"><dt>Communication</dt><dd>{{ selected_device.state }}</dd><dt>GPU</dt><dd>{{ gpu_state }}</dd><dt>Operating system</dt><dd>{{ os_label }}</dd><dt>Last contact</dt><dd>{{ selected_device.last_seen_at or 'Awaiting first heartbeat' }}</dd></dl>
+            </section>
+          </article>
+          {% endif %}
 
           {% if active_view == "overview" %}
           <section aria-labelledby="overview-heading">
@@ -285,6 +324,7 @@
               <button id="detail-close" type="button">Close detail</button>
             </div>
             <p id="detail-status" aria-live="polite"></p>
+            <a id="detail-open-page" class="sb-button--primary" href="/dashboard/devices" hidden>Open device page</a>
             <div id="detail-management-actions" class="detail-management-actions" hidden>
               <button id="detail-change-project" type="button">Change project</button>
               <button id="detail-toggle-monitoring" type="button">Enable or disable monitoring</button>

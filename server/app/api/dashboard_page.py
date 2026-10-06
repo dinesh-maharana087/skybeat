@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from app.dashboard.read import DashboardNotFound, DashboardReadService
 from app.dashboard.redirects import login_error_message, safe_return_path
 from app.dashboard.service import (
     DashboardAuthService,
@@ -22,7 +23,9 @@ router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
 
 
-DashboardView = Literal["overview", "devices", "projects", "deployments", "notifications", "users"]
+DashboardView = Literal[
+    "overview", "devices", "device_detail", "projects", "deployments", "notifications", "users"
+]
 
 
 def _login_redirect(return_path: str) -> RedirectResponse:
@@ -106,6 +109,35 @@ async def dashboard_overview(request: Request) -> Response:
 @router.get("/dashboard/devices")
 async def dashboard_devices(request: Request) -> Response:
     return await render_dashboard_view(request, "devices")
+
+
+@router.get("/dashboard/devices/{device_uuid}")
+async def dashboard_device_detail(request: Request, device_uuid: str) -> Response:
+    user = await _dashboard_user(request, return_path=request.url.path)
+    if user is None:
+        return _login_redirect(request.url.path)
+    if isinstance(user, Response):
+        return user
+    service: DashboardReadService = request.app.state.dashboard_read_service
+    try:
+        device = await asyncio.to_thread(service.get_device, device_uuid)
+    except DashboardNotFound as error:
+        raise HTTPException(
+            status_code=404, detail="Device not found.", headers={"Cache-Control": "no-store"}
+        ) from error
+    response = templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        {
+            "user_email": user.email,
+            "user_role": user.role.value,
+            "can_manage": user.role in {UserRole.OWNER, UserRole.ADMIN},
+            "active_view": "device_detail",
+            "selected_device": device,
+        },
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.get("/dashboard/projects")

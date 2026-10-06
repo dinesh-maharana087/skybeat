@@ -5,6 +5,7 @@ import subprocess
 import textwrap
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
@@ -30,6 +31,224 @@ def dashboard_styles() -> str:
 
 def dashboard_shell_styles() -> str:
     return (STATIC_ROOT / "dashboard-shell.css").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("role_name", ["USER", "ADMIN", "OWNER"])
+def test_device_detail_page_requires_auth_and_resolves_canonical_device(role_name):
+    from app.dashboard.read import DashboardNotFound
+    from app.users.service import UserRole
+
+    device_id = "123e4567-e89b-42d3-a456-426614174000"
+
+    class Authenticated:
+        def authenticate_session(self, token):
+            return DashboardUser("google", "viewer@example.test", None, 1, UserRole(role_name))
+
+    class ReadService:
+        def get_device(self, requested):
+            if requested != device_id:
+                raise DashboardNotFound("Device not found.")
+            return {
+                "device_id": device_id,
+                "name": "Device <alpha>",
+                "project": {"name": "Ops & Dev"},
+                "state": "OFFLINE",
+                "hostname": "host-a",
+                "os": {"name": "Ubuntu", "version": "24.04"},
+                "gpu_health": {"effective": "DRIVER_ERROR"},
+                "last_seen_at": "2026-10-05T10:00:00Z",
+                "latest_received_at": "2026-10-05T10:00:00Z",
+                "telemetry_stale": True,
+            }
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_read_service = ReadService()
+    with TestClient(app, base_url="https://testserver") as client:
+        anonymous = client.get(f"/dashboard/devices/{device_id}", follow_redirects=False)
+        app.state.dashboard_auth_service = Authenticated()
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        page = client.get(f"/dashboard/devices/{device_id}")
+        missing = client.get("/dashboard/devices/123e4567-e89b-42d3-a456-426614174001")
+        malformed = client.get("/dashboard/devices/not-a-uuid")
+
+    assert anonymous.status_code == 303
+    assert anonymous.headers["location"] == f"/login?next=/dashboard/devices/{device_id}"
+    assert page.status_code == 200
+    assert page.headers["cache-control"] == "no-store"
+    assert page.headers["content-security-policy"]
+    assert 'data-dashboard-view="device_detail"' in page.text
+    assert 'data-device-id="123e4567-e89b-42d3-a456-426614174000"' in page.text
+    assert "Device &lt;alpha&gt;" in page.text
+    assert "Ops &amp; Dev" in page.text
+    assert "Log Watch" in page.text and "Analyze" in page.text
+    assert 'href="/dashboard/devices"' in page.text
+    assert missing.status_code == malformed.status_code == 404
+
+
+def test_device_detail_foundation_uses_canonical_refresh_and_accessible_tabs():
+    template = dashboard_template()
+    script = dashboard_script()
+    assert 'role="tablist"' in template
+    assert 'role="tab"' in template
+    assert 'role="tabpanel"' in template
+    assert "Log collection is not enabled" in template
+    assert "Not configured" in template
+    assert "requestDeviceDetail(deviceId" in script
+    assert 'dashboardView === "device_detail"' in script
+    assert "function refreshDeviceDetailPage" in script
+    assert "deviceAttention(device)" in script
+    assert 'href="/dashboard/devices/"' not in template  # UUID is bound only to the selected device
+
+
+@pytest.mark.parametrize(
+    ("state", "gpu_state", "received", "attention"),
+    [
+        ("ONLINE", "OK", True, "No current attention"),
+        ("SUSPECT", "OK", True, "SUSPECT"),
+        ("OFFLINE", "DRIVER_ERROR", True, "DRIVER ERROR"),
+        ("AWAITING_FIRST_HEARTBEAT", "UNKNOWN", False, "Awaiting telemetry"),
+    ],
+)
+def test_device_detail_renders_canonical_states_and_escapes_reported_identity(
+    state, gpu_state, received, attention
+):
+    from app.users.service import UserRole
+
+    device_id = "123e4567-e89b-42d3-a456-426614174000"
+
+    class Authenticated:
+        def authenticate_session(self, token):
+            return DashboardUser("google", "viewer@example.test", None, 1, UserRole.USER)
+
+    class ReadService:
+        def get_device(self, requested):
+            return {
+                "device_id": device_id,
+                "name": "Device <script>alert(1)</script>",
+                "project": {"name": "Ops & <Dev>"},
+                "hostname": "host<script>",
+                "state": state,
+                "os": {"name": "Ubuntu <img>", "version": "24.04", "kernel": "kernel<bad>"}
+                if received
+                else {},
+                "gpu_health": {"effective": gpu_state, "reported": None},
+                "last_seen_at": "2026-10-05T10:00:00Z" if received else None,
+                "latest_received_at": "2026-10-05T10:00:00Z" if received else None,
+                "telemetry_stale": state in {"SUSPECT", "OFFLINE"} and received,
+                "device_token": "should-never-render",
+            }
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Authenticated()
+    app.state.dashboard_read_service = ReadService()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        page = client.get(f"/dashboard/devices/{device_id}")
+
+    assert page.status_code == 200
+    assert state in page.text and gpu_state in page.text
+    assert attention in page.text
+    assert "Device &lt;script&gt;" in page.text
+    assert "Ops &amp; &lt;Dev&gt;" in page.text
+    assert "host&lt;script&gt;" in page.text
+    assert "<script>alert(1)</script>" not in page.text
+    assert "should-never-render" not in page.text
+    if received:
+        assert "Ubuntu &lt;img&gt; 24.04" in page.text
+        assert "kernel&lt;bad&gt;" in page.text
+    else:
+        assert "Not reported" in page.text
+        assert "Awaiting first heartbeat" in page.text
+
+
+def test_device_detail_tabs_and_refresh_interaction_in_node():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is unavailable on this host")
+    script = dashboard_script()
+    controller = script.split("async function refreshDeviceDetailPage() {", 1)[1].split(
+        "\nfunction detailPairs(", 1
+    )[0]
+    controller = "async function refreshDeviceDetailPage() {" + controller
+    harness = textwrap.dedent(
+        """
+        import { readFileSync } from "node:fs";
+        import vm from "node:vm";
+        const nodes = new Map();
+        for (const id of ["device-tab-log-watch", "device-tab-analyze",
+                          "device-panel-log-watch", "device-panel-analyze", "device-page-status"]) {
+          nodes.set(id, { id, hidden: id === "device-panel-analyze", attributes: {}, handlers: {},
+            setAttribute(key, value) { this.attributes[key] = value; },
+            getAttribute(key) { return this.attributes[key]; },
+            addEventListener(key, handler) { this.handlers[key] = handler; },
+            focus() { this.focused = true; } });
+        }
+        globalThis.document = { getElementById: (id) => nodes.get(id) };
+        globalThis.deviceDetailPage = { dataset: { deviceId: "test-device" } };
+        globalThis.refreshing = false;
+        let resolveRequest;
+        let requestCount = 0;
+        let renderCount = 0;
+        let scheduleCount = 0;
+        let staleCount = 0;
+        let freshCount = 0;
+        let fail = false;
+        globalThis.requestDeviceDetail = () => {
+          requestCount += 1;
+          if (fail) return Promise.reject(new Error("network"));
+          return new Promise((resolve) => { resolveRequest = resolve; });
+        };
+        globalThis.renderDeviceDetailPage = () => { renderCount += 1; };
+        globalThis.scheduleRefresh = () => { scheduleCount += 1; };
+        globalThis.markDashboardStale = () => { staleCount += 1; };
+        globalThis.markDashboardFresh = () => { freshCount += 1; };
+        vm.runInThisContext(readFileSync(0, "utf8"));
+
+        const log = nodes.get("device-tab-log-watch");
+        const analyze = nodes.get("device-tab-analyze");
+        analyze.setAttribute("aria-controls", "device-panel-analyze");
+        log.setAttribute("aria-controls", "device-panel-log-watch");
+        initializeDeviceDetailTabs();
+        log.handlers.keydown({ key: "ArrowRight", preventDefault() {} });
+        if (analyze.attributes["aria-selected"] !== "true" ||
+            nodes.get("device-panel-analyze").hidden || !analyze.focused) {
+          throw new Error("ArrowRight did not select and focus Analyze");
+        }
+        log.handlers.click();
+        if (log.attributes["aria-selected"] !== "true" ||
+            !nodes.get("device-panel-analyze").hidden) {
+          throw new Error("click did not restore Log Watch");
+        }
+        const first = refreshDeviceDetailPage();
+        await refreshDeviceDetailPage();
+        if (requestCount !== 1) throw new Error("overlapping refresh started");
+        resolveRequest({ server_time: "2026-10-05T10:00:00Z" });
+        await first;
+        fail = true;
+        await refreshDeviceDetailPage();
+        if (renderCount !== 1 || freshCount !== 1 || staleCount !== 1 ||
+            scheduleCount !== 2 ||
+            !nodes.get("device-page-status").textContent.includes("retained")) {
+          throw new Error("failed refresh did not retain last successful state");
+        }
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=controller,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_dashboard_page_redirects_unauthenticated_browser_to_google_login():

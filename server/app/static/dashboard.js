@@ -58,6 +58,8 @@ const activeFilters = document.getElementById("active-filters");
 const pageSize = document.getElementById("page-size");
 const clearDeviceFiltersButton = document.getElementById("clear-device-filters");
 const detailPanel = document.getElementById("detail-panel");
+const detailOpenPage = document.getElementById("detail-open-page");
+const deviceDetailPage = document.getElementById("device-detail-page");
 const detailTitle = document.getElementById("detail-title");
 const detailStatus = document.getElementById("detail-status");
 const detailRetry = document.getElementById("detail-retry");
@@ -1547,11 +1549,95 @@ async function submitUser() {
 
 async function refreshActiveView() {
   if (dashboardView === "devices") return refreshDashboard();
+  if (dashboardView === "device_detail") return refreshDeviceDetailPage();
   if (dashboardView === "projects") return refreshProjectsView();
   if (dashboardView === "users") return refreshUsersView();
   if (dashboardView === "deployments") return refreshDeploymentsView();
   if (dashboardView === "notifications") return refreshNotificationsView();
   return refreshOverviewView();
+}
+
+function renderDeviceDetailPage(device) {
+  document.getElementById("device-page-name").textContent = displayValue(device.name);
+  document.getElementById("device-breadcrumb-name").textContent = displayValue(device.name);
+  document.getElementById("device-page-context").textContent = [device.project?.name, device.hostname].filter(Boolean).join(" · ");
+  const availability = statusPill(device.state);
+  availability.id = "device-page-availability";
+  document.getElementById("device-page-availability").replaceWith(availability);
+  const gpuPill = statusPill(device.gpu_health?.effective);
+  gpuPill.id = "device-page-gpu";
+  document.getElementById("device-page-gpu").replaceWith(gpuPill);
+  const osLabel = conciseOsLabel(device.os);
+  const lastSeen = device.pending_first_heartbeat ? "Awaiting first heartbeat" : formatRelativeTime(device.last_seen_at);
+  document.getElementById("device-page-hero-meta").textContent = `${osLabel} · Last seen: ${lastSeen}`;
+  document.getElementById("device-page-stale").hidden = device.telemetry_stale !== true;
+  detailPairs(document.getElementById("device-page-communication"), [
+    ["Availability", device.state],
+    ["Last heartbeat", device.last_seen_at ? timestampNode(device.last_seen_at) : "Awaiting first heartbeat"],
+  ]);
+  detailPairs(document.getElementById("device-page-system"), [
+    ["Operating system", osLabel], ["Hostname", device.hostname ?? "Not reported"],
+    ["Kernel", device.os?.kernel ?? "Not reported"], ["Architecture", device.os?.architecture ?? "Not reported"],
+  ]);
+  detailPairs(document.getElementById("device-page-gpu-summary"), [
+    ["Current GPU state", device.gpu_health?.effective ?? "Not available"],
+    ["Reported GPU state", device.gpu_health?.reported ?? "Not reported"],
+  ]);
+  detailPairs(document.getElementById("device-page-project"), [["Assigned project", device.project?.name]]);
+  const notices = deviceAttention(device);
+  const attention = document.getElementById("device-page-attention");
+  attention.replaceChildren();
+  for (const kind of ["communication", "gpu"]) {
+    const notice = notices.find((item) => item.kind === kind);
+    const label = kind === "communication" ? "Communication" : "GPU";
+    const value = notice?.label.slice(label.length + 2) ?? (kind === "gpu" && !device.latest_received_at ? "Awaiting telemetry" : "No current attention");
+    attention.append(detailFact(label, value));
+  }
+  detailPairs(document.getElementById("device-page-inspection"), [
+    ["Communication", device.state], ["GPU", device.gpu_health?.effective],
+    ["Operating system", osLabel], ["Last contact", device.last_seen_at ? timestampNode(device.last_seen_at) : "Awaiting first heartbeat"],
+    ["Known attention", notices.length ? notices.map((item) => item.label).join("; ") : "No current attention"],
+  ]);
+}
+
+async function refreshDeviceDetailPage() {
+  if (refreshing) return;
+  refreshing = true;
+  const deviceId = deviceDetailPage.dataset.deviceId;
+  try {
+    const device = await requestDeviceDetail(deviceId);
+    renderDeviceDetailPage(device);
+    document.getElementById("device-page-status").textContent = "Current device state loaded.";
+    markDashboardFresh(device.server_time ?? new Date().toISOString());
+  } catch (_) {
+    document.getElementById("device-page-status").textContent = "Device status refresh failed. Last successful state is retained.";
+    markDashboardStale();
+  } finally {
+    refreshing = false;
+    scheduleRefresh();
+  }
+}
+
+function initializeDeviceDetailTabs() {
+  const tabs = [document.getElementById("device-tab-log-watch"), document.getElementById("device-tab-analyze")];
+  function selectTab(index, focus = false) {
+    tabs.forEach((tab, position) => {
+      const selected = position === index;
+      tab.setAttribute("aria-selected", String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      document.getElementById(tab.getAttribute("aria-controls")).hidden = !selected;
+    });
+    if (focus) tabs[index].focus();
+  }
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => selectTab(index));
+    tab.addEventListener("keydown", (event) => {
+      const next = { ArrowRight: (index + 1) % tabs.length, ArrowLeft: (index + tabs.length - 1) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];
+      if (next === undefined) return;
+      event.preventDefault();
+      selectTab(next, true);
+    });
+  });
 }
 
 function detailPairs(target, pairs) {
@@ -1677,6 +1763,7 @@ function resetDetailSections() {
     target?.replaceChildren();
   }
   currentDetail = null;
+  if (detailOpenPage !== null) detailOpenPage.hidden = true;
   if (detailManagementActions !== null) detailManagementActions.hidden = true;
 }
 
@@ -1702,6 +1789,8 @@ async function requestDeviceIncidents(deviceId, signal) {
 
 function renderDetail(device) {
   currentDetail = device;
+  detailOpenPage.href = `/dashboard/devices/${encodeURIComponent(device.device_id)}`;
+  detailOpenPage.hidden = false;
   detailManagementActions.hidden = dashboardView !== "devices" || !canManage;
   detailTitle.textContent = `Device detail: ${displayValue(device.name)}`;
   renderDetailIdentitySummary(device);
@@ -2604,6 +2693,22 @@ document.addEventListener("visibilitychange", () => {
   refreshActiveView();
 });
 refreshActiveView();
+} else if (dashboardView === "device_detail") {
+  sidebarToggle.addEventListener("click", () => toggleSidebar());
+  logout.addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+    window.location.assign("/login");
+  });
+  const preference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
+  if (preference === "collapsed") setSidebarCollapsed(true);
+  else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);
+  initializeDeviceDetailTabs();
+  document.addEventListener("visibilitychange", () => {
+    window.clearTimeout(refreshTimer);
+    if (!document.hidden) void refreshActiveView();
+    else scheduleRefresh();
+  });
+  refreshActiveView();
 } else if (dashboardView === "users") {
   sidebarToggle.addEventListener("click", () => toggleSidebar());
   logout.addEventListener("click", async () => {

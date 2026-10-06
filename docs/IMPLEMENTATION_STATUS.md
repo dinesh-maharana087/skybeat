@@ -1,13 +1,14 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-10-05
+Last updated: 2026-10-06
 Current stage: Stage 12C - Deployment To Install Workflow
-Current UI stage: Stage 12C-UX.3 - Devices Table + OS Identity
-Current milestone: Compact Devices table and compatible OS identity flow implemented.
-Status: Stage 12C-UX.3 implemented but not accepted. Automated and rollback-only local MySQL checks passed; authenticated browser/responsive and updated Ubuntu-agent heartbeat acceptance remain pending. Earlier UX.1/UX.2 browser acceptance remains pending.
+Current UI stage: Stage 12C-UX.4 - Device Detail Foundation
+Current milestone: Authenticated device home, current-state summary, Log Watch and Analyze foundation implemented.
+Status: Stage 12C-UX.4 implemented but not browser-accepted. UX.3 authenticated browser/responsive and updated Ubuntu-agent heartbeat acceptance remain pending; earlier UX.1/UX.2 browser acceptance remains pending.
 
 ## Completed
 
+- Stage 12C-UX.4: Added `/dashboard/devices/{device_uuid}` through the existing dashboard session and canonical device projection, a full-page current-state header/summary with separate communication and GPU attention, Log Watch empty state, and Analyze current-state inspection. The existing quick drawer links to the page. Shared visibility-aware polling updates current fields without losing the last successful view on failure. No schema, new API, log ingestion, AI, or monitoring contract change.
 - Stage 12C-UX.3: Devices now leads with a seven-column operational table, a single keyboard-accessible detail action, separate communication/GPU attention, and a neutral missing-OS label. The existing heartbeat OS name/version/kernel/architecture and hostname are reused; the agent now supplies Windows identity and Linux fallback. Older heartbeats may omit `os`. Existing latest-device JSON stores the current report, so no schema or endpoint was added.
 - Stage 12C-UX.2: added nullable, 512-character descriptions to pending enrollment intents and devices; NEW exchange copies the description, while REPLACE remains unchanged. Add Device now accepts name, project, and optional description, uses server GPU defaults, downloads the transient token file, and navigates to Deployments after initiating the download.
 - Stage 01 foundation, device identity, credential lifecycle, MySQL setup and local operator CLI remain verified.
@@ -55,6 +56,7 @@ Status: Stage 12C-UX.3 implemented but not accepted. Automated and rollback-only
 
 ## In Progress
 
+- Stage 12C-UX.4 authenticated browser acceptance: desktop/narrow layout, drawer navigation, keyboard tabs, polling/stale feedback, and browser console remain pending because no controllable browser surface was exposed.
 - Stage 12C-UX.3 needs authenticated desktop/mobile browser review and a real heartbeat from the updated Ubuntu agent; no controllable browser or agent host session was available here.
 - Stage 12C-UX.2 browser acceptance remains pending. Confirm token file download before Deployments navigation, retry of a blocked download without a second intent, and responsive/keyboard behavior.
 - Stage 12C-UX.1 desktop, medium, and mobile browser visual acceptance is pending; no browser surface was available in this session.
@@ -67,6 +69,7 @@ Status: Stage 12C-UX.3 implemented but not accepted. Automated and rollback-only
 
 ## Verification Completed
 
+- Stage 12C-UX.4: full server suite 487 passed, 45 environment skips, 0 failed; focused dashboard page/table suite 76 passed, including USER/ADMIN/OWNER route access, 404/redirect, canonical state and escaping cases, and a Node tab/refresh interaction harness. Ruff lint and format passed for 98 server files; strict mypy passed for 56 server source files; Node syntax and `git diff --check` passed. Alembic still reports sole head `81be693a0806`.
 - Stage 12C-UX.3: full server suite 478 passed, 45 environment skips; full agent suite 72 passed. Focused server heartbeat/dashboard suite 237 passed. Strict mypy passed for 56 server and 11 agent source files; affected Ruff lint/format, Node syntax, `git diff --check`, and Alembic sole-head checks passed. Configured local MySQL `81be693a0806` accepted OS-bearing and legacy heartbeats, projected latest OS only for the authenticated device, and left zero test devices after rollback.
 - Stage 12C-UX.2 local runtime diagnosis: worker exited on MySQL error 1054, `Unknown column 'devices.description'`; database was at `e43a8c9b0d11` while code expected `81be693a0806`. After migration, the fresh launcher reported Configuration OK, worker started, and Uvicorn running; rerun reported worker restarted with one launcher-owned root and one Windows child process. Local `/livez`, `/readyz`, and `/login` returned 200; unauthenticated `/dashboard` returned 303. HTTPS `/livez` returned 200 with the existing Caddy root CA explicitly trusted. Real MySQL NEW description/defaults, token replay rejection, and REPLACE description preservation passed inside a rolled-back transaction; no acceptance device remained. Focused regressions: 89 passed, 3 isolated-test-URL skips; Ruff, format, Node syntax, and `git diff --check` passed.
 - Stage 12C-UX.2: focused dashboard tests 69 passed; focused enrollment/API tests 20 passed, 3 isolated-MySQL skips. Full server suite 477 passed, 44 environment skips. Strict mypy passed for 56 source files; Ruff lint and format passed for 11 affected Python files; Node syntax and `git diff --check` passed. New migration offline DDL test and Alembic sole-head check passed. No browser or real-MySQL execution was available.
@@ -122,6 +125,7 @@ Status: Stage 12C-UX.3 implemented but not accepted. Automated and rollback-only
 
 ## Verification Pending
 
+- Stage 12C-UX.4 browser acceptance remains pending. The UI automation inventory returned no apps or browsers; source/Node tests do not prove visual layout, focus behavior in a real browser, or live polling against an authenticated runtime.
 - Stage 12C-UX.3 isolated-MySQL fixture test remains skipped without `SKYBEAT_TEST_DATABASE_URL`; local rollback verification is separate. Authenticated browser rendering, focus, narrow layout, and a deployed Ubuntu agent heartbeat are pending. No new agent package was installed or existing agent restarted.
 - Stage 12C-UX.2: the isolated-MySQL test suite still needs `SKYBEAT_TEST_DATABASE_URL`. Authenticated browser verification of existing data and notification settings, token download, navigation, retry, keyboard, and responsive layout remains pending because no browser surface is available. The real-MySQL backend check used a rollback transaction and did not exercise a committed UI enrollment.
 - The retained isolated MySQL instance could not be started in this final session because its existing data files are not writable. ACLs, retained data, initialization and reset were deliberately left untouched. The prior successful real-MySQL 8.4.10/InnoDB evidence above remains the accepted Stage 02 database/vertical verification; a fresh repeat is environment-specific pending.
@@ -149,6 +153,7 @@ Status: Stage 12C-UX.3 implemented but not accepted. Automated and rollback-only
 
 ## Files Changed
 
+- Stage 12C-UX.4: `server/app/api/dashboard_page.py`, dashboard template/JavaScript/shell CSS, focused dashboard page tests, and this checkpoint. No migration.
 - Stage 12C-UX.3: `agent/src/skybeat_agent/collectors/system.py`, agent system tests, `server/app/schemas/heartbeat.py`, `server/app/dashboard/read.py`, dashboard template/JavaScript/shell CSS, focused heartbeat/dashboard tests, and this checkpoint.
 - Stage 12C-UX.2: enrollment API/service/schema, device service and models, additive migration `81be693a0806`, dashboard template/CSS/JavaScript, focused enrollment/API/page/Node tests, and this checkpoint.
 - Stage 12C-UX.1: `server/app/static/dashboard.css`, `server/app/static/dashboard.js`, `server/app/templates/dashboard.html`, one focused dashboard page test, and this checkpoint. No backend or migration changes.
@@ -233,6 +238,7 @@ Status: Stage 12C-UX.3 implemented but not accepted. Automated and rollback-only
 
 ## Security Notes
 
+- Stage 12C-UX.4 resolves the device through the existing dashboard read service after session authorization, renders only display-safe projection fields with Jinja escaping and text-only DOM updates, and keeps CSP/no-store. No credential, log, or remote-control surface was added.
 - Stage 12C-UX.2 keeps the one-time `sbe1` token out of persistent browser storage, URLs, and deployment-list projections. A failed download initiation retains it only in the open dialog for retry; no credential rotation or production operation occurred.
 - Stage 10 Tasks 1-2 persist only SHA-256 digests for `sbe1` enrollment and `sbv1` verification values. Exchange consumes an intent under a row lock and creates/rotates its permanent credential, receipt, audit record, and consumed state in one transaction. Owner/Admin intent creation requires the existing authenticated same-origin dependency; anonymous exchange and receipt routes are per-source rate bounded, bearer-only, no-store, and accept only their respective opaque token prefix. A receipt reports only a post-exchange accepted-heartbeat boolean and cannot be exchanged.
 - Stage 10 release tooling builds a wheel, creates a hash-locked offline wheelhouse and manifest, and verifies all release hashes before the installer creates a venv. The installer rejects source-tree inputs, PyPI access, non-HTTPS endpoints, malformed checksum/token inputs, and unsafe token-file links; it writes only the permanent `sb1` value into root-owned mode-0600 `/etc/skybeat/agent.env`. Normal reinstallation retains an existing config unless `--re-enroll` is explicit.
@@ -267,7 +273,8 @@ Status: Stage 12C-UX.3 implemented but not accepted. Automated and rollback-only
 
 ## Next Action
 
-- Complete Stage 12C-UX.3 authenticated browser and real Ubuntu-agent acceptance when those surfaces are available. Keep UX.3 unaccepted until then; do not start UX.4.
+- Complete Stage 12C-UX.4 authenticated browser acceptance when a controllable browser is available; verify drawer navigation, both tab controls, desktop/narrow layout, offline/never-seen current state, polling failure feedback, and console. Keep UX.4 unaccepted and do not start UX.5.
+- Complete Stage 12C-UX.3 authenticated browser and real Ubuntu-agent acceptance when those surfaces are available. Keep UX.3 unaccepted until then.
 - Run Stage 12C-UX.2 authenticated browser acceptance when a controllable browser session is available. Verify the token file and Deployments redirect together, existing project/device/user and notification settings views, and the failed-download retry. Keep the stage pending acceptance; do not start UX.3.
 - The prior Stage 12C-UX.1 checkpoint still lacks recorded browser inspection of READY and TOKEN EXPIRED cards, the warning banner, header alignment, focus/disabled states, and overflow at desktop, medium, and mobile widths.
 - Perform the documented Stage 12B browser acceptance on a local authenticated/dev-bypass SkyBeat instance: desktop and narrow layouts, project switching, active-user assignment/removal, zero recipients, save/reload, failed-save feedback, and browser-console review. Do not alter notification semantics or deployment artifacts for this acceptance.
