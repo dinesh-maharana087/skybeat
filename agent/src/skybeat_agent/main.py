@@ -7,8 +7,10 @@ from functools import partial
 
 from skybeat_agent import __version__
 from skybeat_agent.collectors.gpu import GPUCollector
+from skybeat_agent.collectors.logs import JournalCollector
 from skybeat_agent.collectors.system import collect_system, prime_cpu_sample
 from skybeat_agent.config import Config
+from skybeat_agent.log_watch import LogSender, LogWatchPublisher
 from skybeat_agent.logging import configure_logging
 from skybeat_agent.runtime import run
 from skybeat_agent.telemetry import bounded_system_collector
@@ -35,6 +37,8 @@ def main() -> None:
         enabled=config.gpu_collection_enabled,
         timeout=config.nvidia_smi_timeout,
     )
+    journal = JournalCollector()
+    log_watch = LogWatchPublisher(journal, LogSender(config))
     try:
         loop.run_until_complete(
             run(
@@ -43,8 +47,10 @@ def main() -> None:
                 system=bounded_system_collector(partial(collect_system, config.mountpoints)),
                 gpu=collector.collect,
                 stop=stop,
+                log_watch=log_watch.run_once,
             )
         )
     finally:
         loop.run_until_complete(collector.close())
+        loop.run_until_complete(journal.close())
         loop.close()

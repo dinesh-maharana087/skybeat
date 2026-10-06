@@ -194,6 +194,7 @@ from app.models.auth import (  # noqa: E402
     ApplicationUser,
     OAuthTransaction,
 )
+from app.models.logs import DeviceLogEntry, DeviceLogSource  # noqa: E402
 
 __all__ = [
     "AlertEvent",
@@ -205,6 +206,8 @@ __all__ = [
     "Device",
     "DeviceCredential",
     "DeviceLatest",
+    "DeviceLogEntry",
+    "DeviceLogSource",
     "HeartbeatReceipt",
     "HeartbeatSample",
     "Incident",

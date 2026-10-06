@@ -22,6 +22,7 @@ from app.api.enrollment import router as enrollment_router
 from app.api.health import router as health_router
 from app.api.heartbeats import PerDeviceRateLimiter
 from app.api.heartbeats import router as heartbeats_router
+from app.api.logs import router as logs_router
 from app.api.releases import router as release_router
 from app.config import Settings
 from app.dashboard.management import DashboardManagementService
@@ -86,6 +87,7 @@ def create_app(
         ),
     )
     app.state.dashboard_read_service = DashboardReadService(db)
+    app.state.log_limiter = PerDeviceRateLimiter()
     app.state.dashboard_management_service_factory = DashboardManagementService
     app.state.agent_enrollment_service_factory = lambda database, *, actor: AgentEnrollmentService(
         database,
@@ -146,6 +148,7 @@ def create_app(
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(heartbeats_router)
+    app.include_router(logs_router)
     app.include_router(dashboard_router)
     app.include_router(enrollment_router)
     app.include_router(release_router)

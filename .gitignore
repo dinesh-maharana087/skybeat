@@ -28,6 +28,7 @@ htmlcov/
 .skybeat-local-runtime/
 .tmp-pytest-deployment-ui
 .tmp-pytest-cache/
+./tmp
 
 # Editor/OS state
 .idea/

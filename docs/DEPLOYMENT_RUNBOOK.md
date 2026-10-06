@@ -270,6 +270,8 @@ The approved agent installation path is `/opt/skybeat`. The service runs as the 
 
 6. Verify a heartbeat through the dashboard/device API or an approved database read procedure. Confirm the device is ONLINE, latest telemetry has a current receipt time, and GPU telemetry is present when GPU monitoring is enabled. Never paste a device credential into a verification command or log.
 
+Log Watch uses the installed `skybeat-agent.service` journal, the system journal, and the journal's kernel view. The agent runs fixed five-minute queries every 120 seconds by default and uploads bounded snapshots independently of heartbeats. It needs the UX.5 database migration (`2f4a6c8d10b2`) before the new agent version is installed. The installer does not change journal group membership or grant sudo; a source the `skybeat` user cannot read is reported as permission unavailable. Review journal visibility on the target Ubuntu host before deciding whether any narrower access is appropriate. Log messages may naturally contain sensitive content; dashboard access and database backups must be protected accordingly.
+
 ## TLS and private-CA development
 
 Production agents must validate the certificate chain, hostname, and validity period. Public/system-trusted certificates are preferred for production. Never use `verify=False` or an equivalent TLS bypass.

@@ -94,8 +94,8 @@ def test_device_detail_foundation_uses_canonical_refresh_and_accessible_tabs():
     assert 'role="tablist"' in template
     assert 'role="tab"' in template
     assert 'role="tabpanel"' in template
-    assert "Log collection is not enabled" in template
-    assert "Not configured" in template
+    assert "No log reports received yet" in template
+    assert 'id="log-watch-sources"' in template
     assert "requestDeviceDetail(deviceId" in script
     assert 'dashboardView === "device_detail"' in script
     assert "function refreshDeviceDetailPage" in script
@@ -189,8 +189,9 @@ def test_device_detail_tabs_and_refresh_interaction_in_node():
             addEventListener(key, handler) { this.handlers[key] = handler; },
             focus() { this.focused = true; } });
         }
-        globalThis.document = { getElementById: (id) => nodes.get(id) };
+        globalThis.document = { getElementById: (id) => nodes.get(id), hidden: false };
         globalThis.deviceDetailPage = { dataset: { deviceId: "test-device" } };
+        globalThis.lastLogAttemptAt = Date.now();
         globalThis.refreshing = false;
         let resolveRequest;
         let requestCount = 0;
@@ -236,6 +237,79 @@ def test_device_detail_tabs_and_refresh_interaction_in_node():
             scheduleCount !== 2 ||
             !nodes.get("device-page-status").textContent.includes("retained")) {
           throw new Error("failed refresh did not retain last successful state");
+        }
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=controller,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_log_watch_uses_existing_detail_refresh_and_text_only_source_cards():
+    template = dashboard_template()
+    script = dashboard_script()
+    css = dashboard_shell_styles()
+    assert 'id="device-panel-log-watch"' in template
+    assert 'id="log-watch-offline"' in template
+    assert 'id="log-watch-sources"' in template
+    assert "Device offline. Stored recent logs remain available" in template
+    for source in ("skybeat_agent", "system_journal", "kernel"):
+        assert source in script
+    assert "fetchLogs ? requestDeviceLogs(deviceId) : Promise.resolve(null)" in script
+    assert "if (refreshing) return;" in script
+    assert "Last successful logs are retained" in script
+    assert 'element("p", entry.message)' in script
+    assert "innerHTML" not in script
+    assert "overflow-wrap: anywhere" in css
+
+
+def test_log_watch_rendering_preserves_untrusted_message_as_text_in_node():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is unavailable on this host")
+    script = dashboard_script()
+    controller = (
+        "function renderDeviceLogs(payload) {"
+        + script.split("function renderDeviceLogs(payload) {", 1)[1].split(
+            "\nasync function refreshDeviceDetailPage()", 1
+        )[0]
+    )
+    harness = textwrap.dedent(
+        """
+        import { readFileSync } from "node:fs";
+        import vm from "node:vm";
+        function node(tag, text = "") {
+          return { tag, textContent: text, children: [],
+            append(...children) { this.children.push(...children); },
+            replaceChildren(...children) { this.children = children; } };
+        }
+        const container = node("div");
+        const status = node("p");
+        globalThis.document = { getElementById(id) {
+          return id === "log-watch-sources" ? container : status;
+        }, createElement: (tag) => node(tag) };
+        globalThis.element = node;
+        globalThis.formatRelativeTime = () => "just now";
+        vm.runInThisContext(readFileSync(0, "utf8"));
+        renderDeviceLogs({ sources: [
+          { source: "skybeat_agent", status: "available" },
+          { source: "system_journal", status: "permission_unavailable" },
+          { source: "kernel", status: "no_report" },
+        ], items: [{ source: "skybeat_agent", message: "<img src=x onerror=alert(1)>",
+                     severity: "warning", received_at: "2026-10-06T00:00:00Z" }] });
+        if (container.children.length !== 3) throw new Error("missing source card");
+        const message = container.children[0].children[2].children[0].children[1];
+        if (message.textContent !== "<img src=x onerror=alert(1)>" ||
+            message.children.length !== 0) throw new Error("log message was not text only");
+        if (container.children[1].children[1].textContent !== "Permission unavailable") {
+          throw new Error("permission state was hidden");
         }
         """
     )

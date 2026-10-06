@@ -44,6 +44,7 @@ class Config:
     nvidia_smi_timeout: int = 5
     mountpoints: tuple[str, ...] = ("/",)
     log_level: str = "INFO"
+    log_collection_interval_seconds: int = 120
 
     @classmethod
     def from_env(cls, values: dict[str, str] | None = None) -> "Config":
@@ -114,4 +115,7 @@ class Config:
             nvidia_smi_timeout=_integer(env, "SKYBEAT_NVIDIA_SMI_TIMEOUT_SECONDS", 5, 1, 10),
             mountpoints=mounts,
             log_level=level,
+            log_collection_interval_seconds=_integer(
+                env, "SKYBEAT_LOG_COLLECTION_INTERVAL_SECONDS", 120, 60, 3600
+            ),
         )

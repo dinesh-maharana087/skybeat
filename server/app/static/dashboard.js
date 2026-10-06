@@ -60,6 +60,7 @@ const clearDeviceFiltersButton = document.getElementById("clear-device-filters")
 const detailPanel = document.getElementById("detail-panel");
 const detailOpenPage = document.getElementById("detail-open-page");
 const deviceDetailPage = document.getElementById("device-detail-page");
+let lastLogAttemptAt = 0;
 const detailTitle = document.getElementById("detail-title");
 const detailStatus = document.getElementById("detail-status");
 const detailRetry = document.getElementById("detail-retry");
@@ -1571,6 +1572,7 @@ function renderDeviceDetailPage(device) {
   const lastSeen = device.pending_first_heartbeat ? "Awaiting first heartbeat" : formatRelativeTime(device.last_seen_at);
   document.getElementById("device-page-hero-meta").textContent = `${osLabel} · Last seen: ${lastSeen}`;
   document.getElementById("device-page-stale").hidden = device.telemetry_stale !== true;
+  document.getElementById("log-watch-offline").hidden = device.state !== "OFFLINE";
   detailPairs(document.getElementById("device-page-communication"), [
     ["Availability", device.state],
     ["Last heartbeat", device.last_seen_at ? timestampNode(device.last_seen_at) : "Awaiting first heartbeat"],
@@ -1600,17 +1602,74 @@ function renderDeviceDetailPage(device) {
   ]);
 }
 
+async function requestDeviceLogs(deviceId) {
+  const response = await fetch(`/api/v1/devices/${encodeURIComponent(deviceId)}/logs?limit=60`, {
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new Error("device logs request failed");
+  return response.json();
+}
+
+function renderDeviceLogs(payload) {
+  const container = document.getElementById("log-watch-sources");
+  const labels = { skybeat_agent: "SkyBeat Agent", system_journal: "System Journal", kernel: "Kernel / dmesg" };
+  const states = { available: "Available", permission_unavailable: "Permission unavailable", collection_error: "Collection error", no_report: "No report yet" };
+  container.replaceChildren();
+  for (const source of payload.sources ?? []) {
+    if (!Object.hasOwn(labels, source.source)) continue;
+    const card = document.createElement("section");
+    card.className = "device-log-source";
+    const heading = element("h4", labels[source.source]);
+    const state = element("p", states[source.status] ?? "Unavailable");
+    state.className = "device-log-source__state";
+    card.append(heading, state);
+    const entries = (payload.items ?? []).filter((item) => item.source === source.source);
+    if (!entries.length) card.append(element("p", "No stored logs received for this source."));
+    else {
+      const list = document.createElement("ol");
+      list.className = "device-log-entries";
+      for (const entry of entries) {
+        const row = document.createElement("li");
+        const metadata = element("span", `${formatRelativeTime(entry.occurred_at ?? entry.received_at)}${entry.severity ? ` · ${entry.severity}` : ""}`);
+        metadata.className = "device-log-entry__meta";
+        const message = element("p", entry.message);
+        message.className = "device-log-entry__message";
+        row.append(metadata, message);
+        list.append(row);
+      }
+      card.append(list);
+    }
+    container.append(card);
+  }
+  document.getElementById("log-watch-status").textContent = "Recent stored logs loaded.";
+}
+
 async function refreshDeviceDetailPage() {
   if (refreshing) return;
   refreshing = true;
   const deviceId = deviceDetailPage.dataset.deviceId;
+  const now = Date.now();
+  const fetchLogs = now - lastLogAttemptAt >= (document.hidden ? 60000 : 30000);
+  if (fetchLogs) lastLogAttemptAt = now;
   try {
-    const device = await requestDeviceDetail(deviceId);
-    renderDeviceDetailPage(device);
-    document.getElementById("device-page-status").textContent = "Current device state loaded.";
-    markDashboardFresh(device.server_time ?? new Date().toISOString());
+    const [deviceResult, logsResult] = await Promise.allSettled([
+      requestDeviceDetail(deviceId),
+      fetchLogs ? requestDeviceLogs(deviceId) : Promise.resolve(null),
+    ]);
+    if (deviceResult.status === "fulfilled") {
+      renderDeviceDetailPage(deviceResult.value);
+      document.getElementById("device-page-status").textContent = "Current device state loaded.";
+      markDashboardFresh(deviceResult.value.server_time ?? new Date().toISOString());
+    } else {
+      document.getElementById("device-page-status").textContent = "Device status refresh failed. Last successful state is retained.";
+      markDashboardStale();
+    }
+    if (fetchLogs) {
+      if (logsResult.status === "fulfilled") renderDeviceLogs(logsResult.value);
+      else document.getElementById("log-watch-status").textContent = "Recent log refresh failed. Last successful logs are retained.";
+    }
   } catch (_) {
-    document.getElementById("device-page-status").textContent = "Device status refresh failed. Last successful state is retained.";
+    document.getElementById("device-page-status").textContent = "Device refresh failed. Last successful state is retained.";
     markDashboardStale();
   } finally {
     refreshing = false;
