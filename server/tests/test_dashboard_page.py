@@ -729,8 +729,8 @@ def test_dashboard_page_contains_operational_sections_and_accessible_controls():
 def test_dashboard_script_renders_stage07_2_values_without_unsafe_html_or_client_state_rules():
     script = dashboard_script()
 
-    assert '"GPU Problems"' in script
-    assert '"Active Incidents"' in script
+    assert '"Required Attention"' in script
+    assert "function renderGpuSummary(payload)" in script
     assert 'value="AWAITING_FIRST_HEARTBEAT"' in dashboard_template()
     assert "item.state" in script
     assert "item.gpu_health?.effective" in script
@@ -779,14 +779,104 @@ def test_dashboard_devices_has_bounded_page_sizes_project_deep_links_and_keyboar
     assert "CANONICAL_UUID" in script
 
 
-def test_overview_health_meter_exposes_textual_canonical_online_counts():
+def test_overview_leads_with_counts_and_required_attention_without_a_health_score():
     template = dashboard_template()
     script = dashboard_script()
 
-    assert 'id="overview-health-meter"' in template
-    assert 'id="overview-health-meter-label"' in template
-    assert 'setAttribute("aria-label", healthText)' in script
-    assert '"0 / 0 devices online"' in script
+    assert 'id="overview-health-meter"' not in template
+    assert template.index('id="overview-cards"') < template.index('id="overview-attention"')
+    assert template.index('id="overview-attention"') < template.index('id="overview-gpu-summary"')
+    assert 'id="attention-heading">Required Attention' in template
+    assert 'href="/dashboard/devices">View all devices' in template
+    assert "counts.required_attention" in script
+
+
+def test_required_attention_preview_renders_canonical_links_and_untrusted_text():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable")
+    script = dashboard_script()
+    controller = (
+        "function renderAttention(items, total) {"
+        + script.split("function renderAttention(items, total) {", 1)[1].split(
+            "\nfunction renderRecentIncidents(items)", 1
+        )[0]
+    )
+    harness = textwrap.dedent(
+        """
+        class Node {
+          constructor(tag) { this.tag = tag; this.children = []; this.textContent = ""; }
+          append(...items) { this.children.push(...items); }
+          replaceChildren(...items) { this.children = items; }
+          set innerHTML(_) { throw new Error("unsafe HTML rendering"); }
+        }
+        const document = { createElement: (tag) => new Node(tag) };
+        const overviewAttention = new Node("div");
+        const element = (tag, value) => {
+          const node = new Node(tag);
+          node.textContent = String(value);
+          return node;
+        };
+        const displayValue = (value) => value ?? "—";
+        const timestampNode = (value) => element("time", value ?? "Not seen yet");
+        const statusPill = (value) => element("span", value);
+        """
+    )
+    exercise = textwrap.dedent(
+        """
+        const item = {
+          device_id: "65f5cbda-529a-4f75-8ef1-aef3c57a5ff0",
+          name: "<img src=x onerror=alert(1)>",
+          project: { name: "<script>alert(2)</script>" },
+          state: "OFFLINE", communication_attention: "OFFLINE",
+          gpu_health: { effective: "DRIVER_ERROR" }, gpu_attention: true,
+          last_seen_at: null,
+        };
+        renderAttention([item], 12);
+        const row = overviewAttention.children[1].children[0];
+        const identity = row.children[0].children[0];
+        const primary = row.children[0].children[1];
+        const supporting = row.children[1];
+        if (identity.children[0].textContent !== item.name) throw new Error("device text changed");
+        if (identity.children[0].href !== `/dashboard/devices/${item.device_id}`)
+          throw new Error("wrong route");
+        if (identity.children[1].textContent !== item.project.name)
+          throw new Error("project text changed");
+        if (primary.children[0].textContent !== "OFFLINE" ||
+            primary.children[1].textContent !== "Communication offline" ||
+            primary.children.length !== 2) throw new Error("primary reason is duplicated");
+        if (supporting.children[0].children[0].textContent !== "GPU" ||
+            supporting.children[0].children[1].textContent !== "DRIVER_ERROR")
+          throw new Error("GPU state is missing or merged with communication");
+        if (!overviewAttention.children[0].textContent.includes("1 of 12"))
+          throw new Error("count missing");
+        renderAttention([{ ...item, state: "ONLINE", communication_attention: null }], 1);
+        const gpuPrimary = overviewAttention.children[1].children[0].children[0].children[1];
+        if (gpuPrimary.children[0].textContent !== "ONLINE" ||
+            gpuPrimary.children[1].textContent !== "GPU attention required")
+          throw new Error("GPU-only reason is unclear");
+        renderAttention([], 0);
+        if (overviewAttention.children[0].textContent !== "No devices currently require attention.")
+          throw new Error("empty state missing");
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "-e", harness + controller + exercise],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_required_attention_cards_are_width_capped_and_stack_on_narrow_screens():
+    styles = dashboard_shell_styles()
+    assert ".overview-required-attention .attention-list" in styles
+    assert "max-width: 68rem" in styles
+    assert ".attention-item__main" in styles
+    assert ".attention-item__supporting" in styles
+    assert ".overview-required-attention .attention-item { grid-template-columns: 1fr; }" in styles
 
 
 def test_dashboard_active_view_refresh_preserves_current_page_and_reports_staleness():
@@ -998,8 +1088,8 @@ def test_dashboard_stage08c_overview_contract_preserves_canonical_refresh_and_de
     ):
         assert f'id="{identifier}"' in template
     assert "function renderGpuSummary(payload)" in script
-    assert "openDetail(item.device_id" in script
-    assert "payload.attention" in script
+    assert "deviceLink.href = `/dashboard/devices/${encodeURIComponent(item.device_id)}`" in script
+    assert "payload.required_attention" in script
     assert "requestOverview()" in script
     for unsafe_api in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
         assert unsafe_api not in script
@@ -1054,7 +1144,7 @@ def test_dashboard_stage08c_exposes_accessible_loading_empty_and_error_feedback(
         "Recent incident data could not be loaded. Overview data remains current.",
     ):
         assert message in script
-    assert "inspect.ariaLabel = `Inspect ${displayValue(item.name)}`" in script
+    assert "deviceLink.href = `/dashboard/devices/${encodeURIComponent(item.device_id)}`" in script
     assert "statusPill(item.gpu_health?.effective)" in script
 
 

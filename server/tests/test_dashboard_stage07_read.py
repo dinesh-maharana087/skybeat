@@ -279,8 +279,10 @@ def test_overview_attention_is_capped_and_preserves_canonical_state_fields(monke
                 return Result([])
             if "GROUP BY" in rendered:
                 return Result([])
-            self.attention_statement = statement
-            return Result(attention_rows)
+            if statement._limit_clause.value == read.ATTENTION_LIMIT:
+                self.attention_statement = statement
+                return Result(attention_rows)
+            return Result(attention_rows[: read.REQUIRED_ATTENTION_PREVIEW_LIMIT])
 
     class Database:
         def __init__(self):

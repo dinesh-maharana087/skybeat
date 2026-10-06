@@ -28,6 +28,7 @@ HISTORY_RAW_CAP = 5_000
 HISTORY_POINT_CAP = 240
 HISTORY_GPU_SERIES_CAP = 64
 ATTENTION_LIMIT = 20
+REQUIRED_ATTENTION_PREVIEW_LIMIT = 8
 GPU_STATES = {
     "OK",
     "GPU_MISSING",
@@ -313,6 +314,20 @@ def _attention_view(
     }
 
 
+def _required_attention_view(
+    device: Device, project: Project, has_active_incident: bool
+) -> dict[str, object]:
+    view = _attention_view(device, project, has_active_incident)
+    state = _state(device)
+    view["communication_attention"] = state if state in ("OFFLINE", "SUSPECT") else None
+    view["gpu_attention"] = (
+        device.last_seen_at is not None
+        and device.gpu_monitoring_enabled
+        and device.gpu_effective_state not in ("OK", "NOT_MONITORED")
+    )
+    return view
+
+
 def _incident_view(incident: Incident, device: Device, project: Project) -> dict[str, object]:
     return {
         "incident_id": incident.incident_uuid,
@@ -569,6 +584,35 @@ class DashboardReadService:
                 _attention_view(device, project, bool(has_active_incident))
                 for device, project, has_active_incident in attention_rows[:ATTENTION_LIMIT]
             ]
+            gpu_attention = and_(
+                Device.last_seen_at.is_not(None),
+                Device.gpu_monitoring_enabled.is_(True),
+                Device.gpu_effective_state.notin_(("OK", "NOT_MONITORED")),
+            )
+            required_condition = or_(state_expression.in_(("OFFLINE", "SUSPECT")), gpu_attention)
+            required_count = int(
+                session.scalar(select(func.count(Device.id)).where(required_condition)) or 0
+            )
+            required_order = case(
+                (and_(state_expression == "OFFLINE", gpu_attention), 0),
+                (state_expression == "OFFLINE", 1),
+                (and_(state_expression == "SUSPECT", gpu_attention), 2),
+                (state_expression == "SUSPECT", 3),
+                else_=4,
+            )
+            required_rows = session.execute(
+                select(Device, Project, active_incident_exists.label("has_active_incident"))
+                .join(Project, Device.project_id == Project.id)
+                .where(required_condition)
+                .order_by(
+                    required_order,
+                    Device.last_seen_at,
+                    Project.name,
+                    Device.name,
+                    Device.device_uuid,
+                )
+                .limit(REQUIRED_ATTENTION_PREVIEW_LIMIT)
+            ).all()
             return {
                 "counts": {
                     "total": total,
@@ -578,10 +622,15 @@ class DashboardReadService:
                     "awaiting_first_heartbeat": state_counts.get("AWAITING_FIRST_HEARTBEAT", 0),
                     "gpu_problem": gpu_problem,
                     "active_incident": active_incidents,
+                    "required_attention": required_count,
                 },
                 "projects": project_items,
                 "projects_truncated": len(project_rows) > 100,
                 "attention": attention,
+                "required_attention": [
+                    _required_attention_view(device, project, bool(has_active_incident))
+                    for device, project, has_active_incident in required_rows
+                ],
                 "server_time": _timestamp(now),
             }
 

@@ -18,7 +18,7 @@
 {% set page_description = "Manage provisioned dashboard access and roles." %}
 {% else %}
 {% set page_title = "Overview" %}
-{% set page_description = "Current server-authoritative fleet status and telemetry." %}
+{% set page_description = "Fleet health, required attention, and project context." %}
 {% endif %}
 <!doctype html>
 <html lang="en">
@@ -139,18 +139,14 @@
             <p id="overview-error" class="overview-feedback" role="alert" hidden>Overview data could not be loaded. Existing data may be stale.</p>
             <div id="overview-cards" class="overview-cards" aria-label="Current device overview"></div>
             <p id="overview-summary-status" class="overview-summary-status" aria-live="polite"></p>
-            <div id="overview-health-meter" class="health-meter" role="img" aria-label="0 / 0 devices online">
-              <span id="overview-health-meter-fill"></span>
-            </div>
-            <p id="overview-health-meter-label" class="health-meter-label">0 / 0 devices online</p>
-            <p id="awaiting-first-heartbeat" class="secondary-count"></p>
-            <section class="overview-gpu-section" aria-labelledby="overview-gpu-heading">
-              <div class="section-heading"><div><p class="eyebrow">GPU fleet state</p><h3 id="overview-gpu-heading">GPU operational summary</h3></div></div>
-              <div id="overview-gpu-summary" class="overview-gpu-summary" aria-live="polite"></div>
-            </section>
-            <section class="attention-section" aria-labelledby="attention-heading">
-              <div class="section-heading"><h3 id="attention-heading">Needs attention</h3><a href="/dashboard/devices">Open devices</a></div>
+            <section class="attention-section overview-required-attention" aria-labelledby="attention-heading">
+              <div class="section-heading"><div><p class="eyebrow">Action queue</p><h3 id="attention-heading">Required Attention</h3></div><a href="/dashboard/devices">View all devices</a></div>
               <div id="overview-attention" aria-live="polite"></div>
+            </section>
+            <section class="overview-gpu-section" aria-labelledby="overview-gpu-heading">
+              <div class="section-heading"><div><p class="eyebrow">Fleet context</p><h3 id="overview-gpu-heading">Other fleet state</h3></div></div>
+              <p id="awaiting-first-heartbeat" class="secondary-count"></p>
+              <div id="overview-gpu-summary" class="overview-gpu-summary" aria-live="polite"></div>
             </section>
             <section class="attention-section" aria-labelledby="overview-incidents-heading">
               <div class="section-heading"><h3 id="overview-incidents-heading">Recent incidents</h3></div>

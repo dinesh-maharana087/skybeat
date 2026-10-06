@@ -38,9 +38,6 @@ const overviewError = document.getElementById("overview-error");
 const overviewSummaryStatus = document.getElementById("overview-summary-status");
 const overviewGpuSummary = document.getElementById("overview-gpu-summary");
 const awaitingFirstHeartbeat = document.getElementById("awaiting-first-heartbeat");
-const overviewHealthMeter = document.getElementById("overview-health-meter");
-const overviewHealthMeterFill = document.getElementById("overview-health-meter-fill");
-const overviewHealthMeterLabel = document.getElementById("overview-health-meter-label");
 const projectSummary = document.getElementById("project-summary-content");
 const overviewAttention = document.getElementById("overview-attention");
 const overviewIncidents = document.getElementById("overview-incidents");
@@ -396,10 +393,8 @@ function renderOverview(payload) {
     ["Total Devices", counts.total],
     ["Online", counts.online],
     ["Suspect", counts.suspect],
-    ["Awaiting First Heartbeat", counts.awaiting_first_heartbeat],
     ["Offline", counts.offline],
-    ["GPU Problems", counts.gpu_problem],
-    ["Active Incidents", counts.active_incident],
+    ["Required Attention", counts.required_attention],
   ];
   const nodes = cards.map(([label, value]) => {
     const card = document.createElement("article");
@@ -413,13 +408,6 @@ function renderOverview(payload) {
   if (overviewSummaryStatus !== null) {
     overviewSummaryStatus.textContent = counts.total === 0 ? "No devices are currently enrolled." : "Current canonical fleet state.";
   }
-  const total = typeof counts.total === "number" && counts.total > 0 ? counts.total : 0;
-  const online = typeof counts.online === "number" && counts.online > 0 ? counts.online : 0;
-  const percentage = total === 0 ? 0 : Math.round((online / total) * 100);
-  const healthText = total === 0 ? "0 / 0 devices online" : `${online} / ${total} devices online (${percentage}%)`;
-  if (overviewHealthMeter !== null) overviewHealthMeter.setAttribute("aria-label", healthText);
-  if (overviewHealthMeterFill !== null) overviewHealthMeterFill.style.width = `${percentage}%`;
-  if (overviewHealthMeterLabel !== null) overviewHealthMeterLabel.textContent = healthText;
   if (awaitingFirstHeartbeat !== null) {
     awaitingFirstHeartbeat.textContent = `Awaiting first heartbeat: ${displayValue(
       counts.awaiting_first_heartbeat
@@ -430,7 +418,7 @@ function renderOverview(payload) {
     overviewStatus.textContent = `Overview updated ${formatRelativeTime(payload.server_time)}`;
     setExactTimestamp(overviewStatus, payload.server_time);
   }
-  renderAttention(payload.attention);
+  renderAttention(payload.required_attention, counts.required_attention);
   renderProjects(payload.projects, payload.projects_truncated === true);
 }
 
@@ -481,37 +469,51 @@ function showDeviceWorkspaceSummaryError() {
   }
 }
 
-function renderAttention(items) {
+function renderAttention(items, total) {
   if (overviewAttention === null) return;
   const attentionItems = Array.isArray(items) ? items : [];
   if (!attentionItems.length) {
-    overviewAttention.replaceChildren(element("p", "No devices currently require attention."));
+    overviewAttention.replaceChildren(element("p", total === 0 ? "No devices currently require attention." : "Required attention is temporarily unavailable."));
     return;
   }
   const list = document.createElement("ul");
   list.className = "attention-list";
   for (const item of attentionItems) {
     const row = document.createElement("li");
-    const inspect = element("button", "Inspect device");
-    inspect.type = "button";
-    inspect.ariaLabel = `Inspect ${displayValue(item.name)}`;
-    inspect.addEventListener("click", () => openDetail(item.device_id, inspect));
-    const projectContext = element("span", `Project: ${displayValue(item.project?.name)}`);
+    row.className = "attention-item";
+    const main = document.createElement("div");
+    main.className = "attention-item__main";
+    const identity = document.createElement("div");
+    identity.className = "attention-item__identity";
+    const deviceLink = element("a", displayValue(item.name));
+    deviceLink.href = `/dashboard/devices/${encodeURIComponent(item.device_id)}`;
+    deviceLink.className = "attention-device-link";
+    const projectContext = element("span", displayValue(item.project?.name));
     projectContext.className = "attention-project";
-    const lastSeen = timestampNode(item.last_seen_at);
+    identity.append(deviceLink, projectContext);
+    const primary = document.createElement("div");
+    primary.className = "attention-item__primary";
+    const communicationAttention = item.communication_attention;
+    const reason = element("strong", communicationAttention ? `Communication ${String(communicationAttention).toLowerCase()}` : "GPU attention required");
+    reason.className = "attention-reason";
+    primary.append(statusPill(item.state), reason);
+    main.append(identity, primary);
+
+    const supporting = document.createElement("div");
+    supporting.className = "attention-item__supporting";
+    const gpu = document.createElement("div");
+    gpu.className = item.gpu_attention === true ? "attention-item__gpu attention-item__gpu--attention" : "attention-item__gpu";
+    gpu.append(element("span", "GPU"), statusPill(item.gpu_health?.effective));
+    const lastSeen = element("span", "Last seen: ");
+    lastSeen.append(item.last_seen_at ? timestampNode(item.last_seen_at) : element("span", "Not seen yet"));
     lastSeen.className = "attention-last-seen";
-    row.append(
-      element("strong", displayValue(item.name)),
-      statusPill(item.state),
-      statusPill(item.gpu_health?.effective),
-      projectContext,
-      lastSeen,
-      inspect
-    );
-    if (item.has_active_incident === true) row.append(element("span", "Active incident"));
+    supporting.append(gpu, lastSeen);
+    row.append(main, supporting);
     list.append(row);
   }
-  overviewAttention.replaceChildren(list);
+  const shown = element("p", `Showing ${attentionItems.length} of ${displayValue(total)} devices requiring attention.`);
+  shown.className = "attention-preview-count";
+  overviewAttention.replaceChildren(shown, list);
 }
 
 function renderRecentIncidents(items) {
