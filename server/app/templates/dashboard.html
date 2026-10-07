@@ -25,9 +25,10 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SkyBeat Operations</title>
+    <title>{{ page_title }} | SkyBeat Operations</title>
     <link rel="stylesheet" href="/static/dashboard.css?v=stage12c-deployments-2">
-    <link rel="stylesheet" href="/static/dashboard-shell.css">
+    <link rel="stylesheet" href="/static/skybeat-theme.css?v=stage12c-ux6">
+    <link rel="stylesheet" href="/static/dashboard-shell.css?v=stage12c-ux6-theme">
   </head>
   <body data-dashboard-view="{{ active_view }}" data-dashboard-role="{{ user_role }}" data-can-manage="{{ 'true' if can_manage else 'false' }}">
     <div class="app-shell">
@@ -37,6 +38,7 @@
           <div class="brand-copy">
             <p class="brand-name">SkyBeat</p>
             <p class="brand-subtitle">Operations console</p>
+            <svg class="skypulse-trace skypulse-trace--brand" aria-hidden="true" viewBox="0 0 128 20"><path d="M1 10h35l8-7 8 14 8-7h67"/></svg>
           </div>
         </div>
         <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">
@@ -127,11 +129,12 @@
           {% endif %}
 
           {% if active_view == "overview" %}
-          <section aria-labelledby="overview-heading">
-            <div class="section-heading">
+          <section class="overview-command" aria-labelledby="overview-heading">
+            <div class="section-heading overview-command__heading">
               <div>
-                <p class="eyebrow">Current state</p>
-                <h2 id="overview-heading">Fleet overview</h2>
+                <p class="eyebrow">Fleet telemetry</p>
+                <h2 id="overview-heading">Fleet health at a glance</h2>
+                <svg class="skypulse-trace skypulse-trace--overview" aria-hidden="true" viewBox="0 0 128 20"><path d="M1 10h35l8-7 8 14 8-7h67"/></svg>
               </div>
               <p id="overview-status" aria-live="polite">Loading overview…</p>
             </div>
@@ -181,6 +184,13 @@
               </div>
             </div>
 
+            <section id="devices-workspace-summary" class="devices-workspace-summary" aria-labelledby="devices-summary-heading">
+              <div class="devices-summary-heading">
+                <h3 id="devices-summary-heading">Fleet state</h3>
+                <p id="devices-summary-status" aria-live="polite">Loading fleet summary…</p>
+              </div>
+              <div id="devices-summary-cards" class="devices-summary-cards" aria-label="Canonical fleet availability summary"></div>
+            </section>
             <form id="filters" class="controls" novalidate>
               <div class="filter-source" aria-hidden="true">
               <label for="project-filter">Project
@@ -240,16 +250,6 @@
                 <p id="page-context" aria-live="polite">Page 1</p>
                 <button id="load-more" class="sb-button--secondary" type="button" hidden>Next page</button>
               </div>
-            </section>
-            <section id="devices-workspace-summary" class="devices-workspace-summary" aria-labelledby="devices-summary-heading">
-              <div class="devices-summary-heading">
-                <div>
-                  <p class="eyebrow">Fleet context</p>
-                  <h3 id="devices-summary-heading">Inventory state</h3>
-                </div>
-                <p id="devices-summary-status" aria-live="polite">Loading fleet summary…</p>
-              </div>
-              <div id="devices-summary-cards" class="devices-summary-cards" aria-label="Canonical fleet availability summary"></div>
             </section>
           </section>
 

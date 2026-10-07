@@ -4,15 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Sign in | SkyBeat</title>
-    <link rel="stylesheet" href="/static/login.css">
+    <link rel="stylesheet" href="/static/login.css?v=stage12c-ux6-theme">
+    <link rel="stylesheet" href="/static/skybeat-theme.css?v=stage12c-ux6">
   </head>
   <body>
     <main class="login-layout">
       <section class="login-card" aria-labelledby="login-title">
         <div class="login-brand">
-          <img src="/static/assert_logo.png" alt="Assert AI" class="login-logo">
-          <p class="login-product">SkyBeat</p>
-          <p class="login-kicker">Operational Monitoring</p>
+          <span class="login-brand-mark" aria-hidden="true">SB</span>
+          <div><p class="login-product">SkyBeat</p><p class="login-kicker">Operations console</p><svg class="login-pulse" aria-hidden="true" viewBox="0 0 128 20"><path d="M1 10h35l8-7 8 14 8-7h67"/></svg></div>
         </div>
         <h1 id="login-title">Sign in to SkyBeat</h1>
         <p class="login-description">Secure infrastructure visibility for authorized users.</p>
@@ -21,6 +21,6 @@
         <p class="login-notice">Authorized access only. Your SkyBeat role is verified server-side.</p>
       </section>
     </main>
-    <footer class="login-footer">Assert AI &middot; SkyBeat operational monitoring</footer>
+    <footer class="login-footer">SkyBeat operational monitoring <span aria-hidden="true">&middot;</span> Powered by Assert AI</footer>
   </body>
 </html>

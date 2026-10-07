@@ -232,8 +232,18 @@ function timestampNode(value) {
 }
 
 function statusPill(value) {
-  const node = element("span", displayValue(value));
-  node.className = `status-pill status-${displayValue(value).toLowerCase().replaceAll(/[ _]/g, "-")}`;
+  const state = displayValue(value);
+  const labels = {
+    AWAITING_FIRST_HEARTBEAT: "Awaiting first heartbeat",
+    NVIDIA_SMI_FAILED: "NVIDIA SMI failed",
+    GPU_MISSING: "GPU missing",
+    DRIVER_ERROR: "Driver error",
+    NOT_MONITORED: "Not monitored",
+    NOT_REPORTED: "Not reported",
+    TOKEN_EXPIRED: "Token expired",
+  };
+  const node = element("span", labels[state] ?? state.replaceAll("_", " "));
+  node.className = `status-pill status-${state.toLowerCase().replaceAll(/[ _]/g, "-")}`;
   return node;
 }
 
@@ -519,15 +529,30 @@ function renderAttention(items, total) {
 function renderRecentIncidents(items) {
   if (overviewIncidents === null) return;
   const incidentItems = Array.isArray(items) ? items : [];
-  overviewIncidents.replaceChildren(
-    ...incidentItems.map((item) =>
-      element(
-        "p",
-        `${displayValue(item.type)} · ${displayValue(item.device_name)} · ${displayValue(item.status)}`
-      )
-    )
-  );
-  if (!incidentItems.length) overviewIncidents.replaceChildren(element("p", "No recent incidents."));
+  if (!incidentItems.length) {
+    overviewIncidents.replaceChildren(element("p", "No recent incidents."));
+    return;
+  }
+  const list = document.createElement("ul");
+  list.className = "overview-incident-list";
+  for (const item of incidentItems) {
+    const row = document.createElement("li");
+    row.className = "overview-incident";
+    const identity = document.createElement("div");
+    identity.className = "overview-incident__identity";
+    const device = element("a", displayValue(item.device_name));
+    device.href = `/dashboard/devices/${encodeURIComponent(item.device_id)}`;
+    const type = element("span", displayValue(item.type).replaceAll("_", " ").toLowerCase());
+    type.className = "overview-incident__type";
+    identity.append(device, type);
+    const state = statusPill(item.status);
+    const time = element("span", item.status === "CLOSED" ? "Closed " : "Opened ");
+    time.className = "overview-incident__time";
+    time.append(timestampNode(item.status === "CLOSED" ? item.closed_at : item.opened_at));
+    row.append(identity, state, time);
+    list.append(row);
+  }
+  overviewIncidents.replaceChildren(list);
 }
 
 function renderProjects(projects, truncated) {
@@ -753,6 +778,11 @@ function deviceRow(item) {
   detailButton.className = "device-identity__name";
   detailButton.addEventListener("click", () => openDetail(item.device_id, detailButton));
   deviceCell.append(detailButton);
+  const devicePageLink = element("a", "Open device →");
+  devicePageLink.href = `/dashboard/devices/${encodeURIComponent(item.device_id)}`;
+  devicePageLink.className = "device-identity__page-link";
+  devicePageLink.ariaLabel = `Open device page for ${displayValue(item.name)}`;
+  deviceCell.append(devicePageLink);
   if (item.hostname && item.hostname !== item.name && item.hostname !== "unknown") {
     const hostname = element("span", item.hostname);
     hostname.className = "device-identity__hostname";
@@ -1623,7 +1653,10 @@ function renderDeviceLogs(payload) {
     card.className = "device-log-source";
     const heading = element("h4", labels[source.source]);
     const state = element("p", states[source.status] ?? "Unavailable");
-    state.className = "device-log-source__state";
+    const stateClass = Object.hasOwn(states, source.status)
+      ? source.status.replaceAll("_", "-")
+      : "unavailable";
+    state.className = `device-log-source__state device-log-source__state--${stateClass}`;
     card.append(heading, state);
     const entries = (payload.items ?? []).filter((item) => item.source === source.source);
     if (!entries.length) card.append(element("p", "No stored logs received for this source."));

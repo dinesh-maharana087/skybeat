@@ -1,0 +1,35 @@
+/* Stage 12C-UX.6: shared SkyBeat identity. Semantic health colors stay independent. */
+:root {
+  --sb-color-navy-900: #0b1220;
+  --sb-color-navy-800: #172741;
+  --sb-color-slate-25: #f8fafc;
+  --sb-color-slate-50: #f1f5f9;
+  --sb-color-slate-100: #e9eff6;
+  --sb-color-slate-200: #e2e8f0;
+  --sb-color-slate-300: #cbd5e1;
+  --sb-color-slate-900: #0f172a;
+  --sb-color-blue-50: #eff6ff;
+  --sb-color-blue-100: #dbeafe;
+  --sb-color-blue-600: #2563eb;
+  --sb-color-blue-700: #1d4ed8;
+  --sb-color-pulse: #22d3ee;
+  --sb-bg-app: #f8fafc;
+  --sb-bg-sidebar: var(--sb-color-navy-900);
+  --sb-bg-surface-secondary: var(--sb-color-slate-50);
+  --sb-text-primary: var(--sb-color-slate-900);
+  --sb-text-muted: #64748b;
+  --sb-border: var(--sb-color-slate-200);
+  --sb-border-strong: var(--sb-color-slate-300);
+  --sb-focus-ring: #2563eb;
+  --sb-primary: var(--sb-color-blue-600);
+  --sb-primary-hover: var(--sb-color-blue-700);
+  --sb-primary-soft: var(--sb-color-blue-50);
+  --sb-shadow-sm: 0 .15rem .65rem rgb(11 18 32 / 5%);
+  --sb-shadow-md: 0 .65rem 1.8rem rgb(11 18 32 / 10%);
+  --sb-sidebar-width: 16rem;
+  --sb-surface-inset: var(--sb-bg-surface-secondary);
+  --sb-section-radius: var(--sb-radius-lg);
+  --sb-control-radius: var(--sb-radius-sm);
+  --sb-meta-color: var(--sb-text-secondary);
+  --sb-transition-fast: .16s ease;
+}

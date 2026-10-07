@@ -311,6 +311,12 @@ def test_log_watch_rendering_preserves_untrusted_message_as_text_in_node():
         if (container.children[1].children[1].textContent !== "Permission unavailable") {
           throw new Error("permission state was hidden");
         }
+        if (!container.children[0].children[1].className.includes("state--available") ||
+            !container.children[1].children[1].className.includes(
+              "state--permission-unavailable") ||
+            !container.children[2].children[1].className.includes("state--no-report")) {
+          throw new Error("source state styling was lost");
+        }
         """
     )
     result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
@@ -343,13 +349,20 @@ def test_login_page_is_a_safe_explicit_google_entry_point():
     )
     with TestClient(create_app(settings), base_url="https://testserver") as client:
         login = client.get("/login?next=/dashboard/devices")
+        theme = client.get("/static/skybeat-theme.css")
         external = client.get("/login?next=https://attacker.example/")
         protected = client.get("/dashboard/devices", follow_redirects=False)
 
     assert login.status_code == 200
     assert 'href="/auth/google/login?next=/dashboard/devices"' in login.text
     assert "Continue with Google" in login.text
-    assert 'src="/static/assert_logo.png"' in login.text
+    assert 'class="login-brand-mark"' in login.text
+    assert 'href="/static/skybeat-theme.css?v=stage12c-ux6"' in login.text
+    assert 'href="/static/skybeat-theme.css?v=stage12c-ux6"' in dashboard_template()
+    assert theme.status_code == 200
+    assert theme.headers["content-type"].startswith("text/css")
+    assert "--sb-color-pulse: #22d3ee" in theme.text
+    assert "Powered by Assert AI" in login.text
     assert external.status_code == 200
     assert 'href="/auth/google/login"' in external.text
     assert protected.headers["location"] == "/login?next=/dashboard/devices"
@@ -789,6 +802,19 @@ def test_overview_leads_with_counts_and_required_attention_without_a_health_scor
     assert 'id="attention-heading">Required Attention' in template
     assert 'href="/dashboard/devices">View all devices' in template
     assert "counts.required_attention" in script
+
+
+def test_ux6_fleet_strip_precedes_filters_and_incidents_use_existing_times():
+    template = dashboard_template()
+    script = dashboard_script()
+
+    assert template.index('id="devices-workspace-summary"') < template.index('id="filters"')
+    assert template.index('id="filters"') < template.index('class="device-table-region"')
+    assert 'id="devices-summary-heading">Fleet state' in template
+    assert 'className = "overview-incident-list"' in script
+    assert "device.href = `/dashboard/devices/${encodeURIComponent(item.device_id)}`" in script
+    assert 'item.status === "CLOSED" ? item.closed_at : item.opened_at' in script
+    assert "No recent incidents." in script
 
 
 def test_required_attention_preview_renders_canonical_links_and_untrusted_text():
@@ -1254,7 +1280,7 @@ def test_dashboard_stage08a_foundations_keep_status_text_focus_and_density():
     assert ":focus-visible" in styles
     assert re.search(r"position:\s*sticky", styles)
     assert re.search(r"overflow-x:\s*auto", styles)
-    assert 'status-${displayValue(value).toLowerCase().replaceAll(/[ _]/g, "-")}' in script
+    assert 'status-${state.toLowerCase().replaceAll(/[ _]/g, "-")}' in script
 
 
 def test_dashboard_stage08a_reuses_css_tokens_for_history_and_preserves_safe_dom():
@@ -1844,7 +1870,7 @@ def test_dashboard_stage08h_defines_an_intentional_icon_only_collapsed_brand_sta
     assert 'class="brand-copy"' in template
     assert 'class="company-logo" src="/static/assert_logo.png"' in template
     assert ".app-shell.sidebar-collapsed .app-sidebar" in styles
-    assert "overflow-x: clip" in styles
+    assert ".app-shell.sidebar-collapsed .app-sidebar { overflow: visible; }" in styles
     assert ".sidebar-collapsed .brand-lockup { align-items: center; display: grid;" in styles
     assert (
         ".sidebar-collapsed .brand-copy, .sidebar-collapsed .brand-subtitle { display: none; }"

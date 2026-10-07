@@ -70,7 +70,8 @@ def test_device_rows_keep_os_communication_gpu_and_text_safety_separate():
         online.children[0].children[0].handler();
         if (opened.join() !== "device-1") throw new Error("device detail action is not available");
         const sameHost = context.deviceRow({ ...base, hostname: base.name });
-        if (sameHost.children[0].children.length !== 1) {
+        if (sameHost.children[0].children.length !== 2 ||
+            sameHost.children[0].children[1].href !== "/dashboard/devices/device-1") {
           throw new Error("duplicate hostname rendered");
         }
         const offline = context.deviceRow({ ...base, state: "OFFLINE", os: null });
@@ -81,7 +82,7 @@ def test_device_rows_keep_os_communication_gpu_and_text_safety_separate():
         }
         const suspect = context.deviceRow({ ...base, state: "SUSPECT", hostname: null });
         if (!text(suspect.children[6]).includes("Communication: SUSPECT") ||
-            suspect.children[0].children.length !== 1) {
+            suspect.children[0].children.length !== 2) {
           throw new Error("suspect or missing-host row is unclear");
         }
         const gpu = context.deviceRow({ ...base, gpu_health: { effective: "DRIVER_ERROR" } });
