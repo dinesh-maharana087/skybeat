@@ -14,13 +14,13 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.config import Settings
+from app.config import DatabaseSettings
 
 logger = logging.getLogger(__name__)
 
 
 class Database:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: DatabaseSettings) -> None:
         self.engine = create_engine(
             settings.database_url.get_secret_value(),
             pool_size=settings.db_pool_size,

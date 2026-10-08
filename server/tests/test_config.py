@@ -1,7 +1,41 @@
 import pytest
 from pydantic import ValidationError
 
-from app.config import Settings
+from app.config import DatabaseSettings, Settings
+
+
+def test_migration_database_settings_ignore_unrelated_invalid_runtime_values(monkeypatch):
+    monkeypatch.setenv(
+        "SKYBEAT_DATABASE_URL", "mysql+pymysql://test:example@127.0.0.1/skybeat_test"
+    )
+    monkeypatch.setenv("SKYBEAT_ALERT_SMS_RECIPIENTS", "invalid-phone")
+    monkeypatch.setenv("SKYBEAT_ALLOWED_DOMAINS", "invalid-domain")
+
+    assert DatabaseSettings().database_url.get_secret_value().endswith("/skybeat_test")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_migration_database_settings_keep_strict_database_validation():
+    with pytest.raises(ValidationError):
+        DatabaseSettings(database_url="sqlite:///unsafe.db")
+
+
+def test_empty_optional_recipient_and_admission_environment_lists_are_valid(monkeypatch):
+    monkeypatch.setenv("SKYBEAT_ALERT_EMAIL_RECIPIENTS", "")
+    monkeypatch.setenv("SKYBEAT_ALERT_SMS_RECIPIENTS", "")
+    monkeypatch.setenv("SKYBEAT_ALLOWED_EMAILS", "")
+    monkeypatch.setenv("SKYBEAT_ALLOWED_DOMAINS", "")
+
+    config = Settings(
+        env="test",
+        database_url="mysql+pymysql://test:example@127.0.0.1/skybeat_test",
+    )
+
+    assert config.alert_email_recipients == ()
+    assert config.alert_sms_recipients == ()
+    assert config.allowed_emails == ()
+    assert config.allowed_domains == ()
 
 
 def test_settings_load_prefixed_environment(monkeypatch):

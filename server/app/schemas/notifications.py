@@ -1,4 +1,4 @@
-"""Strict project notification configuration requests."""
+"""Strict project and device notification configuration requests."""
 
 from pydantic import Field, field_validator
 
@@ -22,5 +22,13 @@ class ProjectNotificationUpdateRequest(DashboardManagementRequest):
         return sorted(normalized)
 
 
+class DeviceNotificationUpdateRequest(ProjectNotificationUpdateRequest):
+    """Device overrides use the same four event controls and email validation."""
+
+
 def project_identifier(value: str) -> str:
+    return canonical_uuid(value)
+
+
+def device_identifier(value: str) -> str:
     return canonical_uuid(value)

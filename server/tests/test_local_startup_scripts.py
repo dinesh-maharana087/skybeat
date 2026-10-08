@@ -80,6 +80,16 @@ def test_local_api_launcher_starts_the_worker_before_unchanged_foreground_uvicor
     assert "--host 0.0.0.0 --port 8000" in script
 
 
+def test_local_launcher_checks_schema_before_starting_services_without_auto_migration():
+    script = (REPOSITORY_ROOT / "start-skybeat-local.ps1").read_text(encoding="utf-8")
+
+    guard = script.index("-m app.local_schema_guard")
+    assert script.index("$loaded = Import-SkyBeatEnvironment") < guard
+    assert guard < script.index("Start-LocalCaddy -CaddyLauncher")
+    assert guard < script.rindex("Start-LocalNotificationWorker")
+    assert "-m alembic upgrade" not in script
+
+
 def test_local_api_launcher_reuses_only_a_live_skybeat_uvicorn_on_loopback():
     script = (REPOSITORY_ROOT / "start-skybeat-local.ps1").read_text(encoding="utf-8")
 

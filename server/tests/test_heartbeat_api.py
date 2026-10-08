@@ -127,6 +127,36 @@ def test_database_failure_never_acknowledges(client):
     assert response.json()["error"]["code"] == "database_unavailable"
 
 
+def test_missing_schema_heartbeat_failure_logs_safe_category(client, monkeypatch, caplog):
+    from pymysql.err import ProgrammingError as MySQLProgrammingError
+    from sqlalchemy.exc import ProgrammingError
+
+    from app.devices.credentials import generate_credential
+    from app.heartbeats.service import HeartbeatService
+
+    def missing_table(self, heartbeat, token):
+        raise ProgrammingError(
+            "SELECT secret-sql", {}, MySQLProgrammingError(1146, "secret-db-detail")
+        )
+
+    monkeypatch.setattr(HeartbeatService, "accept", missing_table)
+    response = client.post(
+        "/api/v1/heartbeats",
+        json=sample(),
+        headers={"authorization": f"Bearer {generate_credential().token.get_secret_value()}"},
+    )
+
+    assert response.status_code == 503
+    assert any(
+        record.error_category == "schema_table_missing"
+        and record.request_id == response.headers["x-request-id"]
+        for record in caplog.records
+        if hasattr(record, "error_category")
+    )
+    assert "secret-sql" not in caplog.text
+    assert "secret-db-detail" not in caplog.text
+
+
 def test_synchronous_heartbeat_storage_does_not_block_other_requests(monkeypatch):
     from app.devices.credentials import generate_credential
     from app.heartbeats.service import AcceptedHeartbeat, HeartbeatService

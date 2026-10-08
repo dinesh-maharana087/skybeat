@@ -205,5 +205,5 @@ def test_failed_availability_commit_rolls_back_state_incident_and_event(identity
                     AlertEvent.event_kind == "DEVICE_OFFLINE",
                 )
             )
-            == 1
+            == 0
         )

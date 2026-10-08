@@ -158,3 +158,38 @@ class ProjectNotificationRecipient(Base):
     email: Mapped[str] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
     updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+
+
+class DeviceNotificationSettings(Base):
+    """A device overrides project routing only while this row exists."""
+
+    __tablename__ = "device_notification_settings"
+    __table_args__ = (TABLE_OPTIONS,)
+
+    device_id: Mapped[int] = mapped_column(
+        ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True
+    )
+    device_offline_enabled: Mapped[bool] = mapped_column(default=True)
+    device_recovered_enabled: Mapped[bool] = mapped_column(default=True)
+    gpu_degraded_enabled: Mapped[bool] = mapped_column(default=True)
+    gpu_recovered_enabled: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+
+
+class DeviceNotificationRecipient(Base):
+    """Normalized email destination belonging to one explicit device override."""
+
+    __tablename__ = "device_notification_recipients"
+    __table_args__ = (
+        UniqueConstraint("device_id", "email", name="device_email"),
+        TABLE_OPTIONS,
+    )
+
+    id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
+    device_id: Mapped[int] = mapped_column(
+        ForeignKey("device_notification_settings.device_id", ondelete="CASCADE")
+    )
+    email: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))

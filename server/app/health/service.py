@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.db import Database, database_utc
 from app.gpu.service import GPUIncidentService
 from app.models import AlertEvent, Device, Incident, NotificationDelivery, Project
-from app.notifications.configuration import snapshot_project_email_recipients
+from app.notifications.configuration import snapshot_device_email_recipients
 
 
 class AvailabilityState(StrEnum):
@@ -211,8 +211,9 @@ class AvailabilityService:
         )
         session.add(event)
         session.flush()
-        email_recipients = snapshot_project_email_recipients(
+        email_recipients = snapshot_device_email_recipients(
             session,
+            device_id=device.id,
             project_id=device.project_id,
             event_kind=kind,
             legacy_recipients=self.email_recipients,

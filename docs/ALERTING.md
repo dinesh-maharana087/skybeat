@@ -698,6 +698,21 @@ kind. In either case the incident and alert event remain durable, but no email
 delivery is created for that event. The configured event controls are
 `DEVICE_OFFLINE`, `DEVICE_RECOVERED`, `GPU_DEGRADED`, and `GPU_RECOVERED`.
 
+## Device Email Overrides
+
+A device with no `device_notification_settings` row inherits its project's
+policy, including the deployment-level fallback when that project is
+unconfigured. Saving a device override makes its recipients and four event
+controls authoritative for that device. They replace project recipients rather
+than combining with them. An explicit override with zero recipients or a
+disabled event kind creates no email delivery for that event. Selecting **Use
+project routing** removes the device override, so later project changes again
+flow through to that device without copying project settings into a device row.
+
+The event transaction resolves device, then project, then deployment fallback
+and snapshots the resulting destinations into durable deliveries. Later routing
+changes do not modify already-created deliveries.
+
 Recipient addresses are normalized to lowercase before storage. When an event
 is created, its email destinations are copied into the existing durable
 `notification_deliveries` rows in the same transaction. Retrying that event

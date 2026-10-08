@@ -1955,6 +1955,18 @@ Several agent releases may use the same wire schema.
 
 Do not dispatch parsing behavior solely from `agent_version`.
 
+Throughout V1, an installed agent using a supported `/api/v1` schema-1 heartbeat
+remains compatible across server-only releases. Alert routing is server-side and
+does not change the heartbeat request, acknowledgement, enrollment, or device
+credential. Previously optional fields remain optional; adding telemetry should
+use explicitly specified optional fields supported by the server before an agent
+uses them. The strict schema-1 parser still rejects unknown keys until those
+fields are approved. New acknowledgement fields must be additive so existing
+agents can continue using the stable identity and heartbeat ID fields. A changed
+required field, unit, identity rule, or existing meaning needs a deliberate new
+schema version and a compatibility path. Agent release version alone does not
+determine wire compatibility.
+
 ---
 
 # 64. Telemetry Persistence

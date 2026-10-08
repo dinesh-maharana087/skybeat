@@ -2,7 +2,7 @@
 
 from alembic import context
 
-from app.config import Settings
+from app.config import DatabaseSettings
 from app.db import Database
 from app.models import Base
 
@@ -10,7 +10,7 @@ config = context.config
 
 
 def run_migrations() -> None:
-    settings = config.attributes.get("settings") or Settings()
+    settings = config.attributes.get("settings") or DatabaseSettings()
     if context.is_offline_mode():
         context.configure(
             dialect_name="mysql",

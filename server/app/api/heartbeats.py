@@ -1,13 +1,14 @@
 """Device-only heartbeat endpoint with strict transport and secret-safe errors."""
 
 import asyncio
+import logging
 from collections import defaultdict, deque
 from threading import Lock
 from time import monotonic
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from app.devices.credentials import InvalidCredential, parse_credential
 from app.devices.service import AuthenticationFailed
@@ -20,6 +21,7 @@ from app.heartbeats.service import (
 from app.schemas.heartbeat import MAX_BODY_BYTES, HeartbeatValidationError, parse_heartbeat
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class RequestBodyTooLarge(ValueError):
@@ -145,7 +147,23 @@ async def receive_heartbeat(request: Request) -> JSONResponse:
             "heartbeat_id_conflict",
             "Heartbeat identifier conflicts with an existing snapshot.",
         )
-    except SQLAlchemyError:
+    except SQLAlchemyError as exc:
+        error_code = getattr(exc.orig, "args", (None,))[0] if isinstance(exc, DBAPIError) else None
+        if not isinstance(error_code, int):
+            error_code = None
+        category = "database_failure"
+        if error_code == 1146:
+            category = "schema_table_missing"
+        elif error_code == 1054:
+            category = "schema_column_missing"
+        logger.error(
+            "Heartbeat persistence failed",
+            extra={
+                "request_id": request.state.request_id,
+                "device_uuid": heartbeat.device_id,
+                "error_category": category,
+            },
+        )
         return error(
             request, 503, "database_unavailable", "Heartbeat storage is temporarily unavailable."
         )

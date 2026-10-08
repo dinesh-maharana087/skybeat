@@ -29,6 +29,7 @@
     <link rel="stylesheet" href="/static/dashboard.css?v=stage12c-deployments-2">
     <link rel="stylesheet" href="/static/skybeat-theme.css?v=stage12c-ux6">
     <link rel="stylesheet" href="/static/dashboard-shell.css?v=stage12c-ux6-theme">
+    {% if active_view == "notifications" %}<link rel="stylesheet" href="/static/device-routing.css?v=stage12d">{% endif %}
   </head>
   <body data-dashboard-view="{{ active_view }}" data-dashboard-role="{{ user_role }}" data-can-manage="{{ 'true' if can_manage else 'false' }}">
     <div class="app-shell">

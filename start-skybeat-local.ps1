@@ -656,6 +656,19 @@ finally {
     Pop-Location
 }
 
+if (-not $PreflightOnly) {
+    Push-Location $serverDirectory
+    try {
+        & $python -m app.local_schema_guard
+        if ($LASTEXITCODE -ne 0) {
+            throw "SkyBeat local schema check failed. Apply the migration guidance above before starting services."
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+
 if ($httpsAgentEndpoint) {
     if (-not (Test-Path -LiteralPath $caddyLauncher -PathType Leaf)) {
         throw "Local Caddy launcher is missing. Restore start-caddy-local.ps1 before using an HTTPS agent endpoint."

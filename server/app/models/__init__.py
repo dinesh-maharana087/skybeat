@@ -182,6 +182,8 @@ class DeviceLatest(Base):
 
 from app.models.alerts import (  # noqa: E402
     AlertEvent,
+    DeviceNotificationRecipient,
+    DeviceNotificationSettings,
     Incident,
     NotificationAttempt,
     NotificationDelivery,
@@ -208,6 +210,8 @@ __all__ = [
     "DeviceLatest",
     "DeviceLogEntry",
     "DeviceLogSource",
+    "DeviceNotificationRecipient",
+    "DeviceNotificationSettings",
     "HeartbeatReceipt",
     "HeartbeatSample",
     "Incident",

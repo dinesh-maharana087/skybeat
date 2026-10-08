@@ -12,6 +12,8 @@ agent.env
 .tools/
 .test-data/
 .worktrees/
+.ai-memory
+.tmp
 .superpowers/
 __pycache__/
 *.py[cod]

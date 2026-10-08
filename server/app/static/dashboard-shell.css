@@ -385,8 +385,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   .device-log-sources { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
   .app-shell.sidebar-collapsed { grid-template-columns: 1fr; }
   .app-sidebar { border-right: 0; }
+  .sidebar-nav { flex-wrap: wrap; }
   .brand-lockup { border-bottom: 0; min-height: 0; padding-bottom: 0; }
   .site-header { flex-wrap: wrap; }
   .header-actions { align-items: flex-start; flex-direction: row-reverse; justify-content: space-between; width: 100%; }

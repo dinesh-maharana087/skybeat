@@ -1,5 +1,6 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,6 +8,7 @@ from sqlalchemy import event, func, select, text
 from sqlalchemy.exc import OperationalError
 from test_heartbeat_api import sample
 
+from app.db import database_utc
 from app.devices.service import IdentityService
 from app.main import create_app
 from app.models import Device
@@ -87,6 +89,33 @@ def test_os_identity_updates_only_authenticated_device_and_old_agent_without_os_
     with mysql_database.transaction() as session:
         latest = session.get(DeviceLatest, enrolled.device.id)
         assert latest is not None and latest.payload["os"] is None
+
+
+def test_existing_v1_agent_recovers_after_outage_with_stage12d_routing(endpoint, mysql_database):
+    from app.models.heartbeat import DeviceLatest
+
+    enrolled = endpoint[2]
+    old_agent_payload = sample(enrolled.device.device_uuid)
+    del old_agent_payload["os"]
+    assert send(endpoint, old_agent_payload).status_code == 200
+
+    with mysql_database.transaction() as session:
+        device = session.get(Device, enrolled.device.id)
+        device.last_seen_at = database_utc(session) - timedelta(seconds=181)
+
+    resumed = sample(enrolled.device.device_uuid)
+    del resumed["os"]
+    response = send(endpoint, resumed)
+
+    assert response.status_code == 200
+    assert response.json()["device_id"] == enrolled.device.device_uuid
+    with mysql_database.transaction() as session:
+        device = session.get(Device, enrolled.device.id)
+        latest = session.get(DeviceLatest, enrolled.device.id)
+        assert device.availability_state == "ONLINE"
+        assert latest.agent_version == "1.0.0"
+        assert latest.schema_version == 1
+        assert latest.payload["os"] is None
 
 
 def test_identical_retry_keeps_latest_and_liveness_after_newer_snapshot(endpoint, mysql_database):

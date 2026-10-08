@@ -14,19 +14,12 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
 
-class Settings(BaseSettings):
+class DatabaseSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="SKYBEAT_", extra="forbid", hide_input_in_errors=True
     )
 
-    env: Literal["development", "test", "production"] = "production"
     database_url: SecretStr = Field(repr=False)
-    public_base_url: str = "https://localhost"
-    allowed_hosts: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["localhost", "127.0.0.1", "testserver"]
-    )
-    enable_api_docs: bool = False
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     db_pool_size: int = Field(default=5, ge=1, le=20)
     db_max_overflow: int = Field(default=5, ge=0, le=20)
     db_pool_timeout_seconds: int = Field(default=2, ge=1, le=10)
@@ -35,6 +28,38 @@ class Settings(BaseSettings):
     db_write_timeout_seconds: int = Field(default=3, ge=1, le=10)
     db_lock_timeout_seconds: int = Field(default=1, ge=1, le=3)
     db_select_timeout_ms: int = Field(default=3000, ge=100, le=10000)
+
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(cls, value: SecretStr) -> SecretStr:
+        try:
+            url = make_url(value.get_secret_value())
+        except (ArgumentError, ValueError):
+            raise ValueError("A valid MySQL database URL is required.") from None
+        if (
+            url.drivername != "mysql+pymysql"
+            or not url.host
+            or not url.database
+            or not url.username
+            or url.username.lower() == "root"
+            or not url.password
+            or set(url.query) - {"charset"}
+            or url.query.get("charset", "utf8mb4") != "utf8mb4"
+        ):
+            raise ValueError("Use mysql+pymysql with a scoped account and utf8mb4.")
+        return value
+
+
+class Settings(DatabaseSettings):
+    """Full application policy, separate from migration connection requirements."""
+
+    env: Literal["development", "test", "production"] = "production"
+    public_base_url: str = "https://localhost"
+    allowed_hosts: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["localhost", "127.0.0.1", "testserver"]
+    )
+    enable_api_docs: bool = False
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     suspect_after_seconds: int = Field(default=75, ge=1, le=3600)
     offline_after_seconds: int = Field(default=180, ge=2, le=86400)
     health_sweep_seconds: int = Field(default=5, ge=1, le=60)
@@ -61,26 +86,6 @@ class Settings(BaseSettings):
     smtp_password: SecretStr | None = Field(default=None, repr=False)
     smtp_from_address: str | None = Field(default=None, max_length=320)
 
-    @field_validator("database_url")
-    @classmethod
-    def validate_database_url(cls, value: SecretStr) -> SecretStr:
-        try:
-            url = make_url(value.get_secret_value())
-        except (ArgumentError, ValueError):
-            raise ValueError("A valid MySQL database URL is required.") from None
-        if (
-            url.drivername != "mysql+pymysql"
-            or not url.host
-            or not url.database
-            or not url.username
-            or url.username.lower() == "root"
-            or not url.password
-            or set(url.query) - {"charset"}
-            or url.query.get("charset", "utf8mb4") != "utf8mb4"
-        ):
-            raise ValueError("Use mysql+pymysql with a scoped account and utf8mb4.")
-        return value
-
     @field_validator("allowed_hosts", mode="before")
     @classmethod
     def parse_hosts(cls, value: object) -> object:
@@ -91,6 +96,8 @@ class Settings(BaseSettings):
     @field_validator("alert_email_recipients", mode="before")
     @classmethod
     def parse_alert_email_recipients(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return ()
         values = value.split(",") if isinstance(value, str) else value
         if not isinstance(values, (list, tuple)):
             return values
@@ -107,6 +114,8 @@ class Settings(BaseSettings):
     @field_validator("alert_sms_recipients", mode="before")
     @classmethod
     def parse_alert_sms_recipients(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return ()
         values = value.split(",") if isinstance(value, str) else value
         if not isinstance(values, (list, tuple)):
             return values
@@ -122,6 +131,8 @@ class Settings(BaseSettings):
     @field_validator("allowed_emails", mode="before")
     @classmethod
     def parse_allowed_emails(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return ()
         values = value.split(",") if isinstance(value, str) else value
         if not isinstance(values, (list, tuple)):
             return values
@@ -138,6 +149,8 @@ class Settings(BaseSettings):
     @field_validator("allowed_domains", mode="before")
     @classmethod
     def parse_allowed_domains(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return ()
         values = value.split(",") if isinstance(value, str) else value
         if not isinstance(values, (list, tuple)):
             return values

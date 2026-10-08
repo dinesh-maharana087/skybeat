@@ -178,6 +178,14 @@ let notificationSaveState = "unchanged";
 let notificationSaveMessage = "No changes.";
 let notificationSaveInFlight = false;
 let notificationDirectoryAvailable = true;
+let notificationDevices = [];
+let selectedNotificationDeviceId = null;
+let notificationDeviceDraft = null;
+let notificationDeviceSaveState = "unchanged";
+let notificationDeviceSaveMessage = "No changes.";
+let notificationDeviceSaveInFlight = false;
+let notificationDeviceLoadState = "loading";
+let notificationDeviceRequestId = 0;
 let toInstallDeployments = [];
 let deploymentRelease = null;
 let pendingDeploymentDeletion = null;
@@ -349,6 +357,15 @@ async function requestUsers() {
 async function requestNotifications() {
   const response = await fetch("/api/v1/notifications", { credentials: "same-origin" });
   if (!response.ok) throw new Error("notifications request failed");
+  return response.json();
+}
+
+async function requestNotificationDevices(projectId) {
+  const response = await fetch(
+    `/api/v1/notifications/${encodeURIComponent(projectId)}/devices`,
+    { credentials: "same-origin" },
+  );
+  if (!response.ok) throw new Error("notification devices request failed");
   return response.json();
 }
 
@@ -1181,16 +1198,20 @@ function markNotificationDraftUnsaved() {
   renderNotificationProjects();
 }
 
-function renderRecipientChips(container, project, draft) {
+function renderRecipientChips(
+  container, project, draft,
+  onChange = markNotificationDraftUnsaved,
+  emptyDescription = null,
+) {
   container.replaceChildren();
   if (draft.recipients.size === 0) {
     const empty = element("p", "No recipients assigned");
     empty.className = "recipient-assignment-empty";
     const explanation = element(
       "p",
-      project.configured
+      emptyDescription ?? (project.configured
         ? "Alerts for this configured project policy will not have project recipients."
-        : "No project recipients are configured. The existing fallback remains active until you save this project policy.",
+        : "No project recipients are configured. The existing fallback remains active until you save this project policy."),
     );
     explanation.className = "recipient-assignment-empty__detail";
     container.append(empty, explanation);
@@ -1210,14 +1231,350 @@ function renderRecipientChips(container, project, draft) {
     remove.type = "button";
     remove.className = "recipient-chip__remove";
     remove.textContent = "×";
+    remove.disabled = notificationSaveInFlight || notificationDeviceSaveInFlight;
     remove.setAttribute("aria-label", `Remove ${user?.name || address}`);
     remove.addEventListener("click", () => {
       draft.recipients.delete(address);
-      markNotificationDraftUnsaved();
+      onChange();
     });
     recipientChip.append(identity, remove);
     container.append(recipientChip);
   }
+}
+
+function notificationDeviceDraftFor(device) {
+  if (notificationDeviceDraft?.deviceId !== device.device_id) {
+    const saved = device.custom ?? device.inherited;
+    notificationDeviceDraft = {
+      deviceId: device.device_id,
+      savedMode: device.mode,
+      mode: device.mode,
+      saved: { ...saved, recipients: [...saved.recipients].sort() },
+      recipients: new Set(saved.recipients),
+      device_offline_enabled: saved.device_offline_enabled,
+      device_recovered_enabled: saved.device_recovered_enabled,
+      gpu_degraded_enabled: saved.gpu_degraded_enabled,
+      gpu_recovered_enabled: saved.gpu_recovered_enabled,
+    };
+  }
+  return notificationDeviceDraft;
+}
+
+function notificationDeviceDraftIsDirty(draft) {
+  return draft.mode !== draft.savedMode ||
+    (draft.mode === "CUSTOM" &&
+      JSON.stringify(notificationDraftPayload(draft)) !== JSON.stringify(draft.saved));
+}
+
+function markNotificationDeviceUnsaved() {
+  const device = notificationDevices.find((item) => item.device_id === selectedNotificationDeviceId);
+  if (!device) return;
+  notificationDeviceSaveState = notificationDeviceDraftIsDirty(notificationDeviceDraftFor(device))
+    ? "unsaved" : "unchanged";
+  notificationDeviceSaveMessage = notificationDeviceSaveState === "unsaved"
+    ? "Unsaved changes" : "No changes.";
+  renderNotificationProjects();
+}
+
+function notificationRoutingSummary(mode, policy) {
+  const count = policy.recipients.length;
+  const recipients = count === 0 ? "No recipients" : `${count} recipient${count === 1 ? "" : "s"}`;
+  const events = ALERT_ROUTING_EVENTS.filter(([name]) => policy[name]).map(([, label]) => label);
+  return `${mode === "CUSTOM" ? "Custom" : "Inherits"} · ${recipients} · ${events.length ? events.join(" + ") : "No alert types enabled"}`;
+}
+
+function renderNotificationEffective(container, policy) {
+  const addresses = document.createElement("div");
+  addresses.className = "recipient-chip-list";
+  if (policy.recipients.length === 0) {
+    addresses.append(element("p", "No recipients"));
+  } else {
+    for (const address of policy.recipients) {
+      const user = notificationUser(address);
+      const chip = document.createElement("div");
+      chip.className = "recipient-assignment";
+      const identity = document.createElement("span");
+      identity.className = "recipient-assignment__identity";
+      identity.append(element("strong", user?.name || "Email recipient"), element("span", address));
+      chip.append(identity);
+      addresses.append(chip);
+    }
+  }
+  const events = document.createElement("div");
+  events.className = "alert-routing-events";
+  for (const [name, label, description] of ALERT_ROUTING_EVENTS) {
+    const [control, input] = notificationEventControl(name, label, description, policy[name]);
+    input.disabled = true;
+    events.append(control);
+  }
+  container.append(element("h4", "Effective recipients"), addresses, element("h4", "Alert types"), events);
+}
+
+async function loadNotificationDevices(projectId) {
+  const requestId = ++notificationDeviceRequestId;
+  notificationDeviceLoadState = "loading";
+  renderNotificationProjects();
+  try {
+    const result = await requestNotificationDevices(projectId);
+    if (requestId !== notificationDeviceRequestId || selectedNotificationProjectId !== projectId) return;
+    notificationDevices = result.items;
+    if (!notificationDevices.some((item) => item.device_id === selectedNotificationDeviceId)) {
+      selectedNotificationDeviceId = notificationDevices[0]?.device_id ?? null;
+    }
+    notificationDeviceDraft = null;
+    notificationDeviceLoadState = "ready";
+  } catch (_) {
+    if (requestId !== notificationDeviceRequestId || selectedNotificationProjectId !== projectId) return;
+    notificationDeviceLoadState = "failed";
+  }
+  renderNotificationProjects();
+}
+
+function renderNotificationDevices() {
+  const project = selectedNotificationProject();
+  if (!project) return;
+  const section = document.createElement("section");
+  section.className = "alert-routing-device sb-card";
+  section.append(element("h3", "Device overrides"),
+    element("p", "Devices inherit project routing until you save a custom policy for one device."));
+  if (notificationDeviceLoadState === "loading") {
+    section.append(element("p", "Loading devices…"));
+    notificationsList.append(section);
+    return;
+  }
+  if (notificationDeviceLoadState === "failed") {
+    const retry = element("button", "Retry loading devices");
+    retry.type = "button";
+    retry.className = "sb-button--secondary";
+    retry.addEventListener("click", () => loadNotificationDevices(project.project_id));
+    section.append(element("p", "Device routing could not be loaded."), retry);
+    notificationsList.append(section);
+    return;
+  }
+  if (notificationDevices.length === 0) {
+    section.append(element("p", "No devices belong to this project."));
+    notificationsList.append(section);
+    return;
+  }
+  const layout = document.createElement("div");
+  layout.className = "alert-routing-device__layout";
+  const list = document.createElement("div");
+  list.id = "device-routing-list";
+  list.className = "alert-routing-device__list";
+  list.setAttribute("aria-label", "Devices in this project");
+  for (const device of notificationDevices) {
+    const row = element("button", "");
+    row.type = "button";
+    row.className = "alert-routing-device__row";
+    row.setAttribute("aria-pressed", device.device_id === selectedNotificationDeviceId ? "true" : "false");
+    const badge = element("span", device.mode === "CUSTOM" ? "CUSTOM ROUTING" : "INHERITS PROJECT");
+    badge.className = `status-pill alert-routing-device__badge alert-routing-device__badge--${device.mode.toLowerCase()}`;
+    row.append(element("strong", device.device_name), badge,
+      element("span", notificationRoutingSummary(device.mode, device.effective)));
+    row.addEventListener("click", () => {
+      if (device.device_id === selectedNotificationDeviceId || notificationDeviceSaveInFlight) return;
+      const current = notificationDevices.find((item) => item.device_id === selectedNotificationDeviceId);
+      if (current && notificationDeviceDraftIsDirty(notificationDeviceDraftFor(current))) {
+        notificationDeviceSaveState = "unsaved";
+        notificationDeviceSaveMessage = "Save or discard device changes before switching devices.";
+        renderNotificationProjects();
+        return;
+      }
+      selectedNotificationDeviceId = device.device_id;
+      notificationDeviceDraft = null;
+      notificationDeviceSaveState = "unchanged";
+      notificationDeviceSaveMessage = "No changes.";
+      renderNotificationProjects();
+    });
+    list.append(row);
+  }
+  layout.append(list);
+  const device = notificationDevices.find((item) => item.device_id === selectedNotificationDeviceId);
+  if (!device) return;
+  const draft = notificationDeviceDraftFor(device);
+  const editor = document.createElement("div");
+  editor.className = "alert-routing-device__editor";
+  editor.append(element("h4", device.device_name), element("p", `Project: ${device.project_name}`));
+  const mode = document.createElement("fieldset");
+  mode.className = "alert-routing-device__mode";
+  mode.append(element("legend", "Routing"));
+  for (const [value, label] of [["INHERIT_PROJECT", "Inherit project"], ["CUSTOM", "Custom routing"]]) {
+    const option = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "device-routing-mode";
+    input.value = value;
+    input.checked = draft.mode === value;
+    input.disabled = notificationDeviceSaveInFlight;
+    input.addEventListener("change", () => {
+      if (value === draft.mode) return;
+      if (notificationDeviceDraftIsDirty(draft) && draft.mode === "CUSTOM") {
+        notificationDeviceSaveState = "unsaved";
+        notificationDeviceSaveMessage = "Save or discard device changes before switching routing mode.";
+        renderNotificationProjects();
+        return;
+      }
+      draft.mode = value;
+      markNotificationDeviceUnsaved();
+    });
+    option.append(input, element("span", label));
+    mode.append(option);
+  }
+  editor.append(mode);
+  if (draft.mode === "INHERIT_PROJECT") {
+    editor.append(element("p", device.mode === "CUSTOM"
+      ? `This device will use ${device.project_name} routing after you select Use project routing.`
+      : `This device currently uses ${device.project_name} routing.`));
+    renderNotificationEffective(editor, device.inherited);
+  } else {
+    const recipientsSection = document.createElement("section");
+    recipientsSection.className = "alert-routing-section";
+    recipientsSection.append(element("h4", "Recipients"),
+      element("p", "Assign active SkyBeat users for this device override."));
+    const chips = document.createElement("div");
+    renderRecipientChips(chips, project, draft, markNotificationDeviceUnsaved,
+      "No email will be sent for this device while this override has no recipients.");
+    const controls = document.createElement("div");
+    controls.className = "recipient-assignment-controls";
+    const select = document.createElement("select");
+    select.id = "device-notification-recipient-select";
+    select.setAttribute("aria-label", "Assign an active SkyBeat user to this device");
+    const available = notificationUsers.filter((user) => user.active && !draft.recipients.has(user.email));
+    const placeholder = element("option", notificationDirectoryAvailable
+      ? "Choose an active SkyBeat user" : "Active user directory is unavailable");
+    placeholder.value = "";
+    select.append(placeholder);
+    for (const user of available) {
+      const option = element("option", `${user.name || user.email} — ${user.email}`);
+      option.value = user.email;
+      select.append(option);
+    }
+    select.disabled = notificationDeviceSaveInFlight || !notificationDirectoryAvailable || available.length === 0;
+    const assign = element("button", "Assign device recipient");
+    assign.type = "button";
+    assign.className = "sb-button--secondary";
+    assign.disabled = select.disabled;
+    assign.addEventListener("click", () => {
+      if (!select.value) return;
+      draft.recipients.add(select.value);
+      markNotificationDeviceUnsaved();
+    });
+    controls.append(select, assign);
+    if (!notificationDirectoryAvailable) {
+      controls.append(element("p", "The active user directory is unavailable. Existing recipients remain visible."));
+    }
+    recipientsSection.append(chips, controls);
+    const events = document.createElement("section");
+    events.className = "alert-routing-section";
+    events.append(element("h4", "Alert types"));
+    const eventControls = document.createElement("div");
+    eventControls.className = "alert-routing-events";
+    for (const [name, label, description] of ALERT_ROUTING_EVENTS) {
+      const [control, input] = notificationEventControl(name, label, description, draft[name]);
+      input.disabled = notificationDeviceSaveInFlight;
+      input.addEventListener("change", () => {
+        draft[name] = input.checked;
+        markNotificationDeviceUnsaved();
+      });
+      eventControls.append(control);
+    }
+    events.append(eventControls);
+    editor.append(recipientsSection, events);
+  }
+  const actions = document.createElement("div");
+  actions.className = "alert-routing-device__actions";
+  if (draft.mode === "CUSTOM") {
+    const save = element("button", "Save device routing");
+    save.type = "button";
+    save.className = "sb-button--primary";
+    save.disabled = notificationDeviceSaveInFlight || !notificationDeviceDraftIsDirty(draft);
+    save.addEventListener("click", async () => {
+      if (notificationDeviceSaveInFlight) return;
+      if (notificationDraftIsDirty(notificationDraftFor(project))) {
+        notificationDeviceSaveState = "unsaved";
+        notificationDeviceSaveMessage = "Save or discard project changes before saving device routing.";
+        renderNotificationProjects();
+        return;
+      }
+      notificationDeviceSaveInFlight = true;
+      notificationDeviceSaveState = "saving";
+      notificationDeviceSaveMessage = "Saving";
+      renderNotificationProjects();
+      try {
+        await requestDashboardMutation(
+          `/api/v1/notifications/${encodeURIComponent(project.project_id)}/devices/${encodeURIComponent(device.device_id)}`,
+          "PUT", notificationDraftPayload(draft),
+        );
+        const result = await requestNotificationDevices(project.project_id);
+        notificationDevices = result.items;
+        notificationDeviceDraft = null;
+        notificationDeviceSaveState = "saved";
+        notificationDeviceSaveMessage = "Saved";
+      } catch (_) {
+        notificationDeviceSaveState = "failed";
+        notificationDeviceSaveMessage = "Save failed. Your unsaved changes are still shown.";
+      } finally {
+        notificationDeviceSaveInFlight = false;
+        renderNotificationProjects();
+      }
+    });
+    actions.append(save);
+  }
+  const discard = element("button", "Discard device changes");
+  discard.type = "button";
+  discard.className = "sb-button--ghost";
+  discard.disabled = notificationDeviceSaveInFlight || !notificationDeviceDraftIsDirty(draft);
+  discard.addEventListener("click", () => {
+    notificationDeviceDraft = null;
+    notificationDeviceSaveState = "unchanged";
+    notificationDeviceSaveMessage = "Changes discarded.";
+    renderNotificationProjects();
+  });
+  actions.append(discard);
+  if (device.mode === "CUSTOM") {
+    const reset = element("button", "Use project routing");
+    reset.type = "button";
+    reset.className = "sb-button--secondary";
+    reset.disabled = notificationDeviceSaveInFlight ||
+      (draft.mode === "CUSTOM" && notificationDeviceDraftIsDirty(draft));
+    reset.addEventListener("click", async () => {
+      if (notificationDraftIsDirty(notificationDraftFor(project))) {
+        notificationDeviceSaveState = "unsaved";
+        notificationDeviceSaveMessage = "Save or discard project changes before resetting device routing.";
+        renderNotificationProjects();
+        return;
+      }
+      notificationDeviceSaveInFlight = true;
+      notificationDeviceSaveState = "saving";
+      notificationDeviceSaveMessage = "Saving";
+      renderNotificationProjects();
+      try {
+        await requestDashboardMutation(
+          `/api/v1/notifications/${encodeURIComponent(project.project_id)}/devices/${encodeURIComponent(device.device_id)}`,
+          "DELETE", null,
+        );
+        const result = await requestNotificationDevices(project.project_id);
+        notificationDevices = result.items;
+        notificationDeviceDraft = null;
+        notificationDeviceSaveState = "saved";
+        notificationDeviceSaveMessage = "Saved";
+      } catch (_) {
+        notificationDeviceSaveState = "failed";
+        notificationDeviceSaveMessage = "Reset failed. Your device draft is still shown.";
+      } finally {
+        notificationDeviceSaveInFlight = false;
+        renderNotificationProjects();
+      }
+    });
+    actions.append(reset);
+  }
+  const status = element("p", notificationDeviceSaveMessage);
+  status.className = `alert-routing-save-status alert-routing-save-status--${notificationDeviceSaveState}`;
+  status.setAttribute("aria-live", "polite");
+  editor.append(actions, status);
+  layout.append(editor);
+  section.append(layout);
+  notificationsList.append(section);
 }
 
 function replaceNotificationProjects(items) {
@@ -1243,6 +1600,7 @@ function renderNotificationProjects() {
 
   const card = document.createElement("article");
   card.className = "alert-routing-card sb-card";
+  card.append(element("h3", "Project routing"));
   const projectField = document.createElement("label");
   projectField.className = "alert-routing-project";
   projectField.append(element("span", "Project"));
@@ -1255,7 +1613,8 @@ function renderNotificationProjects() {
     option.selected = item.project_id === project.project_id;
     projectSelect.append(option);
   }
-  projectSelect.addEventListener("change", () => {
+  projectSelect.disabled = notificationSaveInFlight || notificationDeviceSaveInFlight;
+  projectSelect.addEventListener("change", async () => {
     if (projectSelect.value === selectedNotificationProjectId) return;
     if (notificationDraftIsDirty(draft)) {
       notificationSaveState = "unsaved";
@@ -1263,11 +1622,25 @@ function renderNotificationProjects() {
       renderNotificationProjects();
       return;
     }
+    const currentDevice = notificationDevices.find((item) => item.device_id === selectedNotificationDeviceId);
+    if (currentDevice && notificationDeviceDraftIsDirty(notificationDeviceDraftFor(currentDevice))) {
+      notificationDeviceSaveState = "unsaved";
+      notificationDeviceSaveMessage = "Save or discard device changes before switching projects.";
+      renderNotificationProjects();
+      return;
+    }
     selectedNotificationProjectId = projectSelect.value;
     notificationDraft = null;
+    notificationDevices = [];
+    selectedNotificationDeviceId = null;
+    notificationDeviceDraft = null;
+    notificationDeviceLoadState = "loading";
     notificationSaveState = "unchanged";
     notificationSaveMessage = "No changes.";
+    notificationDeviceSaveState = "unchanged";
+    notificationDeviceSaveMessage = "No changes.";
     renderNotificationProjects();
+    await loadNotificationDevices(selectedNotificationProjectId);
   });
   projectField.append(projectSelect);
 
@@ -1315,7 +1688,8 @@ function renderNotificationProjects() {
     option.value = user.email;
     recipientSelect.append(option);
   }
-  recipientSelect.disabled = !notificationDirectoryAvailable || eligibleUsers.length === 0;
+  recipientSelect.disabled = notificationSaveInFlight || notificationDeviceSaveInFlight ||
+    !notificationDirectoryAvailable || eligibleUsers.length === 0;
   const assignRecipient = element("button", "Assign recipient");
   assignRecipient.type = "button";
   assignRecipient.className = "sb-button--secondary";
@@ -1343,6 +1717,7 @@ function renderNotificationProjects() {
   eventControls.className = "alert-routing-events";
   for (const [name, label, description] of ALERT_ROUTING_EVENTS) {
     const [control, input] = notificationEventControl(name, label, description, draft[name]);
+    input.disabled = notificationSaveInFlight || notificationDeviceSaveInFlight;
     input.addEventListener("change", () => {
       draft[name] = input.checked;
       markNotificationDraftUnsaved();
@@ -1354,9 +1729,16 @@ function renderNotificationProjects() {
   const save = element("button", "Save routing policy");
   save.type = "button";
   save.className = "sb-button--primary";
-  save.disabled = notificationSaveInFlight;
+  save.disabled = notificationSaveInFlight || notificationDeviceSaveInFlight;
   save.addEventListener("click", async () => {
-    if (notificationSaveInFlight) return;
+    if (notificationSaveInFlight || notificationDeviceSaveInFlight) return;
+    const currentDevice = notificationDevices.find((item) => item.device_id === selectedNotificationDeviceId);
+    if (currentDevice && notificationDeviceDraftIsDirty(notificationDeviceDraftFor(currentDevice))) {
+      notificationSaveState = "unsaved";
+      notificationSaveMessage = "Save or discard device changes before saving project routing.";
+      renderNotificationProjects();
+      return;
+    }
     if (!notificationDraftIsDirty(draft)) {
       notificationSaveState = "unchanged";
       notificationSaveMessage = "No changes.";
@@ -1379,6 +1761,7 @@ function renderNotificationProjects() {
       notificationSaveState = "saved";
       notificationSaveMessage = "Saved";
       renderNotificationProjects();
+      await loadNotificationDevices(project.project_id);
     } catch (_) {
       notificationSaveInFlight = false;
       notificationSaveState = "failed";
@@ -1389,7 +1772,8 @@ function renderNotificationProjects() {
   const discard = element("button", "Discard changes");
   discard.type = "button";
   discard.className = "sb-button--ghost";
-  discard.disabled = notificationSaveInFlight || !notificationDraftIsDirty(draft);
+  discard.disabled = notificationSaveInFlight || notificationDeviceSaveInFlight ||
+    !notificationDraftIsDirty(draft);
   discard.addEventListener("click", () => {
     notificationDraft = null;
     notificationSaveState = "unchanged";
@@ -1401,6 +1785,7 @@ function renderNotificationProjects() {
   status.setAttribute("aria-live", "polite");
   card.append(projectField, policyState, recipientsSection, eventSection, save, discard, status);
   notificationsList.append(card);
+  renderNotificationDevices();
 }
 
 async function refreshNotificationsView() {
@@ -1418,6 +1803,7 @@ async function refreshNotificationsView() {
     }
     replaceNotificationProjects(result.items);
     renderNotificationProjects();
+    if (selectedNotificationProjectId) await loadNotificationDevices(selectedNotificationProjectId);
     notificationsStatus.textContent = `${result.items.length} project${result.items.length === 1 ? "" : "s"} available for alert routing.`;
     markDashboardFresh(null);
   } catch (_) {

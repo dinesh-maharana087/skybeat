@@ -1,13 +1,16 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-10-07
-Current stage: Stage 12C - Deployment To Install Workflow
-Current UI stage: Stage 12C-UX.6 - SkyPulse theme + SkyBeat brand consistency pass
-Current milestone: SkyBeat signature theme correction implemented and source-level verification completed.
-Status: Stage 12C-UX.6 remains OPEN pending operator visual acceptance. No controllable browser surface was exposed. The full server run has two Windows Bash path failures unrelated to the UI; isolated-MySQL acceptance remains pending. The earlier diagnostics foundation is preserved separately for future 12E-12H work.
+Last updated: 2026-10-08
+Current stage: Stage 12D - Device-Level Alert Routing
+Current UI stage: Stage 12D - Alert Routing device overrides
+Current milestone: Stage 12D device routing and stabilization accepted; final V1 acceptance items deferred.
+Status: Stage 12D ACCEPTED on 2026-10-08. The local development schema is at the sole Alembic head and the existing edge agent resumed without re-enrollment. Isolated MySQL routing tests, real Google-session browser review, and direct 429 evidence at the operator-retained 10-second agent cadence are deferred, nonblocking V1 acceptance items. No push, merge, or later stage was started.
 
 ## Completed
 
+- Stage 12D implementation: additive device settings/recipient tables, one override per device, event-time device > project > deployment email resolution, explicit zero/disabled behavior, reset by deleting the override, active-user assignment checks, project-scoped OWNER/ADMIN APIs, and Alert Routing device editor with effective policy, draft protection, save/discard/reset, and authoritative reload. Existing project routing, worker, SMTP, agent, and monitoring lifecycles remain in place.
+- Stage 12D stabilization: Alembic now constructs database-only settings; full application settings still reject invalid runtime policy. The local launcher checks the single Alembic head against its database before starting services. Heartbeat SQL failures log a safe request/device/category without exposing SQL or secrets. A mobile shell CSS precedence error found in Chrome was corrected, and mobile navigation now wraps within the viewport.
+- Stage 12D resume: empty optional recipient/admission list entries in the ignored local `.env` and committed `.env.example` no longer prevent application startup. Blank lists resolve to empty tuples; malformed nonempty recipients/domains still fail validation. No secret value or ignored configuration was changed or printed.
 - Stage 12C-UX.6 correction: Added shared SkyBeat navy/blue/cyan tokens and a restrained SkyPulse trace on dashboard/login branding and the Overview command header. The dark navigation rail, light workspace, grouped Overview metrics, semantic Required Attention, dark Fleet state strip, Device Detail identity header, tinted Log Watch diagnostics, deployment state cards, and management surfaces now have distinct product hierarchy. Existing table, form, drawer, tab, enrollment, and notification workflows remain in place. No backend, agent, diagnostics, routing, or migration changes.
 - Stage 12C-UX.5 presentation correction: Width-capped Required Attention cards now group linked device name and project, primary status/reason, then GPU and last-seen support. Offline communication is not repeated as a separate label. Desktop uses a compact two-part card; narrow layouts stack. Backend ordering, eight-device cap, navigation, and other views are unchanged.
 - Stage 12C-UX.5: Overview now leads with compact canonical device counts and Required Attention, followed by fleet and project context. A narrow addition to the existing Overview projection provides an exact count and an eight-device preview for OFFLINE, SUSPECT, or effective GPU trouble, with separate backend reason flags and deterministic category/oldest-last-seen ordering. Canonical Device Detail and Devices links, safe text rendering, and existing visibility-aware refresh are reused. No migration or diagnostics change.
@@ -60,7 +63,6 @@ Status: Stage 12C-UX.6 remains OPEN pending operator visual acceptance. No contr
 
 ## In Progress
 
-- Stage 12C-UX.6 authenticated desktop/narrow browser acceptance is pending, including expanded/collapsed sidebar, all management views, and visual overflow/keyboard checks.
 - Stage 12C-UX.5 authenticated desktop/narrow browser presentation, navigation, and refresh acceptance remain pending.
 - Early diagnostics foundation: real Ubuntu journal permissions, installed-agent heartbeat independence, and Log Watch browser acceptance remain pending.
 - Stage 12C-UX.4 authenticated browser acceptance: desktop/narrow layout, drawer navigation, keyboard tabs, polling/stale feedback, and browser console remain pending because no controllable browser surface was exposed.
@@ -76,6 +78,8 @@ Status: Stage 12C-UX.6 remains OPEN pending operator visual acceptance. No contr
 
 ## Verification Completed
 
+- Stage 12D resume after blank-list fix: the new regression failed on all four empty optional list fields before the fix, then all configuration tests passed (40). Focused routing/schema/heartbeat/configuration tests: 65 passed, 3 isolated-MySQL skips. Full server suite: 527 passed, 50 isolated-MySQL skips, and the same two WindowsApps Bash path-translation installer failures; agent suite: 79 passed. Server Ruff lint and format, strict mypy (62 files, from the server directory), JavaScript syntax, and `git diff --check` passed. Normal Alembic with the ignored `.env` loaded reports `c1436a7392a9 (head)`; `heads` reports the same sole head. The launcher non-starting preflight and local schema guard passed. No local API listener or controllable browser was available for a fresh live edge or Google-session check.
+- Stage 12D stabilization: focused routing/configuration/heartbeat/launcher tests 76 passed; focused post-fix heartbeat/configuration/schema/status tests 53 passed; full server suite 526 passed, 50 isolated-MySQL skips, and two previously recorded Windows Bash path-translation installer failures. Agent suite 79 passed. Server Ruff lint/format passed (114 formatted files); strict mypy passed for 62 source files; JavaScript syntax and `git diff --check` passed. Normal `alembic current` and `heads` both report sole head `c1436a7392a9`. With deliberately invalid SMS/domain values in only the verification process, Alembic still reported the head while full Settings rejected both fields. CA-verified HTTPS `/livez` returned 200 through Caddy and GET `/api/v1/heartbeats` returned expected 405. The existing agent's schema-1 heartbeat was accepted, its device returned ONLINE with CPU/memory and GPU OK telemetry, and the authorized recovery delivery persisted as SUCCEEDED. Browser DOM measurements at 390 pixels found zero horizontal overflow and zero console errors in inherited and unsaved custom routing views; no policy was saved.
 - Stage 12C-UX.6 correction: focused dashboard page/table suite 81 passed; full server run 505 passed, 46 skipped (isolated MySQL), and 2 unrelated Windows Bash path-translation failures in installer rejection tests. Server app/tests Ruff lint and format passed (107 formatted files); strict server mypy passed (61 source files); JavaScript syntax and `git diff --check` passed; Alembic reports sole head `2f4a6c8d10b2`. The existing agent suite was not rerun because no agent or shared contract file changed. Source checks do not prove visual acceptance.
 - Stage 12C-UX.5 presentation correction: 131 focused/relevant dashboard, read, API, and log tests passed, including Node checks for combined communication/GPU and GPU-only cards, safe text, one canonical detail link, and zero attention. Ruff lint and format, strict server mypy (61 source files), JavaScript syntax, and `git diff --check` passed. No browser surface was exposed for the manual re-check.
 - Stage 12C-UX.5: full server suite 503 passed, 48 skipped (isolated MySQL and Windows Bash), 0 failed; full agent suite 79 passed, including retained diagnostics tests. Focused Overview/read/page tests 89 passed; Node rendering exercised malicious text, distinct communication/GPU reasons, canonical links, preview count and empty state. Server Ruff/format, strict mypy (61 source files), and JavaScript syntax passed. The existing local development MySQL read returned the new exact count and bounded preview without mutation; no migration was added.
@@ -136,7 +140,7 @@ Status: Stage 12C-UX.6 remains OPEN pending operator visual acceptance. No contr
 
 ## Verification Pending
 
-- Stage 12C-UX.6: operator review of login and all nine dashboard views at desktop/narrow widths, including focus, contrast, overflow, expanded/collapsed navigation, and a side-by-side comparison. No browser surface was available for this correction.
+- Deferred V1 acceptance from Stage 12D (nonblocking by operator decision): provision an isolated MySQL 8/InnoDB `_test` schema and run the three device-routing MySQL tests, including management/reset, fallback/disabled policy, and event-time delivery snapshots; run a real Google-session browser and keyboard/focus review; inspect the installed edge agent journal for 429s at its retained 10-second cadence. The ignored `.env` has no `SKYBEAT_TEST_DATABASE_URL`; its Google client and email admission keys are populated, and full Settings validates, but neither IAB nor Chrome is exposed to computer use. The local scoped database account cannot create the isolated schema. Headless Chrome previously reviewed desktop and 390-pixel inherited/custom routing using a temporary loopback development bypass. Accepted-sample intervals alone cannot prove that no requests were rate-limited. No production database was used. Do not expand Stage 12D for these items unless they reveal an actual regression later.
 - Stage 12C-UX.5 isolated-MySQL ordering/cap tests need `SKYBEAT_TEST_DATABASE_URL`; local MySQL read verified the new projection with existing data but not all synthetic state combinations. Authenticated desktop/narrow browser review remains pending; browser inventory returned no apps or browsers.
 - Early diagnostics foundation: isolated MySQL fixture test needs `SKYBEAT_TEST_DATABASE_URL`; the local rollback probe does not replace retention/race coverage. Ubuntu `skybeat` journal access, kernel permission status, TLS upload, agent restart/dedup, heartbeat independence, and Log Watch browser review remain pending.
 - Stage 12C-UX.4 browser acceptance remains pending. The UI automation inventory returned no apps or browsers; source/Node tests do not prove visual layout, focus behavior in a real browser, or live polling against an authenticated runtime.
@@ -167,6 +171,7 @@ Status: Stage 12C-UX.6 remains OPEN pending operator visual acceptance. No contr
 
 ## Files Changed
 
+- Stage 12D: routing model/service/API/UI/migration/tests and `docs/ALERTING.md`; stabilization changes in `server/app/config.py`, `db.py`, `migrations/env.py`, `app/local_schema_guard.py`, `api/heartbeats.py`, `start-skybeat-local.ps1`, `dashboard-shell.css`, focused tests, `docs/AGENT_SPEC.md`, `docs/API_SPEC.md`, and this checkpoint. `.gitignore` excludes generated local `.ai-memory` and `.tmp` artifacts. The stale Stage 12C assertion was removed from `test_deployment_artifacts.py`.
 - Stage 12C-UX.6 correction: `server/app/static/skybeat-theme.css`, dashboard shell/login CSS, dashboard/login templates, focused dashboard page test, and this checkpoint. Existing UX.6 JavaScript/table test edits remain in the worktree. No migration.
 - Stage 12C-UX.5: `server/app/dashboard/read.py`, Overview template/JavaScript/shell CSS, focused dashboard read/page/MySQL tests, and this checkpoint. No migration.
 - Early diagnostics foundation: agent journal collector/publisher/runtime/config/version/lock/tests; server log API/schema/service/models, additive migration `2f4a6c8d10b2`, dashboard template/JavaScript/CSS/tests; agent environment example and deployment runbook.
@@ -202,6 +207,7 @@ Status: Stage 12C-UX.6 remains OPEN pending operator visual acceptance. No contr
 
 ## Migrations Applied/Tested
 
+- Stage 12D additive revision `c1436a7392a9` chains from `2f4a6c8d10b2` and is the sole Alembic head. It creates device override settings and recipient tables with cascading device/override foreign keys and a per-device/email uniqueness constraint. On this resume, the local development database was already at `c1436a7392a9` with both tables; the interrupted session had advanced it, so the migration was not replayed. Normal Alembic confirmed current/head. The isolated `_test` schema remains unavailable; no production schema was changed.
 - Stage 12C-UX.5 adds no migration. The earlier diagnostics-foundation migration `2f4a6c8d10b2` added `device_log_entries` and `device_log_sources` from sole prior head `81be693a0806`. It was applied to local development MySQL; no existing tables or data were removed. Alembic reports one head.
 - Stage 12C-UX.3 adds no migration; OS identity remains in the existing latest-heartbeat JSON. Configured local MySQL and Alembic still report sole head `81be693a0806`.
 - Stage 12C-UX.2 additive revision `81be693a0806` adds nullable `VARCHAR(512)` descriptions to `agent_enrollments` and `devices`. Its offline MySQL DDL test passed. Local MySQL moved from `e43a8c9b0d11` to sole head `81be693a0806`; both nullable columns were inspected and existing project/device/user/enrollment/notification row counts were unchanged. No database reset or downgrade occurred.
@@ -226,7 +232,7 @@ Status: Stage 12C-UX.6 remains OPEN pending operator visual acceptance. No contr
 
 ## Known Issues
 
-- Stage 12C-UX.6 full server run still fails two installer rejection tests under WindowsApps Bash because it cannot translate the Windows script path. This does not exercise UX.6. Authenticated browser visual acceptance remains unperformed.
+- Stage 12D has no known failing focused source test. Three isolated-MySQL routing tests and real Google-session browser/keyboard acceptance remain pending. Full server still has two previously recorded WindowsApps Bash path failures in installer rejection tests. The installed agent's roughly 10-second cadence is at the approved six-requests/minute limit and one accepted-sample gap reached 20.7 seconds; 429 clearance is not proven without its journal. The older installed agent has no Log Watch source records, so live Log Watch acceptance is unavailable.
 - Stage 12C-UX.2 cannot confirm actual disk completion from a scripted browser download; browser acceptance must verify the token file and navigation. The one-time token stays in modal memory for a retry if download initiation throws, with no second enrollment POST.
 - Stage 12B has no automated software blocker. The full server suite is clean; live browser acceptance remains pending because the environment exposes neither a browser surface nor an in-app browser.
 - Stage 10 real-MySQL lifecycle/migration verification is pending solely because `SKYBEAT_TEST_DATABASE_URL` is unavailable. The skipped test covers consumption/replay/receipt scope and fresh-heartbeat verification; no substitute database claim is made.
@@ -257,6 +263,7 @@ Status: Stage 12C-UX.6 remains OPEN pending operator visual acceptance. No contr
 
 ## Security Notes
 
+- Stage 12D mutation routes retain dashboard OWNER/ADMIN role checks, same-origin protection, strict UUID/recipient validation, and no-store responses. New recipients must be active SkyBeat users; existing legacy project addresses remain intact. The UI uses text-only DOM construction and stores no notification credentials. The operator explicitly approved the local recovery notification; one delivery persisted as SUCCEEDED, while mailbox receipt was not independently checked. The temporary UI preview used development bypass on loopback only and did not save routing changes.
 - Stage 12C-UX.5 preserves existing dashboard session/RBAC, CSP, no-store, and text-only DOM rendering. Required Attention derives from persisted communication/effective GPU state; it does not inspect logs or create a health score.
 - Early diagnostics foundation uses fixed `journalctl` argument arrays, a four-second collector timeout and 64 KiB process-output cap; it does not add sudo, journal group access, file reads, or server-selected commands. Uploads are device-credential bound, strict, 72 KiB/80-entry limited, and rate limited; reads use existing dashboard authorization and no-store. Messages are untrusted text and may naturally contain secrets.
 - Stage 12C-UX.4 resolves the device through the existing dashboard read service after session authorization, renders only display-safe projection fields with Jinja escaping and text-only DOM updates, and keeps CSP/no-store. No credential, log, or remote-control surface was added.
@@ -282,6 +289,7 @@ Status: Stage 12C-UX.6 remains OPEN pending operator visual acceptance. No contr
 
 ## Environment Limitations
 
+- Stage 12D stabilization verification used the existing workspace `.venv`. The local MySQL development schema was already migrated when work resumed; this session read it and accepted live heartbeats, incidents, and one authorized recovery delivery. The scoped account could not create an isolated `_test` schema. The computer-use browser failed at Windows sandbox initialization, so headless Chrome inspected a separate loopback development-bypass process. No agent installation, identity, credential, or production service was changed.
 - Windows PowerShell workspace; use `.venv/Scripts/python.exe`.
 - Portable MySQL and isolated credentials remain ignored under `.tools/` and `.test-data/`; the unrelated local MySQL service on port 3306 was untouched.
 - Windows cache ACLs require Ruff `--no-cache` and mypy temporary-system cache directories.
@@ -294,7 +302,7 @@ Status: Stage 12C-UX.6 remains OPEN pending operator visual acceptance. No contr
 
 ## Next Action
 
-- Review Stage 12C-UX.6 visually at desktop and narrow widths across login, Overview, Devices, Device Detail, Log Watch, Deployments, Add Device, Projects, Alert Routing, and Users. Compare against the pre-UX.6 dashboard; inspect semantic states, collapsed navigation, keyboard focus, contrast, and overflow. Keep UX.6 open until operator acceptance. Run isolated MySQL ordering/cap tests when a disposable test schema is supplied. Preserve the early diagnostics foundation for later 12E-12H work. Do not commit, merge, push, or start Stage 12D.
+- Stop at the accepted Stage 12D commit. Carry isolated MySQL routing tests, real Google-session browser review, and edge 429 journal inspection as nonblocking V1 acceptance items. The approved API rate limit is six requests/minute; do not silently raise it. Do not push, merge, or begin Stage 12E/12J in this operation.
 - Complete Stage 12C-UX.4 authenticated browser acceptance when a controllable browser is available; verify drawer navigation, both tab controls, desktop/narrow layout, offline/never-seen current state, polling failure feedback, and console.
 - Complete Stage 12C-UX.3 authenticated browser and real Ubuntu-agent acceptance when those surfaces are available. Keep UX.3 unaccepted until then.
 - Run Stage 12C-UX.2 authenticated browser acceptance when a controllable browser session is available. Verify the token file and Deployments redirect together, existing project/device/user and notification settings views, and the failed-download retry. Keep the stage pending acceptance; do not start UX.3.
@@ -535,7 +543,7 @@ Status: Stage 12C-UX.6 remains OPEN pending operator visual acceptance. No contr
 
 ## Resume Command / Guidance
 
-Read AGENTS.md, docs/IMPLEMENTATION_PLAN.md, this file, and inspect the current Git diff before continuing. Stages 11 and 11.5 are complete and merged; retain the documented real-Google, isolated-MySQL, deployment-test, and local-acceptance limitations. Do not begin Stage 12 without explicit authorization.
+Read AGENTS.md, docs/IMPLEMENTATION_PLAN.md, this file, and inspect the current Git commit/status before continuing. Stage 12D is accepted; its isolated-MySQL, real Google-session/keyboard browser, and edge 429 checks are deferred V1 acceptance items. Do not begin later stages in the Stage 12D commit operation.
 
 ## Pre-Stage 11 Google Authentication Acceptance Checkpoint
 

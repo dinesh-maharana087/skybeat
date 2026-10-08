@@ -1802,6 +1802,22 @@ Do not deploy an agent schema before the server supports it.
 
 Breaking heartbeat changes require a new schema version.
 
+The server must continue accepting compatible installed V1 agents through
+server-only updates, including alert-routing updates. The agent keeps its device
+UUID, credential, server URL, configuration, and service identity through an
+ordinary server outage or restart; its bounded retry and backoff resume sending
+when the server returns. `agent_version` and `schema_version` are already sent
+with each heartbeat, persisted in current/historical telemetry, and shown in
+Device Detail. A separate capabilities negotiation or upgrade mechanism is not
+required for Stage 12D.
+
+Stage 12J will define controlled in-place agent updates and rollback using the
+existing packaged-release architecture. A compatible update must preserve device
+UUID, credential, server URL, project assignment, configuration, and service
+identity unless credential rotation is explicitly requested. Release metadata,
+hash verification, health checks, audit history, and rollback policy belong to
+that later stage.
+
 ---
 
 # 68. Credential Rotation

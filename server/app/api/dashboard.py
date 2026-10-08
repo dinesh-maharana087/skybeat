@@ -22,7 +22,11 @@ from app.dashboard.service import (
 )
 from app.devices.service import Conflict, IdentityError, NotFound
 from app.models import ApplicationUser
-from app.notifications.management import NotificationManagementService, NotificationProjectNotFound
+from app.notifications.management import (
+    NotificationDeviceNotFound,
+    NotificationManagementService,
+    NotificationProjectNotFound,
+)
 from app.schemas.dashboard_management import (
     DeviceEnrollRequest,
     DeviceMonitoringUpdateRequest,
@@ -30,7 +34,12 @@ from app.schemas.dashboard_management import (
     ProjectCreateRequest,
     canonical_uuid,
 )
-from app.schemas.notifications import ProjectNotificationUpdateRequest, project_identifier
+from app.schemas.notifications import (
+    DeviceNotificationUpdateRequest,
+    ProjectNotificationUpdateRequest,
+    device_identifier,
+    project_identifier,
+)
 from app.schemas.users import UserCreateRequest, UserUpdateRequest
 from app.users.service import (
     UserConflict,
@@ -182,6 +191,72 @@ async def update_notifications(
         raise HTTPException(
             status_code=404 if isinstance(error, NotificationProjectNotFound) else 422,
             detail="Notification project is invalid.",
+            headers={"Cache-Control": "no-store"},
+        ) from error
+    return JSONResponse({"notification": result}, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/notifications/{project_uuid}/devices")
+async def notification_devices(
+    request: Request, project_uuid: str, user: ManagementUserDependency
+) -> JSONResponse:
+    try:
+        result = await asyncio.to_thread(
+            _notification_service(request, user).list_devices,
+            project_identifier(project_uuid),
+            legacy_recipients=request.app.state.settings.alert_email_recipients,
+        )
+    except (NotificationProjectNotFound, ValueError) as error:
+        raise HTTPException(
+            status_code=404 if isinstance(error, NotificationProjectNotFound) else 422,
+            detail="Notification project is invalid.",
+            headers={"Cache-Control": "no-store"},
+        ) from error
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+@router.put("/notifications/{project_uuid}/devices/{device_uuid}")
+async def update_notification_device(
+    request: Request,
+    project_uuid: str,
+    device_uuid: str,
+    payload: DeviceNotificationUpdateRequest,
+    user: ManagementUserDependency,
+) -> JSONResponse:
+    _require_same_origin(request)
+    try:
+        result = await asyncio.to_thread(
+            _notification_service(request, user).update_device,
+            project_identifier(project_uuid),
+            device_identifier(device_uuid),
+            payload,
+        )
+    except (NotificationProjectNotFound, NotificationDeviceNotFound, ValueError) as error:
+        raise HTTPException(
+            status_code=404
+            if isinstance(error, (NotificationProjectNotFound, NotificationDeviceNotFound))
+            else 422,
+            detail="Notification device or recipients are invalid.",
+            headers={"Cache-Control": "no-store"},
+        ) from error
+    return JSONResponse({"notification": result}, headers={"Cache-Control": "no-store"})
+
+
+@router.delete("/notifications/{project_uuid}/devices/{device_uuid}")
+async def reset_notification_device(
+    request: Request, project_uuid: str, device_uuid: str, user: ManagementUserDependency
+) -> JSONResponse:
+    _require_same_origin(request)
+    try:
+        result = await asyncio.to_thread(
+            _notification_service(request, user).reset_device,
+            project_identifier(project_uuid),
+            device_identifier(device_uuid),
+        )
+    except (NotificationProjectNotFound, NotificationDeviceNotFound, ValueError) as error:
+        raise HTTPException(
+            status_code=422 if type(error) is ValueError else 404,
+            detail="Notification device is invalid.",
             headers={"Cache-Control": "no-store"},
         ) from error
     return JSONResponse({"notification": result}, headers={"Cache-Control": "no-store"})
