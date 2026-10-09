@@ -1,10 +1,19 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-10-08
-Current stage: Stage 12D - Device-Level Alert Routing
+Last updated: 2026-10-09
+Current stage: Stage 12E - Diagnostics DB/API + Retention
 Current UI stage: Stage 12D - Alert Routing device overrides
-Current milestone: Stage 12D device routing and stabilization accepted; final V1 acceptance items deferred.
-Status: Stage 12D ACCEPTED on 2026-10-08. The local development schema is at the sole Alembic head and the existing edge agent resumed without re-enrollment. Isolated MySQL routing tests, real Google-session browser review, and direct 429 evidence at the operator-retained 10-second agent cadence are deferred, nonblocking V1 acceptance items. No push, merge, or later stage was started.
+Current milestone: Existing diagnostics foundation refined with age retention and bounded log queries.
+Status: Stage 12E accepted. The existing authenticated upload, deduplication, count cap, and Device Detail Log Watch are retained. No Stage 12F work started.
+
+## Stage 12E Checkpoint
+
+- Added bounded age-based cleanup for log entries and source checkpoints (default 7 days, 500 rows per table per worker cleanup pass), with indexed cutoff ordering and safe worker error isolation.
+- Added device-scoped source/time filters and stable ID keyset pagination to the existing dashboard log read API. Cursors are bound to device, filters, and direction; limits and timestamp parsing are validated.
+- Added focused route, cursor/window, MySQL retention/query, and worker cleanup regressions. Initial focused run: 24 passed; 4 isolated-MySQL tests skipped because `SKYBEAT_TEST_DATABASE_URL` is not configured.
+- Added `SKYBEAT_DIAGNOSTICS_RETENTION_DAYS=7` to the safe example configuration. No agent, heartbeat contract, credential, or Stage 12D routing changes.
+- Verification: focused logs/worker/dashboard/heartbeat suite 244 passed and 4 isolated-MySQL skips; full server suite 534 passed and 55 skipped (53 isolated-MySQL tests and 2 Bash-dependent deployment checks); Ruff passed; Ruff format check passed after formatting `test_logs.py`; strict mypy passed for 62 source files; Alembic reports sole head `5a12e1c0d9f4`; `git diff --check` passed. Isolated MySQL diagnostics retention/query verification is deferred to the final V1 acceptance gate because no dedicated `SKYBEAT_TEST_DATABASE_URL` is configured.
+- Compatibility: heartbeat API/contract and existing Log Watch page tests pass; no agent, heartbeat schema, credential, route, or agent-upload contract changes.
 
 ## Completed
 

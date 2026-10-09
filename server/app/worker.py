@@ -6,14 +6,18 @@ from collections.abc import Callable
 from threading import Event
 from time import monotonic
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.config import Settings
 from app.db import Database
 from app.health.service import AvailabilityService
+from app.logs.service import LogRetentionService
 from app.notifications.email import SMTPEmailProvider
 from app.notifications.service import NotificationProvider, NotificationService
 from app.notifications.sms import DisabledSMSProvider
 
 logger = logging.getLogger(__name__)
+DIAGNOSTICS_CLEANUP_SECONDS = 60
 
 
 def build_smtp_provider(settings: Settings) -> SMTPEmailProvider | None:
@@ -51,6 +55,7 @@ def run_once(
     """Perform one bounded sweep and then attempt a bounded notification batch."""
     _sweep(settings, database)
     _deliver(settings, database, provider)
+    _prune_diagnostics(settings, database)
 
 
 def _sweep(settings: Settings, database: Database) -> None:
@@ -72,6 +77,18 @@ def _deliver(
         NotificationService(database).process_due(provider, limit=settings.notification_concurrency)
 
 
+def _prune_diagnostics(settings: Settings, database: Database) -> None:
+    try:
+        LogRetentionService(database).prune_expired(
+            retention_days=settings.diagnostics_retention_days
+        )
+    except SQLAlchemyError:
+        logger.warning(
+            "Diagnostics retention unavailable",
+            extra={"event_type": "diagnostics_retention", "error_category": "database_unavailable"},
+        )
+
+
 def run_loop(
     settings: Settings,
     database: Database,
@@ -85,6 +102,7 @@ def run_loop(
     wait_for = wait or stop.wait
     next_sweep_at = 0.0
     next_delivery_at = 0.0
+    next_diagnostics_cleanup_at = 0.0
     while not stop.is_set():
         now = monotonic()
         if now >= next_sweep_at:
@@ -93,7 +111,15 @@ def run_loop(
         if now >= next_delivery_at:
             _deliver(settings, database, providers)
             next_delivery_at = now + settings.notification_poll_seconds
-        wait_for(max(0.0, min(next_sweep_at, next_delivery_at) - monotonic()))
+        if now >= next_diagnostics_cleanup_at:
+            _prune_diagnostics(settings, database)
+            next_diagnostics_cleanup_at = now + DIAGNOSTICS_CLEANUP_SECONDS
+        wait_for(
+            max(
+                0.0,
+                min(next_sweep_at, next_delivery_at, next_diagnostics_cleanup_at) - monotonic(),
+            )
+        )
 
 
 def main() -> None:

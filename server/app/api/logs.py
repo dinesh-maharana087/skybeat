@@ -1,6 +1,7 @@
 """Narrow device log upload and dashboard recent-log read."""
 
 import asyncio
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -89,10 +90,23 @@ async def recent_logs(
     _: DashboardUserDependency,
     source: str | None = Query(default=None, max_length=32),
     limit: int = Query(default=60, ge=1, le=100),
+    from_time: str | None = Query(default=None, alias="from", max_length=40),
+    until: str | None = Query(default=None, max_length=40),
+    cursor: str | None = Query(default=None, max_length=512),
+    direction: Literal["newest", "oldest"] = "newest",
 ) -> JSONResponse:
     service = LogWatchService(request.app.state.database)
     try:
-        result = await asyncio.to_thread(service.recent, device_uuid, source=source, limit=limit)
+        result = await asyncio.to_thread(
+            service.recent,
+            device_uuid,
+            source=source,
+            limit=limit,
+            from_time=from_time,
+            until=until,
+            cursor=cursor,
+            direction=direction,
+        )
     except DashboardNotFound as exc:
         raise HTTPException(
             status_code=404, detail="Device not found.", headers={"Cache-Control": "no-store"}

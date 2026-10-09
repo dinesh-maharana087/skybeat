@@ -1,6 +1,7 @@
 from threading import Event
 
 from pydantic import SecretStr
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import Settings
 from app.worker import build_notification_providers, build_smtp_provider, run_loop, run_once
@@ -84,6 +85,7 @@ def test_worker_run_once_sweeps_before_claiming_notification_work(monkeypatch):
 
     monkeypatch.setattr("app.worker.AvailabilityService", Health)
     monkeypatch.setattr("app.worker.NotificationService", Notifications)
+    monkeypatch.setattr("app.worker._prune_diagnostics", lambda *_args: None)
 
     run_once(_settings(), object(), provider=object())
 
@@ -117,6 +119,7 @@ def test_worker_loop_uses_notification_poll_interval_and_stops_without_new_work(
 
     monkeypatch.setattr("app.worker.AvailabilityService", Health)
     monkeypatch.setattr("app.worker.NotificationService", Notifications)
+    monkeypatch.setattr("app.worker._prune_diagnostics", lambda *_args: None)
 
     run_loop(
         _settings(health_sweep_seconds=5, notification_poll_seconds=2),
@@ -128,3 +131,35 @@ def test_worker_loop_uses_notification_poll_interval_and_stops_without_new_work(
     )
 
     assert calls == ["sweep", ("deliver", calls[1][1], 4), ("deliver", calls[2][1], 4)]
+
+
+def test_diagnostics_cleanup_failure_does_not_stop_health_or_notification_work(monkeypatch):
+    calls = []
+
+    class Health:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def sweep(self):
+            calls.append("sweep")
+
+    class Notifications:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def process_due(self, provider, *, limit):
+            calls.append("deliver")
+
+    class Retention:
+        def __init__(self, database):
+            pass
+
+        def prune_expired(self, *, retention_days):
+            calls.append(("prune", retention_days))
+            raise SQLAlchemyError("diagnostics unavailable")
+
+    monkeypatch.setattr("app.worker.AvailabilityService", Health)
+    monkeypatch.setattr("app.worker.NotificationService", Notifications)
+    monkeypatch.setattr("app.worker.LogRetentionService", Retention)
+    run_once(_settings(), object(), provider=object())
+    assert calls == ["sweep", "deliver", ("prune", 7)]

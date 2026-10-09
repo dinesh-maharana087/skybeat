@@ -65,6 +65,7 @@ class Settings(DatabaseSettings):
     health_sweep_seconds: int = Field(default=5, ge=1, le=60)
     notification_poll_seconds: int = Field(default=2, ge=1, le=60)
     notification_concurrency: int = Field(default=4, ge=1, le=4)
+    diagnostics_retention_days: int = Field(default=7, ge=1, le=365)
     alert_email_recipients: Annotated[tuple[str, ...], NoDecode] = ()
     sms_enabled: bool = False
     alert_sms_recipients: Annotated[tuple[str, ...], NoDecode] = ()

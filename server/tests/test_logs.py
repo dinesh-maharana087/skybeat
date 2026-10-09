@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from uuid import uuid4
 
 import pytest
@@ -99,7 +100,7 @@ def test_log_upload_and_read_routes_bind_to_existing_services(monkeypatch):
             seen.append((payload.source, presented_token))
             return {"source": payload.source, "accepted": 1}
 
-        def recent(self, requested, *, source=None, limit=60):
+        def recent(self, requested, *, source=None, limit=60, **_filters):
             seen.append((requested, source, limit))
             return {"sources": [], "items": []}
 
@@ -122,3 +123,91 @@ def test_log_upload_and_read_routes_bind_to_existing_services(monkeypatch):
     assert accepted.status_code == 200
     assert read.status_code == 200
     assert seen == [("skybeat_agent", token), (device_id, "kernel", 10)]
+
+
+def test_log_read_route_forwards_bounded_time_and_cursor_filters(monkeypatch):
+    from app.api import logs as api
+
+    device_id = str(uuid4())
+    seen = []
+
+    class FakeService:
+        def __init__(self, database):
+            pass
+
+        def recent(self, requested, *, source, limit, from_time, until, cursor, direction):
+            seen.append((requested, source, limit, from_time, until, cursor, direction))
+            return {"sources": [], "items": [], "next_cursor": None}
+
+    class Authenticated:
+        def authenticate_session(self, token):
+            return DashboardUser("google", "viewer@example.test", None, 1, UserRole.USER)
+
+    monkeypatch.setattr(api, "LogWatchService", FakeService)
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Authenticated()
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid")
+        response = client.get(
+            f"/api/v1/devices/{device_id}/logs",
+            params={
+                "source": "kernel",
+                "limit": 25,
+                "from": "2026-10-01T00:00:00Z",
+                "until": "2026-10-02T00:00:00Z",
+                "cursor": "opaque",
+                "direction": "oldest",
+            },
+        )
+        too_large = client.get(f"/api/v1/devices/{device_id}/logs?limit=101")
+        bad_direction = client.get(f"/api/v1/devices/{device_id}/logs?direction=random")
+    assert response.status_code == 200
+    assert too_large.status_code == bad_direction.status_code == 422
+    assert seen == [
+        (
+            device_id,
+            "kernel",
+            25,
+            "2026-10-01T00:00:00Z",
+            "2026-10-02T00:00:00Z",
+            "opaque",
+            "oldest",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "start,end",
+    [
+        ("2026-10-01T00:00:00", None),
+        ("bad", None),
+        (None, "2026-10-01T00:00:00"),
+        ("2026-10-03T00:00:00Z", "2026-10-02T00:00:00Z"),
+    ],
+)
+def test_log_query_rejects_naive_malformed_or_reversed_utc_window(start, end):
+    from app.logs import service
+
+    with pytest.raises(ValueError):
+        service.parse_log_window(start, end)
+
+
+def test_log_query_normalizes_offset_time_and_binds_cursor_to_filters():
+    from app.logs import service
+
+    start, end = service.parse_log_window("2026-10-01T05:30:00+05:30", "2026-10-02T00:00:00Z")
+    assert start == datetime(2026, 10, 1)
+    assert end == datetime(2026, 10, 2)
+    token = service.encode_log_cursor(42, "device-a", "kernel", start, end, "newest")
+    assert service.decode_log_cursor(token, "device-a", "kernel", start, end, "newest") == 42
+    with pytest.raises(ValueError):
+        service.decode_log_cursor(token, "device-b", "kernel", start, end, "newest")
+    with pytest.raises(ValueError):
+        service.decode_log_cursor(token, "device-a", "system_journal", start, end, "newest")
+    with pytest.raises(ValueError):
+        service.decode_log_cursor(token, "device-a", "kernel", start, end, "oldest")
+    with pytest.raises(ValueError):
+        service.decode_log_cursor("not-base64", "device-a", "kernel", start, end, "newest")

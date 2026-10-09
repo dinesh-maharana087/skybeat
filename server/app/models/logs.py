@@ -16,6 +16,7 @@ class DeviceLogEntry(Base):
             "device_id", "source", "entry_hash", name="uq_device_log_entry_source_hash"
         ),
         Index("ix_device_log_entries_recent", "device_id", "source", "id"),
+        Index("ix_device_log_entries_retention", "received_at", "id"),
         TABLE_OPTIONS,
     )
 
@@ -31,7 +32,7 @@ class DeviceLogEntry(Base):
 
 class DeviceLogSource(Base):
     __tablename__ = "device_log_sources"
-    __table_args__ = (TABLE_OPTIONS,)
+    __table_args__ = (Index("ix_device_log_sources_retention", "checked_at"), TABLE_OPTIONS)
 
     device_id: Mapped[int] = mapped_column(
         ForeignKey("devices.id", ondelete="RESTRICT"), primary_key=True
