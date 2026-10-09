@@ -2380,3 +2380,36 @@ snapshots or merge any recipient with `SKYBEAT_ALERT_EMAIL_RECIPIENTS`.
 The server records a policy-change audit event containing the actor, project,
 event flags, and recipient count. Recipient email addresses are not copied to
 the audit details.
+
+---
+
+# 81. Agent Diagnostic Upload (Stage 12G)
+
+`POST /api/v1/agent/logs` retains the schema-v1 envelope: `schema_version`,
+allowlisted `source`, source `status`, and `entries` containing a stable SHA-256
+cursor-derived `entry_id`, optional timezone-aware `occurred_at` and severity,
+and message. The existing device bearer credential determines the device;
+the payload cannot choose a device or project. No batch ID is required.
+
+The server streams at most 72 KiB of JSON, accepts at most 80 entries and
+2,048 characters per message, and rejects unknown fields, sources, malformed
+IDs/timestamps, and entries attached to an unavailable source. It validates
+the entire envelope before storage. A valid batch is one transaction: an
+invalid new entry rejects and rolls back the batch. Within a valid batch,
+`device + entry_id` is idempotent across retries and sources; already stored
+entries count as duplicates, while new entries are stored. Equal message text
+with distinct IDs remains distinct. A successful response includes `accepted`
+and `duplicates` counts. Retention remains bounded to 500 stored entries per
+device/source and the configured age window, so idempotency applies while an
+entry is retained.
+
+The separate diagnostics limiter permits six uploads per minute per device
+and returns `429` with `Retry-After: 60` when exhausted. Authentication errors
+return `401`; invalid payloads return `422`; oversized requests return `413`;
+storage failures return `503`. These failures do not change heartbeat rate
+accounting or availability. The agent retains HTTPS verification, sends at
+most 80 collected entries, drops oldest entries when its 72 KiB encoded body
+limit is reached, retries transient network/5xx failures at most once after a
+one-second delay, and defers after `429` using bounded retry guidance (one to
+300 seconds). No persistent local diagnostics queue is maintained; a failed
+cycle may lose older entries while heartbeats continue independently.

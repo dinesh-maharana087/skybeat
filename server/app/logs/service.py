@@ -173,7 +173,6 @@ class LogWatchService:
                     session.scalars(
                         select(DeviceLogEntry.entry_hash).where(
                             DeviceLogEntry.device_id == device.id,
-                            DeviceLogEntry.source == upload.source,
                             DeviceLogEntry.entry_hash.in_(hashes),
                         )
                     )
@@ -238,6 +237,7 @@ class LogWatchService:
             return {
                 "source": upload.source,
                 "accepted": len(seen) - len(existing),
+                "duplicates": len(upload.entries) - (len(seen) - len(existing)),
                 "received_at": wire_time(now),
             }
 

@@ -3,6 +3,7 @@ import json
 from dataclasses import replace
 
 import httpx
+import pytest
 
 from skybeat_agent.collectors.logs import JournalCollector, parse_journal
 from skybeat_agent.collectors.process import ProcessResult
@@ -171,6 +172,131 @@ def test_log_transport_is_bounded_and_does_not_replay_an_unlimited_queue():
     assert len(requests[0].content) <= 72 * 1024
     assert requests[0].headers["authorization"].startswith("Bearer sb1.")
     assert requests[0].url.path == "/api/v1/agent/logs"
+
+
+def test_log_sender_backs_off_after_429_without_stopping_later_cycles():
+    requests = []
+    now = [0.0]
+
+    def handle(request):
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(429, headers={"Retry-After": "60"})
+        return httpx.Response(200, json={"accepted": 1})
+
+    async def exercise():
+        sender = LogSender(_config(), transport=httpx.MockTransport(handle), clock=lambda: now[0])
+        payload = {"schema_version": 1, "source": "kernel", "status": "available", "entries": []}
+        assert await sender.send(payload) is False
+        assert await sender.send(payload) is False
+        now[0] = 60.0
+        assert await sender.send(payload) is True
+
+    asyncio.run(exercise())
+    assert len(requests) == 2
+
+
+def test_log_sender_bounds_entries_and_drops_oldest_before_upload():
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(200, json={"accepted": 80})
+
+    async def exercise():
+        sender = LogSender(_config(), transport=httpx.MockTransport(handle))
+        return await sender.send(
+            {
+                "schema_version": 1,
+                "source": "kernel",
+                "status": "available",
+                "entries": [
+                    {"entry_id": f"{number:064x}", "message": "safe"} for number in range(81)
+                ],
+            }
+        )
+
+    assert asyncio.run(exercise()) is True
+    entries = json.loads(requests[0].content)["entries"]
+    assert len(entries) == 80
+    assert entries[0]["entry_id"] == f"{1:064x}"
+
+
+def test_log_sender_drops_oldest_entries_to_keep_encoded_body_bounded():
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(200, json={"accepted": 1})
+
+    async def exercise():
+        sender = LogSender(_config(), transport=httpx.MockTransport(handle))
+        return await sender.send(
+            {
+                "schema_version": 1,
+                "source": "kernel",
+                "status": "available",
+                "entries": [
+                    {"entry_id": f"{number:064x}", "message": "é" * 2048} for number in range(30)
+                ],
+            }
+        )
+
+    assert asyncio.run(exercise()) is True
+    assert len(requests[0].content) <= 72 * 1024
+    entries = json.loads(requests[0].content)["entries"]
+    assert 0 < len(entries) < 30
+    assert entries[-1]["entry_id"] == f"{29:064x}"
+
+
+@pytest.mark.parametrize(
+    "failure", [503, httpx.ReadTimeout("timed out"), httpx.ConnectError("offline")]
+)
+def test_log_sender_retries_transient_failure_with_identical_body(failure):
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        if len(requests) == 1:
+            if isinstance(failure, Exception):
+                raise failure
+            return httpx.Response(failure)
+        return httpx.Response(200, json={"accepted": 1})
+
+    async def exercise():
+        sender = LogSender(
+            _config(),
+            transport=httpx.MockTransport(handle),
+            sleep=lambda _: asyncio.sleep(0),
+        )
+        return await sender.send(
+            {"schema_version": 1, "source": "kernel", "status": "available", "entries": []}
+        )
+
+    assert asyncio.run(exercise()) is True
+    assert len(requests) == 2
+    assert requests[0].content == requests[1].content
+
+
+def test_log_sender_stops_after_bounded_transient_attempts():
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(503)
+
+    async def exercise():
+        sender = LogSender(
+            _config(),
+            transport=httpx.MockTransport(handle),
+            sleep=lambda _: asyncio.sleep(0),
+        )
+        return await sender.send(
+            {"schema_version": 1, "source": "kernel", "status": "available", "entries": []}
+        )
+
+    assert asyncio.run(exercise()) is False
+    assert len(requests) == 2
 
 
 def test_failed_source_does_not_prevent_later_source_upload():

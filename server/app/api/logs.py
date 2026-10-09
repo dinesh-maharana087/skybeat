@@ -1,6 +1,7 @@
 """Narrow device log upload and dashboard recent-log read."""
 
 import asyncio
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -16,6 +17,7 @@ from app.logs.service import LogRateLimited, LogTimestampInvalid, LogWatchServic
 from app.schemas.logs import MAX_LOG_BODY_BYTES, LogUploadInvalid, parse_log_upload
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def _body(request: Request) -> bytes:
@@ -67,6 +69,11 @@ async def upload_logs(request: Request) -> JSONResponse:
     except AuthenticationFailed:
         return error(request, 401, "authentication_failed", "Device authentication failed.")
     except LogRateLimited:
+        logger.warning(
+            "log_upload_rate_limited source=%s",
+            payload.source,
+            extra={"request_id": request.state.request_id},
+        )
         return error(
             request,
             429,
@@ -80,6 +87,13 @@ async def upload_logs(request: Request) -> JSONResponse:
         return error(
             request, 503, "database_unavailable", "Log storage is temporarily unavailable."
         )
+    logger.info(
+        "log_upload_accepted source=%s accepted=%s duplicates=%s",
+        payload.source,
+        result["accepted"],
+        result["duplicates"],
+        extra={"request_id": request.state.request_id},
+    )
     return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
 

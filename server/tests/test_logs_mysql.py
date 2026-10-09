@@ -74,6 +74,51 @@ def test_log_migration_auth_dedup_retention_and_device_isolation(identity, mysql
     ]
 
 
+def test_log_batch_retry_deduplicates_across_sources_and_accepts_new_ids(identity, mysql_database):
+    enrolled = identity.enroll(identity.create_project(f"Batch {uuid4()}").public_id, "Batch")
+    token = enrolled.credential.token.get_secret_value()
+    service = LogWatchService(mysql_database)
+    first = LogUpload(
+        schema_version=1,
+        source="kernel",
+        status="available",
+        entries=[_entry(1), _entry(2), _entry(3), _entry(4)],
+    )
+    second = LogUpload(
+        schema_version=1,
+        source="system_journal",
+        status="available",
+        entries=[
+            _entry(1),
+            _entry(2),
+            _entry(5).model_copy(update={"message": "same text"}),
+            _entry(6).model_copy(update={"message": "same text"}),
+        ],
+    )
+    assert service.accept(first, token)["accepted"] == 4
+    result = service.accept(second, token)
+    assert result["accepted"] == 2
+    assert result["duplicates"] == 2
+    assert service.accept(second, token)["accepted"] == 0
+    items = service.recent(enrolled.device.device_uuid)["items"]
+    assert len(items) == 6
+    assert sum(item["message"] == "same text" for item in items) == 2
+
+
+def test_log_upload_rejects_disabled_and_revoked_device_credentials(identity, mysql_database):
+    enrolled = identity.enroll(identity.create_project(f"Auth {uuid4()}").public_id, "Auth")
+    token = enrolled.credential.token.get_secret_value()
+    service = LogWatchService(mysql_database)
+    batch = LogUpload(schema_version=1, source="kernel", status="available", entries=[_entry(1)])
+    identity.set_enabled(enrolled.device.device_uuid, False)
+    with pytest.raises(AuthenticationFailed):
+        service.accept(batch, token)
+    identity.set_enabled(enrolled.device.device_uuid, True)
+    identity.revoke(enrolled.device.device_uuid, enrolled.credential.credential_id)
+    with pytest.raises(AuthenticationFailed):
+        service.accept(batch, token)
+
+
 def test_log_query_uses_server_utc_window_and_stable_device_scoped_cursor(identity, mysql_database):
     first = identity.enroll(identity.create_project(f"Query A {uuid4()}").public_id, "Query A")
     second = identity.enroll(identity.create_project(f"Query B {uuid4()}").public_id, "Query B")

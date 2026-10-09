@@ -1,10 +1,19 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-10-09
-Current stage: Stage 12F - Agent Journal/Systemd/Kernel Collector
+Current stage: Stage 12G - Secure Batched Diagnostic Upload
 Current UI stage: Stage 12D - Alert Routing device overrides
-Current milestone: Existing fixed journal collector hardened with credential redaction before upload.
-Status: Stage 12E accepted and committed. Stage 12F code and automated verification complete; Linux-device acceptance pending. Do not start Stage 12G.
+Current milestone: Existing authenticated diagnostics upload hardened for bounded retries and device-scoped idempotency.
+Status: Stage 12G accepted; isolated-MySQL diagnostics verification and final Linux-device acceptance remain pending. Stop before Stage 12H.
+
+## Stage 12G Checkpoint
+
+- Stage 12F is committed at `1ee3bcd`; Stage 12G remains uncommitted. Reused `/api/v1/agent/logs`, the schema-v1 payload, permanent device credential, and Stage 12E tables. No migration, batch-ID subsystem, new identity, or heartbeat contract change.
+- Server validates the whole bounded envelope and handles entries in one transaction. An indexed device/entry-hash lookup now deduplicates the same entry ID across sources as well as retries; mixed batches retain new IDs. The additive success response reports accepted and duplicate counts. Safe upload-count and rate-limit logs omit credentials and message content.
+- Agent version 1.0.3 sends at most 80 entries and 72 KiB of encoded JSON, dropping oldest entries when necessary. It retries timeout, connection, and transient server failures once after one second. A diagnostics `429` uses bounded `Retry-After` delay of 1-300 seconds across cycles; no persistent queue or heartbeat coupling was added. Collector commands and 48 KiB message-byte cap remain unchanged.
+- Verification: full agent suite 88 passed. Full server suite 537 passed, 57 skipped (55 isolated-MySQL tests without `SKYBEAT_TEST_DATABASE_URL`, 2 Bash-dependent tests on Windows) using a workspace-local pytest base directory. The first full-server attempt had 20 `tmp_path` setup errors because the default Windows temporary directory was inaccessible; a representative test and the full suite passed with the local base directory. Agent/server Ruff, format checks, strict mypy (13/62 source files), and `git diff --check` passed.
+- MySQL-specific diagnostics authentication, cross-source/mixed-batch deduplication, and retention tests remain deferred because no dedicated `SKYBEAT_TEST_DATABASE_URL` is configured. Final V1 Linux acceptance targets the latest complete agent, version 1.0.3: in-place upgrade without re-enrollment; preserved device UUID, credential, server URL, and project; active `skybeat-agent` service; successful heartbeat and CPU/memory/GPU telemetry; agent/system/kernel diagnostic collection; bounded batching and retry behavior; and no persistent unexpected `429` or `503` responses. Live Linux/HTTPS behavior has not been claimed.
+- Security review: no shell execution, credential logging, unbounded queue/body, client-selected device/project identity, TLS bypass, or shared heartbeat rate-limit state was introduced. Offline `uv lock` could not initialize the protected user cache; only the editable package version entry was synchronized manually in `agent/uv.lock`, with dependencies unchanged.
 
 ## Stage 12F Checkpoint
 
@@ -12,10 +21,10 @@ Status: Stage 12E accepted and committed. Stage 12F code and automated verificat
 - Added safe redaction of configured credentials, bearer credentials, SkyBeat `sb1.` tokens, and common token/secret/password assignments before journal messages leave the agent. Fixed placeholder handling in the existing redaction boundary.
 - Strengthened source-command tests to assert the complete allowlisted argument arrays. Agent package version advanced from 1.0.1 to 1.0.2 in metadata and lockfile.
 - Fresh 2026-10-09 automated verification with the existing root Python 3.12.14 environment: full agent suite 81 passed; server diagnostics/log-upload and heartbeat compatibility suite 158 passed, 15 isolated-MySQL tests skipped because `SKYBEAT_TEST_DATABASE_URL` is not configured. Agent Ruff and format passed (22 files); strict mypy passed (13 source files). Server `app`/`tests` Ruff and format passed (113 files); strict mypy passed (62 source files); `git diff --check` passed.
-- Linux test-device validation was not run in this Windows environment. Installing version 1.0.2 on the retained device requires the existing reviewed package/install workflow; preserve its device identity, credential, server URL, and configuration. No re-enrollment or privilege changes were made.
+- Linux test-device validation was not run for the Stage 12F version 1.0.2 build in this Windows environment. Final V1 acceptance will use agent 1.0.3 through the existing reviewed in-place package/install workflow; no re-enrollment or privilege changes were made.
 - Toolchain check: the root Python launches, and the explicit existing `D:\Dinesh\deviceHealth\.tmp\uv-tool\Scripts\uv.exe` reports version 0.12.6. The agent venv launcher still points to a removed Python installation; the agent suite passed through the root venv without rebuilding or installing anything. Whole-tree server Ruff/format checks still report pre-existing formatting in three unchanged migration files; the configured `app`/`tests` scope passes.
-- Stage 12F acceptance remains pending live confirmation that the Linux service, heartbeat, telemetry, and available/unavailable journal sources behave as expected. No Stage 12G work has started.
-- Stages 12G-12J remain out of scope.
+- Stage 12F collector behavior remains part of the final agent 1.0.3 Linux acceptance described above.
+- Stages 12H-12J remain out of scope.
 
 ## Stage 12E Checkpoint
 

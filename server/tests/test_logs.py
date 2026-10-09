@@ -84,7 +84,7 @@ def test_log_read_route_uses_current_dashboard_session_boundary():
     assert anonymous.status_code == 401
 
 
-def test_log_upload_and_read_routes_bind_to_existing_services(monkeypatch):
+def test_log_upload_and_read_routes_bind_to_existing_services(monkeypatch, capfd):
     from app.api import logs as api
     from app.devices.credentials import generate_credential
 
@@ -98,7 +98,7 @@ def test_log_upload_and_read_routes_bind_to_existing_services(monkeypatch):
 
         def accept(self, payload, presented_token):
             seen.append((payload.source, presented_token))
-            return {"source": payload.source, "accepted": 1}
+            return {"source": payload.source, "accepted": 1, "duplicates": 2}
 
         def recent(self, requested, *, source=None, limit=60, **_filters):
             seen.append((requested, source, limit))
@@ -121,8 +121,65 @@ def test_log_upload_and_read_routes_bind_to_existing_services(monkeypatch):
         client.cookies.set("__Host-skybeat_session", "valid")
         read = client.get(f"/api/v1/devices/{device_id}/logs?source=kernel&limit=10")
     assert accepted.status_code == 200
+    assert accepted.json()["duplicates"] == 2
     assert read.status_code == 200
     assert seen == [("skybeat_agent", token), (device_id, "kernel", 10)]
+    logged = capfd.readouterr().err
+    assert "log_upload_accepted" in logged
+    assert "accepted=1 duplicates=2" in logged
+    assert token not in logged
+
+
+def test_diagnostics_rate_limit_is_separate_from_heartbeat_limit():
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    assert all(app.state.log_limiter.allow(1) for _ in range(6))
+    assert app.state.log_limiter.allow(1) is False
+    assert app.state.log_limiter.allow(2) is True
+    assert app.state.heartbeat_limiter.allow(1) is True
+
+
+@pytest.mark.parametrize("failure,status", [("storage", 503), ("rate_limit", 429)])
+def test_log_failure_does_not_change_heartbeat_result(monkeypatch, failure, status):
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.devices.credentials import generate_credential
+    from app.heartbeats.service import AcceptedHeartbeat, HeartbeatService
+    from app.logs.service import LogRateLimited, LogWatchService
+    from tests.heartbeat_fixtures import heartbeat_payload
+
+    def failed_log(self, upload, token):
+        if failure == "rate_limit":
+            raise LogRateLimited()
+        raise SQLAlchemyError("diagnostics unavailable")
+
+    def accepted_heartbeat(self, heartbeat, token):
+        return AcceptedHeartbeat(
+            {
+                "schema_version": 1,
+                "heartbeat_id": heartbeat.heartbeat_id,
+                "device_id": heartbeat.device_id,
+                "accepted_at": "2026-10-09T00:00:00.000000Z",
+            }
+        )
+
+    monkeypatch.setattr(LogWatchService, "accept", failed_log)
+    monkeypatch.setattr(HeartbeatService, "accept", accepted_heartbeat)
+    app = create_app(
+        Settings(env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test")
+    )
+    token = generate_credential().token.get_secret_value()
+    headers = {"Authorization": f"Bearer {token}"}
+    with TestClient(app, base_url="https://testserver") as client:
+        diagnostic = client.post("/api/v1/agent/logs", json=upload(), headers=headers)
+        heartbeat = client.post("/api/v1/heartbeats", json=heartbeat_payload(), headers=headers)
+    assert diagnostic.status_code == status
+    if status == 429:
+        assert diagnostic.headers["retry-after"] == "60"
+    assert heartbeat.status_code == 200
+    assert heartbeat.json()["heartbeat_id"] == heartbeat_payload()["heartbeat_id"]
 
 
 def test_log_read_route_forwards_bounded_time_and_cursor_filters(monkeypatch):
