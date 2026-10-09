@@ -1,10 +1,21 @@
 # SkyBeat V1 Implementation Status
 
 Last updated: 2026-10-09
-Current stage: Stage 12E - Diagnostics DB/API + Retention
+Current stage: Stage 12F - Agent Journal/Systemd/Kernel Collector
 Current UI stage: Stage 12D - Alert Routing device overrides
-Current milestone: Existing diagnostics foundation refined with age retention and bounded log queries.
-Status: Stage 12E accepted. The existing authenticated upload, deduplication, count cap, and Device Detail Log Watch are retained. No Stage 12F work started.
+Current milestone: Existing fixed journal collector hardened with credential redaction before upload.
+Status: Stage 12E accepted and committed. Stage 12F code and automated verification complete; Linux-device acceptance pending. Do not start Stage 12G.
+
+## Stage 12F Checkpoint
+
+- Recovered the existing three-source `/usr/bin/journalctl` collector and independent publisher. It already used fixed per-source arguments, `--since=-5min`, `--lines=100`, a 4-second timeout, and the shared 64 KiB subprocess output cap.
+- Added safe redaction of configured credentials, bearer credentials, SkyBeat `sb1.` tokens, and common token/secret/password assignments before journal messages leave the agent. Fixed placeholder handling in the existing redaction boundary.
+- Strengthened source-command tests to assert the complete allowlisted argument arrays. Agent package version advanced from 1.0.1 to 1.0.2 in metadata and lockfile.
+- Fresh 2026-10-09 automated verification with the existing root Python 3.12.14 environment: full agent suite 81 passed; server diagnostics/log-upload and heartbeat compatibility suite 158 passed, 15 isolated-MySQL tests skipped because `SKYBEAT_TEST_DATABASE_URL` is not configured. Agent Ruff and format passed (22 files); strict mypy passed (13 source files). Server `app`/`tests` Ruff and format passed (113 files); strict mypy passed (62 source files); `git diff --check` passed.
+- Linux test-device validation was not run in this Windows environment. Installing version 1.0.2 on the retained device requires the existing reviewed package/install workflow; preserve its device identity, credential, server URL, and configuration. No re-enrollment or privilege changes were made.
+- Toolchain check: the root Python launches, and the explicit existing `D:\Dinesh\deviceHealth\.tmp\uv-tool\Scripts\uv.exe` reports version 0.12.6. The agent venv launcher still points to a removed Python installation; the agent suite passed through the root venv without rebuilding or installing anything. Whole-tree server Ruff/format checks still report pre-existing formatting in three unchanged migration files; the configured `app`/`tests` scope passes.
+- Stage 12F acceptance remains pending live confirmation that the Linux service, heartbeat, telemetry, and available/unavailable journal sources behave as expected. No Stage 12G work has started.
+- Stages 12G-12J remain out of scope.
 
 ## Stage 12E Checkpoint
 

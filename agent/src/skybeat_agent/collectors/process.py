@@ -1,4 +1,4 @@
-"""Bounded subprocess execution for the fixed NVIDIA query only."""
+"""Bounded subprocess execution for fixed local telemetry and journal queries."""
 
 import asyncio
 import os

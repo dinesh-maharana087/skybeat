@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from skybeat_agent.collectors.process import BoundedProcess
+from skybeat_agent.logging import redact_sensitive_text
 
 SOURCES = ("skybeat_agent", "system_journal", "kernel")
 MAX_UPLOAD_ENTRIES = 80
@@ -20,9 +21,8 @@ _ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 def _message(value: object) -> str | None:
     if not isinstance(value, str):
         return None
-    safe = (
-        _CONTROL.sub(" ", _ANSI.sub("", value)).encode("utf-8", "replace").decode("utf-8").strip()
-    )
+    safe = _CONTROL.sub(" ", _ANSI.sub("", value)).encode("utf-8", "replace").decode("utf-8")
+    safe = redact_sensitive_text(safe).strip()
     if not safe:
         return None
     return safe[:MAX_MESSAGE_CHARS]

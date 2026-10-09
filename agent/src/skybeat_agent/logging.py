@@ -7,14 +7,14 @@ from typing import Any
 
 _BASE_RECORD_FACTORY = logging.getLogRecordFactory()
 _configured_secrets: tuple[str, ...] = ()
-_BEARER_PATTERN = re.compile(r"(?i)(authorization\s*:\s*bearer\s+)\S+")
+_BEARER_PATTERN = re.compile(r"(?i)(authorization\s*:\s*bearer\s+)[^\s,;]+")
 _SKYBEAT_TOKEN_PATTERN = re.compile(r"\bsb1\.[A-Za-z0-9-]+\.[A-Za-z0-9_-]+\b")
 _SENSITIVE_VALUE_PATTERN = re.compile(
     r"(?ix)"
     r"(?P<key>[a-z0-9_.-]*(?:token|secret|password|api[_-]?key)[a-z0-9_.-]*)"
     r"(?P<separator>\s*[:=]\s*)"
     r"(?P<quote>['\"]?)"
-    r"(?P<value>[^\s,;}\]]+)"
+    r"(?P<value>\[REDACTED\]|[^\s,;}\]]+)"
     r"(?P=quote)"
 )
 
@@ -23,15 +23,20 @@ def _redact(text: str) -> str:
     redacted = text
     for secret in _configured_secrets:
         redacted = redacted.replace(secret, "[REDACTED]")
-    redacted = _BEARER_PATTERN.sub(r"\1[REDACTED]", redacted)
-    redacted = _SKYBEAT_TOKEN_PATTERN.sub("[REDACTED]", redacted)
-    return _SENSITIVE_VALUE_PATTERN.sub(
+    redacted = _SENSITIVE_VALUE_PATTERN.sub(
         lambda match: (
             f"{match.group('key')}{match.group('separator')}"
             f"{match.group('quote')}[REDACTED]{match.group('quote')}"
         ),
         redacted,
     )
+    redacted = _BEARER_PATTERN.sub(r"\1[REDACTED]", redacted)
+    return _SKYBEAT_TOKEN_PATTERN.sub("[REDACTED]", redacted)
+
+
+def redact_sensitive_text(text: str) -> str:
+    """Return arbitrary collected text with configured and obvious secrets removed."""
+    return _redact(text)
 
 
 def _redacting_record_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:

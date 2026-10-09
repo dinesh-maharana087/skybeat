@@ -58,6 +58,33 @@ def test_journal_neutralizes_invalid_unicode_without_stopping_later_records():
     assert entries[0]["message"] == "valid?text"
 
 
+def test_journal_redacts_agent_credential_material_from_uploaded_messages():
+    credential = "sb1.123e4567-e89b-12d3-a456-426614174000." + "a" * 42 + "A"
+    entries = parse_journal(
+        _row(
+            message=(
+                f"Authorization: Bearer {credential}; "
+                f"SKYBEAT_DEVICE_TOKEN={credential}; password=hunter2"
+            )
+        )
+    )
+    assert entries[0]["message"] == (
+        "Authorization: Bearer [REDACTED]; SKYBEAT_DEVICE_TOKEN=[REDACTED]; password=[REDACTED]"
+    )
+
+
+def test_journal_redaction_keeps_configured_credential_placeholder_well_formed():
+    from skybeat_agent.logging import configure_logging
+
+    credential = "sb1.123e4567-e89b-12d3-a456-426614174000." + "a" * 42 + "A"
+    configure_logging("INFO", secrets=(credential,))
+    try:
+        entries = parse_journal(_row(message=f"SKYBEAT_DEVICE_TOKEN={credential}"))
+    finally:
+        configure_logging("INFO")
+    assert entries[0]["message"] == "SKYBEAT_DEVICE_TOKEN=[REDACTED]"
+
+
 def test_collector_uses_only_fixed_journal_queries_and_isolates_failures():
     class Process:
         def __init__(self):
@@ -87,20 +114,34 @@ def test_collector_uses_only_fixed_journal_queries_and_isolates_failures():
         "available",
         "permission_unavailable",
     ]
-    assert all(
-        command[:6]
-        == [
+    assert [command for command, _ in process.commands] == [
+        [
             "/usr/bin/journalctl",
             "--system",
             "--no-pager",
             "--output=json",
             "--since=-5min",
             "--lines=100",
-        ]
-        for command, _ in process.commands
-    )
-    assert "--unit=skybeat-agent.service" in process.commands[0][0]
-    assert "--dmesg" in process.commands[2][0]
+            "--unit=skybeat-agent.service",
+        ],
+        [
+            "/usr/bin/journalctl",
+            "--system",
+            "--no-pager",
+            "--output=json",
+            "--since=-5min",
+            "--lines=100",
+        ],
+        [
+            "/usr/bin/journalctl",
+            "--system",
+            "--no-pager",
+            "--output=json",
+            "--since=-5min",
+            "--lines=100",
+            "--dmesg",
+        ],
+    ]
     assert all(timeout == 4 for _, timeout in process.commands)
 
 

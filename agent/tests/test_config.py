@@ -106,4 +106,4 @@ def test_console_version_does_not_require_agent_configuration(monkeypatch, capsy
 
     main()
 
-    assert capsys.readouterr().out == "skybeat-agent 1.0.1\n"
+    assert capsys.readouterr().out == "skybeat-agent 1.0.2\n"
