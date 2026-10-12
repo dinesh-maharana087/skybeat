@@ -192,8 +192,8 @@ def test_log_read_route_forwards_bounded_time_and_cursor_filters(monkeypatch):
         def __init__(self, database):
             pass
 
-        def recent(self, requested, *, source, limit, from_time, until, cursor, direction):
-            seen.append((requested, source, limit, from_time, until, cursor, direction))
+        def recent(self, requested, *, source, limit, from_time, until, cursor, direction, q):
+            seen.append((requested, source, limit, from_time, until, cursor, direction, q))
             return {"sources": [], "items": [], "next_cursor": None}
 
     class Authenticated:
@@ -217,12 +217,14 @@ def test_log_read_route_forwards_bounded_time_and_cursor_filters(monkeypatch):
                 "until": "2026-10-02T00:00:00Z",
                 "cursor": "opaque",
                 "direction": "oldest",
+                "q": "  GPU  error ",
             },
         )
         too_large = client.get(f"/api/v1/devices/{device_id}/logs?limit=101")
+        too_long_search = client.get(f"/api/v1/devices/{device_id}/logs?q={'x' * 129}")
         bad_direction = client.get(f"/api/v1/devices/{device_id}/logs?direction=random")
     assert response.status_code == 200
-    assert too_large.status_code == bad_direction.status_code == 422
+    assert too_large.status_code == too_long_search.status_code == bad_direction.status_code == 422
     assert seen == [
         (
             device_id,
@@ -232,6 +234,7 @@ def test_log_read_route_forwards_bounded_time_and_cursor_filters(monkeypatch):
             "2026-10-02T00:00:00Z",
             "opaque",
             "oldest",
+            "  GPU  error ",
         )
     ]
 
@@ -268,3 +271,51 @@ def test_log_query_normalizes_offset_time_and_binds_cursor_to_filters():
         service.decode_log_cursor(token, "device-a", "kernel", start, end, "oldest")
     with pytest.raises(ValueError):
         service.decode_log_cursor("not-base64", "device-a", "kernel", start, end, "newest")
+
+
+def test_log_search_normalizes_plain_text_and_escapes_like_characters():
+    from app.logs.service import log_search_pattern, normalize_log_search
+
+    assert normalize_log_search("  GPU   error  ") == "GPU error"
+    assert normalize_log_search("  ") is None
+    assert log_search_pattern(r"50%_ / \\ '雪") == r"%50/%/_ // \\ '雪%"
+    with pytest.raises(ValueError):
+        normalize_log_search("x" * 129)
+    with pytest.raises(ValueError):
+        normalize_log_search("GPU\nerror")
+
+
+def test_search_cursor_is_bound_to_normalized_query_and_old_cursor_remains_compatible():
+    from app.logs import service
+
+    searched = service.encode_log_cursor(42, "device-a", None, None, None, "newest", "GPU error")
+    assert (
+        service.decode_log_cursor(searched, "device-a", None, None, None, "newest", "GPU error")
+        == 42
+    )
+    with pytest.raises(ValueError):
+        service.decode_log_cursor(searched, "device-a", None, None, None, "newest", "other")
+    with pytest.raises(ValueError):
+        service.decode_log_cursor(searched, "device-a", None, None, None, "newest")
+    old = service.encode_log_cursor(43, "device-a", None, None, None, "newest")
+    assert service.decode_log_cursor(old, "device-a", None, None, None, "newest") == 43
+    unicode_query = "雪" * 128
+    unicode_cursor = service.encode_log_cursor(
+        44, "device-a", None, None, None, "newest", unicode_query
+    )
+    assert len(unicode_cursor) <= 2048
+    assert (
+        service.decode_log_cursor(
+            unicode_cursor, "device-a", None, None, None, "newest", unicode_query
+        )
+        == 44
+    )
+    emoji_query = "😀" * 128
+    emoji_cursor = service.encode_log_cursor(
+        45, "device-a", None, None, None, "newest", emoji_query
+    )
+    assert len(emoji_cursor) <= 2048
+    assert (
+        service.decode_log_cursor(emoji_cursor, "device-a", None, None, None, "newest", emoji_query)
+        == 45
+    )

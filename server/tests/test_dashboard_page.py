@@ -262,7 +262,7 @@ def test_log_watch_uses_existing_detail_refresh_and_text_only_source_cards():
     assert "Device offline. Stored recent logs remain available" in template
     for source in ("skybeat_agent", "system_journal", "kernel"):
         assert source in script
-    assert "fetchLogs ? requestDeviceLogs(deviceId) : Promise.resolve(null)" in script
+    assert "void loadDeviceLogs({ auto: true })" in script
     assert "if (refreshing) return;" in script
     assert "Last successful logs are retained" in script
     assert 'element("p", entry.message)' in script
@@ -276,9 +276,9 @@ def test_log_watch_rendering_preserves_untrusted_message_as_text_in_node():
         pytest.skip("Node is unavailable on this host")
     script = dashboard_script()
     controller = (
-        "function renderDeviceLogs(payload) {"
-        + script.split("function renderDeviceLogs(payload) {", 1)[1].split(
-            "\nasync function refreshDeviceDetailPage()", 1
+        "function updateLogWatchOffline() {"
+        + script.split("function updateLogWatchOffline() {", 1)[1].split(
+            "\nasync function loadDeviceLogs(", 1
         )[0]
     )
     harness = textwrap.dedent(
@@ -290,22 +290,26 @@ def test_log_watch_rendering_preserves_untrusted_message_as_text_in_node():
             append(...children) { this.children.push(...children); },
             replaceChildren(...children) { this.children = children; } };
         }
-        const container = node("div");
-        const status = node("p");
-        globalThis.document = { getElementById(id) {
-          return id === "log-watch-sources" ? container : status;
-        }, createElement: (tag) => node(tag) };
+        const nodes = new Map(["log-watch-sources", "log-watch-results", "log-watch-status",
+          "log-watch-summary", "log-watch-offline", "log-watch-older", "log-watch-refresh"]
+          .map((id) => [id, node("div")]));
+        globalThis.document = { getElementById: (id) => nodes.get(id),
+          createElement: (tag) => node(tag) };
         globalThis.element = node;
-        globalThis.formatRelativeTime = () => "just now";
+        globalThis.LOG_SOURCE_LABELS = { skybeat_agent: "SkyBeat Agent", system_journal: "System",
+          kernel: "Kernel" };
+        globalThis.logWatchState = { items: [], sources: [], nextCursor: null, loading: false,
+          offline: false };
         vm.runInThisContext(readFileSync(0, "utf8"));
         renderDeviceLogs({ sources: [
           { source: "skybeat_agent", status: "available" },
           { source: "system_journal", status: "permission_unavailable" },
           { source: "kernel", status: "no_report" },
-        ], items: [{ source: "skybeat_agent", message: "<img src=x onerror=alert(1)>",
+        ], items: [{ id: 1, source: "skybeat_agent", message: "<img src=x onerror=alert(1)>",
                      severity: "warning", received_at: "2026-10-06T00:00:00Z" }] });
+        const container = nodes.get("log-watch-sources");
         if (container.children.length !== 3) throw new Error("missing source card");
-        const message = container.children[0].children[2].children[0].children[1];
+        const message = nodes.get("log-watch-results").children[0].children[1];
         if (message.textContent !== "<img src=x onerror=alert(1)>" ||
             message.children.length !== 0) throw new Error("log message was not text only");
         if (container.children[1].children[1].textContent !== "Permission unavailable") {
@@ -317,6 +321,230 @@ def test_log_watch_rendering_preserves_untrusted_message_as_text_in_node():
             !container.children[2].children[1].className.includes("state--no-report")) {
           throw new Error("source state styling was lost");
         }
+        renderDeviceLogs({ items: [{ id: 1, source: "skybeat_agent", message: "duplicate",
+          received_at: "2026-10-06T00:00:00Z" }], next_cursor: null }, true);
+        if (nodes.get("log-watch-results").children.length !== 1) {
+          throw new Error("overlapping page duplicated a log");
+        }
+        logWatchState.offline = true;
+        updateLogWatchOffline();
+        if (nodes.get("log-watch-offline").hidden ||
+            nodes.get("log-watch-results").children.length !== 1) {
+          throw new Error("offline state hid stored history");
+        }
+        renderDeviceLogs({ sources: [
+          { source: "skybeat_agent", status: "no_report" },
+          { source: "system_journal", status: "no_report" },
+          { source: "kernel", status: "no_report" },
+        ], items: [] });
+        if (!nodes.get("log-watch-summary").textContent.includes("collected yet")) {
+          throw new Error("never-collected state is unclear");
+        }
+        renderDeviceLogs({ sources: [{ source: "kernel", status: "available" }], items: [] });
+        if (!nodes.get("log-watch-summary").textContent.includes("match these filters")) {
+          throw new Error("no-match state is unclear");
+        }
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=controller,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_log_watch_query_uses_utc_window_literal_search_and_bounded_cursor_in_node():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is unavailable on this host")
+    script = dashboard_script()
+    controller = (
+        "function logWindowForRange("
+        + script.split("function logWindowForRange(", 1)[1].split(
+            "\nasync function requestDeviceLogs(", 1
+        )[0]
+    )
+    harness = textwrap.dedent(
+        """
+        import { readFileSync } from "node:fs";
+        import vm from "node:vm";
+        globalThis.LOG_RANGE_MS = { "1h": 3600000, "24h": 86400000 };
+        globalThis.LOG_PAGE_LIMIT = 60;
+        vm.runInThisContext(readFileSync(0, "utf8"));
+        const window = logWindowForRange("1h", Date.UTC(2026, 9, 9, 12, 0, 0));
+        if (window.from !== "2026-10-09T11:00:00.000Z" ||
+            window.until !== "2026-10-09T12:00:00.000Z") {
+          throw new Error("time range is not a fixed UTC window");
+        }
+        const query = logQueryParams({ source: "kernel", q: "GPU 50%_", window }, "opaque");
+        if (query.get("source") !== "kernel" || query.get("q") !== "GPU 50%_" ||
+            query.get("cursor") !== "opaque" || query.get("limit") !== "60" ||
+            query.get("from") !== window.from || query.get("until") !== window.until) {
+          throw new Error("filter or cursor was lost");
+        }
+        if (normalizeLogSearch("  GPU   50%_  ") !== "GPU 50%_") {
+          throw new Error("search was not trimmed");
+        }
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=controller,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_log_watch_discards_stale_filter_response_and_keeps_fixed_cursor_window_in_node():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is unavailable on this host")
+    script = dashboard_script()
+    controller = (
+        "async function loadDeviceLogs("
+        + script.split("async function loadDeviceLogs(", 1)[1].split(
+            "\nfunction initializeLogWatch()", 1
+        )[0]
+    )
+    harness = textwrap.dedent(
+        """
+        import { readFileSync } from "node:fs";
+        import vm from "node:vm";
+        const nodes = new Map(["log-watch-status", "log-watch-older", "log-watch-refresh"]
+          .map((id) => [id, { textContent: "", disabled: false, hidden: false }]));
+        globalThis.document = { getElementById: (id) => nodes.get(id) };
+        globalThis.deviceDetailPage = { dataset: { deviceId: "device-a" } };
+        globalThis.lastLogAttemptAt = 0;
+        globalThis.logWatchState = { source: "", range: "24h", q: "", window: null,
+          items: [], sources: [], nextCursor: null, hasSuccess: false, olderLoaded: false,
+          generation: 0, controller: null, loading: false };
+        const calls = [];
+        const renders = [];
+        globalThis.logWindowForRange = () => ({ from: "fixed-from", until: "fixed-until" });
+        globalThis.requestDeviceLogs = (_id, filters, cursor, signal) =>
+          new Promise((resolve, reject) => calls.push({
+            filters, cursor, signal, resolve, reject,
+          }));
+        globalThis.renderDeviceLogs = (payload, older) => {
+          renders.push([payload.name, older]);
+          logWatchState.nextCursor = payload.next_cursor;
+          logWatchState.hasSuccess = true;
+        };
+        globalThis.syncLogWatchButtons = () => {};
+        vm.runInThisContext(readFileSync(0, "utf8"));
+        const stale = loadDeviceLogs();
+        logWatchState.source = "kernel";
+        logWatchState.q = "GPU";
+        const current = loadDeviceLogs();
+        if (!calls[0].signal.aborted || calls[1].filters.source !== "kernel" ||
+            calls[1].filters.q !== "GPU") {
+          throw new Error("filter change did not supersede request");
+        }
+        calls[1].resolve({ name: "new", next_cursor: "page-two" });
+        await current;
+        calls[0].resolve({ name: "stale", next_cursor: null });
+        await stale;
+        if (JSON.stringify(renders) !== JSON.stringify([["new", false]])) {
+          throw new Error("stale response replaced current results");
+        }
+        const older = loadDeviceLogs({ older: true });
+        if (calls[2].cursor !== "page-two" ||
+            calls[2].filters.window !== calls[1].filters.window) {
+          throw new Error("older page lost its cursor or fixed window");
+        }
+        calls[2].resolve({ name: "older", next_cursor: null });
+        await older;
+        if (JSON.stringify(renders) !== JSON.stringify([["new", false], ["older", true]])) {
+          throw new Error("older results were not appended");
+        }
+        const failed = loadDeviceLogs();
+        calls[3].reject(new Error("network"));
+        await failed;
+        if (renders.length !== 2 ||
+            !nodes.get("log-watch-status").textContent.includes("retained")) {
+          throw new Error("failed refresh cleared successful logs");
+        }
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=controller,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_log_watch_controls_query_selected_filters_and_reset_in_node():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is unavailable on this host")
+    script = dashboard_script()
+    controller = (
+        "function initializeLogWatch() {"
+        + script.split("function initializeLogWatch() {", 1)[1].split(
+            "\nasync function refreshDeviceDetailPage()", 1
+        )[0]
+    )
+    harness = textwrap.dedent(
+        """
+        import { readFileSync } from "node:fs";
+        import vm from "node:vm";
+        const nodes = new Map(["log-watch-source", "log-watch-range", "log-watch-search",
+          "log-watch-search-form", "log-watch-reset", "log-watch-refresh", "log-watch-older"]
+          .map((id) => [id, { value: "", options: [], handlers: {},
+            append(option) { this.options.push(option); },
+            addEventListener(name, callback) { this.handlers[name] = callback; } }]));
+        globalThis.document = { getElementById: (id) => nodes.get(id) };
+        globalThis.Option = function(label, value) { this.label = label; this.value = value; };
+        globalThis.LOG_SOURCE_LABELS = { skybeat_agent: "SkyBeat Agent", system_journal: "System",
+          kernel: "Kernel" };
+        globalThis.logWatchState = { source: "", range: "24h", q: "" };
+        globalThis.normalizeLogSearch = (value) => value.trim().replace(/\\s+/g, " ");
+        const requests = [];
+        globalThis.loadDeviceLogs = (options = {}) => {
+          requests.push({ source: logWatchState.source, range: logWatchState.range,
+            q: logWatchState.q, options });
+        };
+        vm.runInThisContext(readFileSync(0, "utf8"));
+        initializeLogWatch();
+        const source = nodes.get("log-watch-source");
+        if (source.options.map((option) => option.value).join(",") !==
+            "skybeat_agent,system_journal,kernel") {
+          throw new Error("canonical source options missing");
+        }
+        source.value = "kernel";
+        source.handlers.change();
+        nodes.get("log-watch-range").value = "1h";
+        nodes.get("log-watch-range").handlers.change();
+        nodes.get("log-watch-search").value = "  GPU   error  ";
+        if (requests.length !== 2) throw new Error("search queried on keystroke");
+        nodes.get("log-watch-search-form").handlers.submit({ preventDefault() {} });
+        if (requests.length !== 3 || requests[2].source !== "kernel" ||
+            requests[2].range !== "1h" || requests[2].q !== "GPU error") {
+          throw new Error("search/filter state was not queried");
+        }
+        nodes.get("log-watch-reset").handlers.click();
+        if (requests.length !== 4 || requests[3].source !== "" ||
+            requests[3].range !== "24h" || requests[3].q !== "") {
+          throw new Error("reset did not restore default filters");
+        }
+        nodes.get("log-watch-older").handlers.click();
+        if (!requests[4].options.older) throw new Error("Load older was not wired");
+        nodes.get("log-watch-refresh").handlers.click();
+        if (requests.length !== 6) throw new Error("manual refresh was not wired");
         """
     )
     result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable

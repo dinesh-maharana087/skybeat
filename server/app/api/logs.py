@@ -106,8 +106,9 @@ async def recent_logs(
     limit: int = Query(default=60, ge=1, le=100),
     from_time: str | None = Query(default=None, alias="from", max_length=40),
     until: str | None = Query(default=None, max_length=40),
-    cursor: str | None = Query(default=None, max_length=512),
+    cursor: str | None = Query(default=None, max_length=2048),
     direction: Literal["newest", "oldest"] = "newest",
+    q: str | None = Query(default=None, max_length=128),
 ) -> JSONResponse:
     service = LogWatchService(request.app.state.database)
     try:
@@ -120,6 +121,7 @@ async def recent_logs(
             until=until,
             cursor=cursor,
             direction=direction,
+            q=q,
         )
     except DashboardNotFound as exc:
         raise HTTPException(

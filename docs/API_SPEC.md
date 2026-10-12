@@ -2413,3 +2413,22 @@ limit is reached, retries transient network/5xx failures at most once after a
 one-second delay, and defers after `429` using bounded retry guidance (one to
 300 seconds). No persistent local diagnostics queue is maintained; a failed
 cycle may lose older entries while heartbeats continue independently.
+
+---
+
+# 82. Device Log Watch Read Filters (Stage 12H)
+
+`GET /api/v1/devices/{device_uuid}/logs` remains a dashboard-session read for
+the selected device. It accepts the existing allowlisted `source`, `limit`
+(at most 100), UTC `from`/`until` received-time window, `direction`, and
+opaque keyset `cursor`. Optional `q` searches stored message text without
+interpreting SQL wildcard characters. Search is trimmed, internal whitespace
+is collapsed, and input is limited to 128 characters; invalid input returns
+`422`. The response retains `sources`, `items`, and `next_cursor`; each item
+also includes its numeric stored-row `id` for stable client-side deduplication.
+
+A cursor is bound to device UUID, source, time window, direction, and normalized
+search. Changing a filter starts a new first-page query. Existing cursors
+without a search remain valid. Results stay bounded by the existing per-source
+storage cap and retention policy. Log Watch uses fixed UTC windows per page
+sequence and does not request agent collection or modify heartbeat behavior.

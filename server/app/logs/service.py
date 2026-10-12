@@ -19,6 +19,7 @@ from app.schemas.logs import LOG_SOURCES, LogUpload
 
 MAX_STORED_PER_SOURCE = 500
 RETENTION_BATCH_SIZE = 500
+MAX_LOG_SEARCH_CHARS = 128
 _QUERY_TIME = re.compile(
     r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})\Z"
 )
@@ -45,6 +46,22 @@ def parse_log_window(
     return start, end
 
 
+def normalize_log_search(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if len(value) > MAX_LOG_SEARCH_CHARS:
+        raise ValueError("Log search is too long.")
+    if any((ord(char) < 32 and char != " ") or 127 <= ord(char) <= 159 for char in value):
+        raise ValueError("Log search is invalid.")
+    normalized = " ".join(value.split())
+    return normalized or None
+
+
+def log_search_pattern(value: str) -> str:
+    escaped = value.replace("/", "//").replace("%", "/%").replace("_", "/_")
+    return f"%{escaped}%"
+
+
 def _cursor_time(value: datetime | None) -> str | None:
     return value.isoformat(timespec="microseconds") if value is not None else None
 
@@ -56,20 +73,22 @@ def encode_log_cursor(
     from_time: datetime | None,
     until: datetime | None,
     direction: str,
+    q: str | None = None,
 ) -> str:
-    raw = json.dumps(
-        {
-            "v": 1,
-            "id": last_id,
-            "device": device_uuid,
-            "source": source,
-            "from": _cursor_time(from_time),
-            "until": _cursor_time(until),
-            "direction": direction,
-        },
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
+    payload = {
+        "v": 2 if q is not None else 1,
+        "id": last_id,
+        "device": device_uuid,
+        "source": source,
+        "from": _cursor_time(from_time),
+        "until": _cursor_time(until),
+        "direction": direction,
+    }
+    if q is not None:
+        payload["q"] = q
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode(
+        "utf-8"
+    )
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 
@@ -80,8 +99,9 @@ def decode_log_cursor(
     from_time: datetime | None,
     until: datetime | None,
     direction: str,
+    q: str | None = None,
 ) -> int:
-    if not value or len(value) > 512:
+    if not value or len(value) > 2048:
         raise ValueError("Log cursor is invalid.")
     try:
         raw = value.encode("ascii")
@@ -90,10 +110,13 @@ def decode_log_cursor(
         )
     except (UnicodeEncodeError, UnicodeDecodeError, binascii.Error, json.JSONDecodeError):
         raise ValueError("Log cursor is invalid.") from None
+    expected = {"v", "id", "device", "source", "from", "until", "direction"}
+    if q is not None:
+        expected.add("q")
     if (
         not isinstance(payload, dict)
-        or set(payload) != {"v", "id", "device", "source", "from", "until", "direction"}
-        or payload["v"] != 1
+        or set(payload) != expected
+        or payload["v"] != (2 if q is not None else 1)
         or not isinstance(payload["id"], int)
         or isinstance(payload["id"], bool)
         or not 1 <= payload["id"] <= 2**64 - 1
@@ -102,6 +125,7 @@ def decode_log_cursor(
         or payload["from"] != _cursor_time(from_time)
         or payload["until"] != _cursor_time(until)
         or payload["direction"] != direction
+        or (q is not None and payload["q"] != q)
     ):
         raise ValueError("Log cursor is invalid.")
     return payload["id"]
@@ -251,6 +275,7 @@ class LogWatchService:
         until: str | None = None,
         cursor: str | None = None,
         direction: str = "newest",
+        q: str | None = None,
     ) -> dict[str, object]:
         if source is not None and source not in LOG_SOURCES:
             raise ValueError("Invalid log source.")
@@ -259,6 +284,7 @@ class LogWatchService:
         if direction not in {"newest", "oldest"}:
             raise ValueError("Invalid log direction.")
         start, end = parse_log_window(from_time, until)
+        search = normalize_log_search(q)
         try:
             canonical = str(UUID(device_uuid))
         except (TypeError, ValueError):
@@ -266,7 +292,7 @@ class LogWatchService:
         if canonical != device_uuid:
             raise DashboardNotFound("Device not found.")
         last_id = (
-            decode_log_cursor(cursor, canonical, source, start, end, direction)
+            decode_log_cursor(cursor, canonical, source, start, end, direction, search)
             if cursor is not None
             else None
         )
@@ -287,6 +313,10 @@ class LogWatchService:
                 query = query.where(DeviceLogEntry.received_at >= start)
             if end is not None:
                 query = query.where(DeviceLogEntry.received_at <= end)
+            if search is not None:
+                query = query.where(
+                    DeviceLogEntry.message.ilike(log_search_pattern(search), escape="/")
+                )
             if last_id is not None:
                 query = query.where(
                     DeviceLogEntry.id < last_id
@@ -297,7 +327,7 @@ class LogWatchService:
             rows = session.scalars(query.order_by(order).limit(limit + 1)).all()
             entries = rows[:limit]
             next_cursor = (
-                encode_log_cursor(entries[-1].id, canonical, source, start, end, direction)
+                encode_log_cursor(entries[-1].id, canonical, source, start, end, direction, search)
                 if len(rows) > limit
                 else None
             )
@@ -315,6 +345,7 @@ class LogWatchService:
                 ],
                 "items": [
                     {
+                        "id": item.id,
                         "source": item.source,
                         "occurred_at": wire_time(item.occurred_at) if item.occurred_at else None,
                         "received_at": wire_time(item.received_at),

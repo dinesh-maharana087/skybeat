@@ -119,9 +119,18 @@
               <button id="device-tab-analyze" type="button" role="tab" aria-selected="false" aria-controls="device-panel-analyze" tabindex="-1">Analyze</button>
             </div>
             <section id="device-panel-log-watch" role="tabpanel" aria-labelledby="device-tab-log-watch" tabindex="0" class="device-page-panel">
-              <h3>Log Watch</h3><p id="log-watch-status" role="status" aria-live="polite">Loading recent logs…</p>
+              <div class="log-watch-heading"><div><h3>Log Watch</h3><p id="log-watch-status" role="status" aria-live="polite">Loading recent logs…</p></div><button id="log-watch-refresh" type="button" class="sb-button--secondary">Refresh logs</button></div>
               <p id="log-watch-offline"{% if selected_device.state != 'OFFLINE' %} hidden{% endif %}>Device offline. Stored recent logs remain available; no new collection is expected while it is unreachable.</p>
+              <div class="log-watch-controls" aria-label="Log Watch filters">
+                <label for="log-watch-source">Source<select id="log-watch-source"><option value="">All sources</option></select></label>
+                <label for="log-watch-range">Time range<select id="log-watch-range"><option value="15m">15 min</option><option value="1h">1 hour</option><option value="6h">6 hours</option><option value="24h" selected>24 hours</option><option value="7d">7 days</option></select></label>
+                <form id="log-watch-search-form" role="search"><label for="log-watch-search">Search messages</label><div class="log-watch-search-field"><input id="log-watch-search" type="search" maxlength="128" placeholder="Search logs…" autocomplete="off"><button type="submit">Search</button></div></form>
+                <button id="log-watch-reset" type="button" class="sb-button--ghost">Reset filters</button>
+              </div>
               <div id="log-watch-sources" class="device-log-sources" aria-label="Recent logs by source"><p>No log reports received yet.</p></div>
+              <p id="log-watch-summary" class="log-watch-summary" role="status" aria-live="polite"></p>
+              <ol id="log-watch-results" class="device-log-entries" aria-label="Stored diagnostics"></ol>
+              <button id="log-watch-older" type="button" class="sb-button--secondary" hidden>Load older</button>
             </section>
             <section id="device-panel-analyze" role="tabpanel" aria-labelledby="device-tab-analyze" tabindex="0" class="device-page-panel" hidden>
               <h3>Inspect device</h3><p>Current reported state and known attention conditions.</p><dl id="device-page-inspection"><dt>Communication</dt><dd>{{ selected_device.state }}</dd><dt>GPU</dt><dd>{{ gpu_state }}</dd><dt>Operating system</dt><dd>{{ os_label }}</dd><dt>Last contact</dt><dd>{{ selected_device.last_seen_at or 'Awaiting first heartbeat' }}</dd></dl>

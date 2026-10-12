@@ -1,14 +1,23 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-10-09
-Current stage: Stage 12G - Secure Batched Diagnostic Upload
-Current UI stage: Stage 12D - Alert Routing device overrides
-Current milestone: Existing authenticated diagnostics upload hardened for bounded retries and device-scoped idempotency.
-Status: Stage 12G accepted; isolated-MySQL diagnostics verification and final Linux-device acceptance remain pending. Stop before Stage 12H.
+Last updated: 2026-10-12
+Current stage: Stage 12H - Log Watch + Diagnostics Filters/Search
+Current UI stage: Stage 12H - Device Detail Log Watch
+Current milestone: Bounded source/time/message filtering and older-page browsing in the existing Log Watch.
+Status: Stage 12H implementation and local automated verification complete; uncommitted for acceptance review. Isolated-MySQL diagnostics and final Linux-device acceptance remain pending. Stop before Stage 12I.
+
+## Stage 12H Checkpoint
+
+- Reused Device Detail Log Watch, the authenticated device-scoped diagnostics read API, Stage 12E retention/keyset paging, and Stage 12G upload without agent, heartbeat, schema, or migration changes. Added canonical source selection, fixed UTC windows (15 min to 7 days), explicit-submit message search, reset, manual refresh, and bounded Load older (60 rows/page).
+- The read API accepts optional `q` up to 128 characters. It normalizes whitespace, rejects controls, treats `%`, `_`, quotes, slashes, and Unicode as literal bound text, and binds search to the device/source/window/direction cursor. Existing no-search cursors remain valid; each returned item now has a stored-row ID for client deduplication.
+- Log Watch keeps source collection states distinct from stored results and device availability. It shows latest successful collection time where the current source checkpoint supports it, separate never-collected/no-match/error/offline states, and text-only messages in compact wrapping rows. Filter changes abort/supersede stale requests; older pages retain their UTC window; failed refresh keeps the last successful results. Existing visibility-aware device refresh and diagnostics cadence remain.
+- Verification: focused dashboard/logs tests 106 passed; full server suite 542 passed, 58 skipped (56 isolated-MySQL tests without `SKYBEAT_TEST_DATABASE_URL`, 2 Bash-dependent tests on Windows). Ruff check, Ruff format check (113 files), strict mypy (62 source files), JavaScript syntax, and `git diff --check` passed. The first full-suite attempt had 20 temporary-directory setup errors under the protected `.tmp` path; the identical suite passed from a writable repository-local temporary directory, which was removed after the run.
+- Security: diagnostic messages use DOM text nodes; search is parameter-bound and scoped through the existing dashboard session and requested device, with no client-selected identity or cross-device query. No secrets, collector commands, upload limits, or heartbeat handling changed. Isolated MySQL search/retention/pagination tests remain deferred until a dedicated test database URL is configured. Real browser visual acceptance and final Linux acceptance for agent 1.0.3 remain open; the latter includes in-place upgrade without re-enrollment, preserved identity/configuration/project, active service, heartbeat, CPU/memory/GPU telemetry, three diagnostic sources, bounded batching/retry, and no persistent unexpected 429/503 responses.
+- Files changed: `server/app/api/logs.py`, `server/app/logs/service.py`, `server/app/templates/dashboard.html`, `server/app/static/dashboard.js`, `server/app/static/dashboard-shell.css`, `server/tests/test_logs.py`, `server/tests/test_logs_mysql.py`, `server/tests/test_dashboard_page.py`, `docs/API_SPEC.md`, and this checkpoint. No migration. Next action: review Stage 12H; do not start 12I or commit, push, or merge in this operation.
 
 ## Stage 12G Checkpoint
 
-- Stage 12F is committed at `1ee3bcd`; Stage 12G remains uncommitted. Reused `/api/v1/agent/logs`, the schema-v1 payload, permanent device credential, and Stage 12E tables. No migration, batch-ID subsystem, new identity, or heartbeat contract change.
+- Stage 12F is committed at `1ee3bcd`; Stage 12G was committed at `a18ed028543a274e95534cbb270bb2ce27b1ff8d`. Reused `/api/v1/agent/logs`, the schema-v1 payload, permanent device credential, and Stage 12E tables. No migration, batch-ID subsystem, new identity, or heartbeat contract change.
 - Server validates the whole bounded envelope and handles entries in one transaction. An indexed device/entry-hash lookup now deduplicates the same entry ID across sources as well as retries; mixed batches retain new IDs. The additive success response reports accepted and duplicate counts. Safe upload-count and rate-limit logs omit credentials and message content.
 - Agent version 1.0.3 sends at most 80 entries and 72 KiB of encoded JSON, dropping oldest entries when necessary. It retries timeout, connection, and transient server failures once after one second. A diagnostics `429` uses bounded `Retry-After` delay of 1-300 seconds across cycles; no persistent queue or heartbeat coupling was added. Collector commands and 48 KiB message-byte cap remain unchanged.
 - Verification: full agent suite 88 passed. Full server suite 537 passed, 57 skipped (55 isolated-MySQL tests without `SKYBEAT_TEST_DATABASE_URL`, 2 Bash-dependent tests on Windows) using a workspace-local pytest base directory. The first full-server attempt had 20 `tmp_path` setup errors because the default Windows temporary directory was inaccessible; a representative test and the full suite passed with the local base directory. Agent/server Ruff, format checks, strict mypy (13/62 source files), and `git diff --check` passed.

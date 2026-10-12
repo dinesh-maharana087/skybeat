@@ -186,6 +186,50 @@ def test_log_query_uses_server_utc_window_and_stable_device_scoped_cursor(identi
         )
 
 
+def test_log_search_is_literal_device_scoped_and_cursor_bound(identity, mysql_database):
+    first = identity.enroll(identity.create_project(f"Search A {uuid4()}").public_id, "A")
+    second = identity.enroll(identity.create_project(f"Search B {uuid4()}").public_id, "B")
+    service = LogWatchService(mysql_database)
+    messages = ("GPU 50%_ \\ '雪", "GPU 50%_ \\ '雪 again", "GPU unrelated")
+    for enrolled in (first, second):
+        service.accept(
+            LogUpload(
+                schema_version=1,
+                source="kernel",
+                status="available",
+                entries=[
+                    _entry(number + (100 if enrolled is second else 0)).model_copy(
+                        update={"message": message}
+                    )
+                    for number, message in enumerate(messages)
+                ],
+            ),
+            enrolled.credential.token.get_secret_value(),
+        )
+    query = "50%_ \\ '雪"
+    first_page = service.recent(first.device.device_uuid, source="kernel", q=query, limit=1)
+    assert len(first_page["items"]) == 1
+    assert first_page["items"][0]["message"] == messages[1]
+    assert isinstance(first_page["items"][0]["id"], int)
+    second_page = service.recent(
+        first.device.device_uuid,
+        source="kernel",
+        q=query,
+        limit=1,
+        cursor=first_page["next_cursor"],
+    )
+    assert [item["message"] for item in second_page["items"]] == [messages[0]]
+    assert second_page["next_cursor"] is None
+    with pytest.raises(ValueError):
+        service.recent(
+            first.device.device_uuid,
+            source="kernel",
+            q="unrelated",
+            cursor=first_page["next_cursor"],
+        )
+    assert len(service.recent(second.device.device_uuid, q=query)["items"]) == 2
+
+
 def test_log_retention_prunes_old_rows_in_bounded_batches_without_cross_device_loss(
     identity, mysql_database
 ):

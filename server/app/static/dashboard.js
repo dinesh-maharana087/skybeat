@@ -5,6 +5,9 @@ const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]
 const VISIBLE_REFRESH_MS = 15000;
 const HIDDEN_REFRESH_MS = 60000;
 const SEARCH_DEBOUNCE_MS = 250;
+const LOG_PAGE_LIMIT = 60;
+const LOG_SOURCE_LABELS = { skybeat_agent: "SkyBeat Agent", system_journal: "System", kernel: "Kernel" };
+const LOG_RANGE_MS = { "15m": 900000, "1h": 3600000, "6h": 21600000, "24h": 86400000, "7d": 604800000 };
 const HISTORY_RANGES = ["1h", "6h", "24h", "7d"];
 const HISTORY_COLOR_TOKENS = [
   "--sb-history-series-1",
@@ -58,6 +61,11 @@ const detailPanel = document.getElementById("detail-panel");
 const detailOpenPage = document.getElementById("detail-open-page");
 const deviceDetailPage = document.getElementById("device-detail-page");
 let lastLogAttemptAt = 0;
+const logWatchState = {
+  source: "", range: "24h", q: "", window: null, items: [], sources: [], nextCursor: null,
+  hasSuccess: false, olderLoaded: false, generation: 0, controller: null,
+  loading: false, offline: false, latestSuccessfulAt: null,
+};
 const detailTitle = document.getElementById("detail-title");
 const detailStatus = document.getElementById("detail-status");
 const detailRetry = document.getElementById("detail-retry");
@@ -1990,7 +1998,8 @@ function renderDeviceDetailPage(device) {
   const lastSeen = device.pending_first_heartbeat ? "Awaiting first heartbeat" : formatRelativeTime(device.last_seen_at);
   document.getElementById("device-page-hero-meta").textContent = `${osLabel} · Last seen: ${lastSeen}`;
   document.getElementById("device-page-stale").hidden = device.telemetry_stale !== true;
-  document.getElementById("log-watch-offline").hidden = device.state !== "OFFLINE";
+  logWatchState.offline = device.state === "OFFLINE";
+  updateLogWatchOffline();
   detailPairs(document.getElementById("device-page-communication"), [
     ["Availability", device.state],
     ["Last heartbeat", device.last_seen_at ? timestampNode(device.last_seen_at) : "Awaiting first heartbeat"],
@@ -2020,49 +2029,176 @@ function renderDeviceDetailPage(device) {
   ]);
 }
 
-async function requestDeviceLogs(deviceId) {
-  const response = await fetch(`/api/v1/devices/${encodeURIComponent(deviceId)}/logs?limit=60`, {
+function logWindowForRange(range, now = Date.now()) {
+  const duration = LOG_RANGE_MS[range] ?? LOG_RANGE_MS["24h"];
+  return { from: new Date(now - duration).toISOString(), until: new Date(now).toISOString() };
+}
+
+function normalizeLogSearch(value) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function logQueryParams(filters, cursor = null) {
+  const query = new URLSearchParams({ limit: String(LOG_PAGE_LIMIT), from: filters.window.from, until: filters.window.until });
+  if (filters.source) query.set("source", filters.source);
+  if (filters.q) query.set("q", filters.q);
+  if (cursor) query.set("cursor", cursor);
+  return query;
+}
+
+async function requestDeviceLogs(deviceId, filters, cursor = null, signal = undefined) {
+  const response = await fetch(`/api/v1/devices/${encodeURIComponent(deviceId)}/logs?${logQueryParams(filters, cursor)}`, {
     credentials: "same-origin",
+    signal,
   });
   if (!response.ok) throw new Error("device logs request failed");
   return response.json();
 }
 
-function renderDeviceLogs(payload) {
-  const container = document.getElementById("log-watch-sources");
-  const labels = { skybeat_agent: "SkyBeat Agent", system_journal: "System Journal", kernel: "Kernel / dmesg" };
+function updateLogWatchOffline() {
+  const notice = document.getElementById("log-watch-offline");
+  notice.hidden = !logWatchState.offline;
+  if (logWatchState.offline) {
+    const latest = logWatchState.latestSuccessfulAt;
+    notice.textContent = latest
+      ? `Device offline. Stored history remains available. Last successful collection: ${new Date(latest).toLocaleString()}.`
+      : "Device offline. Stored history remains available; no new collection is expected while it is unreachable.";
+  }
+}
+
+function syncLogWatchButtons() {
+  const older = document.getElementById("log-watch-older");
+  older.hidden = !logWatchState.nextCursor;
+  older.disabled = logWatchState.loading;
+  document.getElementById("log-watch-refresh").disabled = logWatchState.loading;
+}
+
+function renderDeviceLogs(payload, append = false) {
+  if (!append) {
+    logWatchState.items = [];
+    logWatchState.sources = payload.sources ?? [];
+    logWatchState.latestSuccessfulAt = logWatchState.sources
+      .filter((source) => source.status === "available" && source.checked_at)
+      .map((source) => source.checked_at)
+      .sort()
+      .at(-1) ?? null;
+  }
+  const known = new Set(logWatchState.items.map((item) => item.id));
+  for (const item of payload.items ?? []) {
+    if (!known.has(item.id)) {
+      logWatchState.items.push(item);
+      known.add(item.id);
+    }
+  }
+  logWatchState.nextCursor = payload.next_cursor ?? null;
+  logWatchState.hasSuccess = true;
+
+  const sourceContainer = document.getElementById("log-watch-sources");
   const states = { available: "Available", permission_unavailable: "Permission unavailable", collection_error: "Collection error", no_report: "No report yet" };
-  container.replaceChildren();
-  for (const source of payload.sources ?? []) {
-    if (!Object.hasOwn(labels, source.source)) continue;
+  sourceContainer.replaceChildren();
+  for (const source of logWatchState.sources) {
+    if (!Object.hasOwn(LOG_SOURCE_LABELS, source.source)) continue;
     const card = document.createElement("section");
     card.className = "device-log-source";
-    const heading = element("h4", labels[source.source]);
     const state = element("p", states[source.status] ?? "Unavailable");
-    const stateClass = Object.hasOwn(states, source.status)
-      ? source.status.replaceAll("_", "-")
-      : "unavailable";
+    const stateClass = Object.hasOwn(states, source.status) ? source.status.replaceAll("_", "-") : "unavailable";
     state.className = `device-log-source__state device-log-source__state--${stateClass}`;
-    card.append(heading, state);
-    const entries = (payload.items ?? []).filter((item) => item.source === source.source);
-    if (!entries.length) card.append(element("p", "No stored logs received for this source."));
-    else {
-      const list = document.createElement("ol");
-      list.className = "device-log-entries";
-      for (const entry of entries) {
-        const row = document.createElement("li");
-        const metadata = element("span", `${formatRelativeTime(entry.occurred_at ?? entry.received_at)}${entry.severity ? ` · ${entry.severity}` : ""}`);
-        metadata.className = "device-log-entry__meta";
-        const message = element("p", entry.message);
-        message.className = "device-log-entry__message";
-        row.append(metadata, message);
-        list.append(row);
-      }
-      card.append(list);
-    }
-    container.append(card);
+    card.append(element("h4", LOG_SOURCE_LABELS[source.source]), state);
+    sourceContainer.append(card);
   }
-  document.getElementById("log-watch-status").textContent = "Recent stored logs loaded.";
+  if (!logWatchState.sources.length) sourceContainer.append(element("p", "No log reports received yet."));
+
+  const results = document.getElementById("log-watch-results");
+  results.replaceChildren();
+  for (const entry of logWatchState.items) {
+    const row = document.createElement("li");
+    const metadata = element("span", `${new Date(entry.occurred_at ?? entry.received_at).toLocaleString()} · ${LOG_SOURCE_LABELS[entry.source] ?? entry.source}${entry.severity ? ` · ${entry.severity}` : ""}`);
+    metadata.className = "device-log-entry__meta";
+    const message = element("p", entry.message);
+    message.className = "device-log-entry__message";
+    row.append(metadata, message);
+    results.append(row);
+  }
+  const summary = document.getElementById("log-watch-summary");
+  summary.textContent = logWatchState.items.length
+    ? `Showing ${logWatchState.items.length} stored log entries.`
+    : logWatchState.sources.every((source) => source.status === "no_report")
+      ? "No diagnostics collected yet."
+      : "No stored logs match these filters.";
+  if (logWatchState.latestSuccessfulAt) {
+    summary.textContent += ` Last successful collection: ${new Date(logWatchState.latestSuccessfulAt).toLocaleString()}.`;
+  }
+  document.getElementById("log-watch-status").textContent = append ? "Older logs loaded." : "Stored logs loaded.";
+  updateLogWatchOffline();
+  syncLogWatchButtons();
+}
+
+async function loadDeviceLogs({ older = false, auto = false } = {}) {
+  if (older && (logWatchState.loading || !logWatchState.nextCursor)) return;
+  if (auto && (logWatchState.loading || logWatchState.olderLoaded)) return;
+  if (!older && logWatchState.controller) logWatchState.controller.abort();
+  const generation = ++logWatchState.generation;
+  const controller = new AbortController();
+  logWatchState.controller = controller;
+  logWatchState.loading = true;
+  if (!older) logWatchState.window = logWindowForRange(logWatchState.range);
+  const filters = { source: logWatchState.source, q: logWatchState.q, window: logWatchState.window };
+  const cursor = older ? logWatchState.nextCursor : null;
+  if (!older) logWatchState.olderLoaded = false;
+  lastLogAttemptAt = Date.now();
+  document.getElementById("log-watch-status").textContent = older ? "Loading older logs…" : "Loading stored logs…";
+  syncLogWatchButtons();
+  try {
+    const payload = await requestDeviceLogs(deviceDetailPage.dataset.deviceId, filters, cursor, controller.signal);
+    if (generation !== logWatchState.generation) return;
+    renderDeviceLogs(payload, older);
+    if (older) logWatchState.olderLoaded = true;
+  } catch (error) {
+    if (generation !== logWatchState.generation || error.name === "AbortError") return;
+    document.getElementById("log-watch-status").textContent = logWatchState.hasSuccess
+      ? "Log refresh failed. Last successful logs are retained."
+      : "Logs could not be loaded. Try Refresh logs.";
+  } finally {
+    if (generation === logWatchState.generation) {
+      logWatchState.loading = false;
+      logWatchState.controller = null;
+      syncLogWatchButtons();
+    }
+  }
+}
+
+function initializeLogWatch() {
+  const source = document.getElementById("log-watch-source");
+  const range = document.getElementById("log-watch-range");
+  const search = document.getElementById("log-watch-search");
+  for (const [value, label] of Object.entries(LOG_SOURCE_LABELS)) {
+    source.append(new Option(label, value));
+  }
+  source.addEventListener("change", () => {
+    logWatchState.source = source.value;
+    void loadDeviceLogs();
+  });
+  range.addEventListener("change", () => {
+    logWatchState.range = range.value;
+    void loadDeviceLogs();
+  });
+  document.getElementById("log-watch-search-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    logWatchState.q = normalizeLogSearch(search.value);
+    search.value = logWatchState.q;
+    void loadDeviceLogs();
+  });
+  document.getElementById("log-watch-reset").addEventListener("click", () => {
+    source.value = "";
+    range.value = "24h";
+    search.value = "";
+    logWatchState.source = "";
+    logWatchState.range = "24h";
+    logWatchState.q = "";
+    void loadDeviceLogs();
+  });
+  document.getElementById("log-watch-refresh").addEventListener("click", () => void loadDeviceLogs());
+  document.getElementById("log-watch-older").addEventListener("click", () => void loadDeviceLogs({ older: true }));
 }
 
 async function refreshDeviceDetailPage() {
@@ -2070,27 +2206,14 @@ async function refreshDeviceDetailPage() {
   refreshing = true;
   const deviceId = deviceDetailPage.dataset.deviceId;
   const now = Date.now();
-  const fetchLogs = now - lastLogAttemptAt >= (document.hidden ? 60000 : 30000);
-  if (fetchLogs) lastLogAttemptAt = now;
+  if (now - lastLogAttemptAt >= (document.hidden ? 60000 : 30000)) void loadDeviceLogs({ auto: true });
   try {
-    const [deviceResult, logsResult] = await Promise.allSettled([
-      requestDeviceDetail(deviceId),
-      fetchLogs ? requestDeviceLogs(deviceId) : Promise.resolve(null),
-    ]);
-    if (deviceResult.status === "fulfilled") {
-      renderDeviceDetailPage(deviceResult.value);
-      document.getElementById("device-page-status").textContent = "Current device state loaded.";
-      markDashboardFresh(deviceResult.value.server_time ?? new Date().toISOString());
-    } else {
-      document.getElementById("device-page-status").textContent = "Device status refresh failed. Last successful state is retained.";
-      markDashboardStale();
-    }
-    if (fetchLogs) {
-      if (logsResult.status === "fulfilled") renderDeviceLogs(logsResult.value);
-      else document.getElementById("log-watch-status").textContent = "Recent log refresh failed. Last successful logs are retained.";
-    }
+    const device = await requestDeviceDetail(deviceId);
+    renderDeviceDetailPage(device);
+    document.getElementById("device-page-status").textContent = "Current device state loaded.";
+    markDashboardFresh(device.server_time ?? new Date().toISOString());
   } catch (_) {
-    document.getElementById("device-page-status").textContent = "Device refresh failed. Last successful state is retained.";
+    document.getElementById("device-page-status").textContent = "Device status refresh failed. Last successful state is retained.";
     markDashboardStale();
   } finally {
     refreshing = false;
@@ -3183,6 +3306,7 @@ refreshActiveView();
   if (preference === "collapsed") setSidebarCollapsed(true);
   else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);
   initializeDeviceDetailTabs();
+  initializeLogWatch();
   document.addEventListener("visibilitychange", () => {
     window.clearTimeout(refreshTimer);
     if (!document.hidden) void refreshActiveView();
