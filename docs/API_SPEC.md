@@ -2420,15 +2420,42 @@ cycle may lose older entries while heartbeats continue independently.
 
 `GET /api/v1/devices/{device_uuid}/logs` remains a dashboard-session read for
 the selected device. It accepts the existing allowlisted `source`, `limit`
-(at most 100), UTC `from`/`until` received-time window, `direction`, and
+(at most 100), UTC `from`/`until` time window, `direction`, and
 opaque keyset `cursor`. Optional `q` searches stored message text without
 interpreting SQL wildcard characters. Search is trimmed, internal whitespace
 is collapsed, and input is limited to 128 characters; invalid input returns
 `422`. The response retains `sources`, `items`, and `next_cursor`; each item
 also includes its numeric stored-row `id` for stable client-side deduplication.
+Optional `time_basis=occurred` applies the window to original diagnostic
+occurrence time and excludes entries without that timestamp. The safe default
+`time_basis=received` preserves ordinary Log Watch behavior. Other values
+return `422`.
 
 A cursor is bound to device UUID, source, time window, direction, and normalized
-search. Changing a filter starts a new first-page query. Existing cursors
+search, as well as the time basis. Changing a filter starts a new first-page query. Existing cursors
 without a search remain valid. Results stay bounded by the existing per-source
 storage cap and retention policy. Log Watch uses fixed UTC windows per page
 sequence and does not request agent collection or modify heartbeat behavior.
+
+---
+
+# 83. Incident Nearby Diagnostics (Stage 12I)
+
+`GET /api/v1/devices/{device_uuid}/incidents/{incident_uuid}/diagnostics` uses
+the existing dashboard session authorization. The incident must belong to the
+requested device. Optional `point=opened|recovered` defaults to `opened`;
+`recovered` requires a closed incident. Invalid points return `422`, missing
+incidents/devices return `404`, and database unavailability returns `503`.
+Responses use `Cache-Control: no-store`.
+
+The server searches stored diagnostics by original event occurrence time from five minutes
+before to ten minutes after the selected UTC incident timestamp. It returns at
+most 50 entries ordered by distance from that timestamp, then occurrence time and
+row ID for stable ties. Entries without an occurrence timestamp are excluded.
+The response contains incident identity/type/timestamps,
+`window_start`, `window_end`, `diagnostics`, and `truncated`. Diagnostic entries
+reuse the Log Watch safe projection without row IDs or deduplication hashes.
+Correlation is temporal context, not a cause determination. The returned window
+can be opened in the existing device Log Watch for bounded paging and filtering.
+That contextual view uses `time_basis=occurred`, so delayed uploads remain
+discoverable even when their receipt time falls outside the incident window.

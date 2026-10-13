@@ -192,8 +192,10 @@ def test_log_read_route_forwards_bounded_time_and_cursor_filters(monkeypatch):
         def __init__(self, database):
             pass
 
-        def recent(self, requested, *, source, limit, from_time, until, cursor, direction, q):
-            seen.append((requested, source, limit, from_time, until, cursor, direction, q))
+        def recent(
+            self, requested, *, source, limit, from_time, until, cursor, direction, q, time_basis
+        ):
+            seen.append((requested, source, limit, from_time, until, cursor, direction, q, time_basis))
             return {"sources": [], "items": [], "next_cursor": None}
 
     class Authenticated:
@@ -223,8 +225,17 @@ def test_log_read_route_forwards_bounded_time_and_cursor_filters(monkeypatch):
         too_large = client.get(f"/api/v1/devices/{device_id}/logs?limit=101")
         too_long_search = client.get(f"/api/v1/devices/{device_id}/logs?q={'x' * 129}")
         bad_direction = client.get(f"/api/v1/devices/{device_id}/logs?direction=random")
+        occurred = client.get(f"/api/v1/devices/{device_id}/logs?time_basis=occurred")
+        bad_basis = client.get(f"/api/v1/devices/{device_id}/logs?time_basis=unknown")
     assert response.status_code == 200
-    assert too_large.status_code == too_long_search.status_code == bad_direction.status_code == 422
+    assert occurred.status_code == 200
+    assert (
+        too_large.status_code
+        == too_long_search.status_code
+        == bad_direction.status_code
+        == bad_basis.status_code
+        == 422
+    )
     assert seen == [
         (
             device_id,
@@ -235,7 +246,9 @@ def test_log_read_route_forwards_bounded_time_and_cursor_filters(monkeypatch):
             "opaque",
             "oldest",
             "  GPU  error ",
-        )
+            "received",
+        ),
+        (device_id, None, 60, None, None, None, "newest", None, "occurred"),
     ]
 
 
@@ -319,3 +332,34 @@ def test_search_cursor_is_bound_to_normalized_query_and_old_cursor_remains_compa
         service.decode_log_cursor(emoji_cursor, "device-a", None, None, None, "newest", emoji_query)
         == 45
     )
+
+
+def test_occurrence_cursor_is_bound_to_time_basis_and_existing_cursors_remain_valid():
+    from app.logs import service
+
+    start = datetime(2026, 10, 12, 11, 55)
+    end = datetime(2026, 10, 12, 12, 10)
+    occurred = service.encode_log_cursor(
+        42, "device-a", "kernel", start, end, "newest", "GPU", "occurred"
+    )
+    assert (
+        service.decode_log_cursor(
+            occurred, "device-a", "kernel", start, end, "newest", "GPU", "occurred"
+        )
+        == 42
+    )
+    with pytest.raises(ValueError):
+        service.decode_log_cursor(occurred, "device-a", "kernel", start, end, "newest", "GPU")
+    with pytest.raises(ValueError):
+        service.decode_log_cursor(
+            occurred, "device-a", "kernel", start, end, "newest", "other", "occurred"
+        )
+    received = service.encode_log_cursor(43, "device-a", "kernel", start, end, "newest", "GPU")
+    assert (
+        service.decode_log_cursor(received, "device-a", "kernel", start, end, "newest", "GPU")
+        == 43
+    )
+    with pytest.raises(ValueError):
+        service.decode_log_cursor(
+            received, "device-a", "kernel", start, end, "newest", "GPU", "occurred"
+        )

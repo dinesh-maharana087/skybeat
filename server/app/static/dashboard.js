@@ -64,8 +64,9 @@ let lastLogAttemptAt = 0;
 const logWatchState = {
   source: "", range: "24h", q: "", window: null, items: [], sources: [], nextCursor: null,
   hasSuccess: false, olderLoaded: false, generation: 0, controller: null,
-  loading: false, offline: false, latestSuccessfulAt: null,
+  loading: false, offline: false, latestSuccessfulAt: null, contextWindow: null,
 };
+const incidentDiagnosticsState = { generation: 0, listGeneration: 0, controller: null, payload: null };
 const detailTitle = document.getElementById("detail-title");
 const detailStatus = document.getElementById("detail-status");
 const detailRetry = document.getElementById("detail-retry");
@@ -566,7 +567,8 @@ function renderRecentIncidents(items) {
     const identity = document.createElement("div");
     identity.className = "overview-incident__identity";
     const device = element("a", displayValue(item.device_name));
-    device.href = `/dashboard/devices/${encodeURIComponent(item.device_id)}`;
+    const incidentPoint = item.status === "CLOSED" ? "recovered" : "opened";
+    device.href = `/dashboard/devices/${encodeURIComponent(item.device_id)}?incident=${encodeURIComponent(item.incident_id)}&point=${incidentPoint}`;
     const type = element("span", displayValue(item.type).replaceAll("_", " ").toLowerCase());
     type.className = "overview-incident__type";
     identity.append(device, type);
@@ -2042,6 +2044,7 @@ function logQueryParams(filters, cursor = null) {
   const query = new URLSearchParams({ limit: String(LOG_PAGE_LIMIT), from: filters.window.from, until: filters.window.until });
   if (filters.source) query.set("source", filters.source);
   if (filters.q) query.set("q", filters.q);
+  if (filters.timeBasis === "occurred") query.set("time_basis", "occurred");
   if (cursor) query.set("cursor", cursor);
   return query;
 }
@@ -2141,8 +2144,9 @@ async function loadDeviceLogs({ older = false, auto = false } = {}) {
   const controller = new AbortController();
   logWatchState.controller = controller;
   logWatchState.loading = true;
-  if (!older) logWatchState.window = logWindowForRange(logWatchState.range);
-  const filters = { source: logWatchState.source, q: logWatchState.q, window: logWatchState.window };
+  if (!older) logWatchState.window = logWatchState.contextWindow ?? logWindowForRange(logWatchState.range);
+  const filters = { source: logWatchState.source, q: logWatchState.q, window: logWatchState.window,
+    timeBasis: logWatchState.contextWindow ? "occurred" : "received" };
   const cursor = older ? logWatchState.nextCursor : null;
   if (!older) logWatchState.olderLoaded = false;
   lastLogAttemptAt = Date.now();
@@ -2180,6 +2184,10 @@ function initializeLogWatch() {
   });
   range.addEventListener("change", () => {
     logWatchState.range = range.value;
+    if (range.value !== "incident") {
+      logWatchState.contextWindow = null;
+      range.querySelector('option[value="incident"]')?.remove();
+    }
     void loadDeviceLogs();
   });
   document.getElementById("log-watch-search-form").addEventListener("submit", (event) => {
@@ -2191,10 +2199,12 @@ function initializeLogWatch() {
   document.getElementById("log-watch-reset").addEventListener("click", () => {
     source.value = "";
     range.value = "24h";
+    range.querySelector('option[value="incident"]')?.remove();
     search.value = "";
     logWatchState.source = "";
     logWatchState.range = "24h";
     logWatchState.q = "";
+    logWatchState.contextWindow = null;
     void loadDeviceLogs();
   });
   document.getElementById("log-watch-refresh").addEventListener("click", () => void loadDeviceLogs());
@@ -2218,6 +2228,146 @@ async function refreshDeviceDetailPage() {
   } finally {
     refreshing = false;
     scheduleRefresh();
+  }
+}
+
+async function requestIncidentDiagnostics(deviceId, incidentId, point, signal) {
+  const path = `/api/v1/devices/${encodeURIComponent(deviceId)}/incidents/${encodeURIComponent(incidentId)}/diagnostics`;
+  const response = await fetch(`${path}?point=${encodeURIComponent(point)}`, { credentials: "same-origin", signal });
+  if (!response.ok) {
+    const error = new Error("incident diagnostics request failed");
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+}
+
+function renderIncidentChoices(items) {
+  const container = document.getElementById("incident-diagnostics-list");
+  container.replaceChildren();
+  if (!items.length) {
+    container.append(element("p", "No incidents for this device."));
+    return;
+  }
+  for (const incident of items) {
+    const row = document.createElement("article");
+    row.className = "incident-diagnostics__incident";
+    const details = element("p", `${incident.type === "GPU" ? "GPU" : "Availability"} · ${incident.status} · ${new Date(incident.opened_at).toLocaleString()}`);
+    const actions = document.createElement("div");
+    actions.className = "incident-diagnostics__actions";
+    const opened = element("button", "Nearby diagnostics");
+    opened.type = "button";
+    opened.className = "sb-button--secondary";
+    opened.setAttribute("aria-label", `Nearby diagnostics for ${incident.type} incident opened ${new Date(incident.opened_at).toLocaleString()}`);
+    opened.addEventListener("click", () => void loadIncidentDiagnostics(incident.incident_id, "opened"));
+    actions.append(opened);
+    if (incident.closed_at) {
+      const recovered = element("button", "Recovery diagnostics");
+      recovered.type = "button";
+      recovered.className = "sb-button--secondary";
+      recovered.setAttribute("aria-label", `Recovery diagnostics for ${incident.type} incident closed ${new Date(incident.closed_at).toLocaleString()}`);
+      recovered.addEventListener("click", () => void loadIncidentDiagnostics(incident.incident_id, "recovered"));
+      actions.append(recovered);
+    }
+    row.append(details, actions);
+    container.append(row);
+  }
+}
+
+async function loadDevicePageIncidents() {
+  const generation = ++incidentDiagnosticsState.listGeneration;
+  const status = document.getElementById("incident-diagnostics-status");
+  status.textContent = "Loading incidents…";
+  try {
+    const result = await requestDeviceIncidents(deviceDetailPage.dataset.deviceId);
+    if (generation !== incidentDiagnosticsState.listGeneration) return;
+    renderIncidentChoices(result.items ?? []);
+    status.textContent = "Select an incident to inspect nearby stored diagnostics.";
+  } catch (_) {
+    if (generation === incidentDiagnosticsState.listGeneration) {
+      status.textContent = "Incidents are currently unavailable. Try Refresh incidents.";
+    }
+  }
+}
+
+function renderIncidentDiagnostics(payload) {
+  incidentDiagnosticsState.payload = payload;
+  const incident = payload.incident;
+  const point = incident.point === "recovered" ? "Recovery" : "Opening";
+  document.getElementById("incident-diagnostics-context").textContent =
+    `${incident.type === "GPU" ? "GPU" : "Availability"} · ${point} at ${new Date(incident.anchor_at).toLocaleString()} · Nearby diagnostics by event time.`;
+  const results = document.getElementById("incident-diagnostics-results");
+  results.replaceChildren();
+  for (const entry of payload.diagnostics ?? []) {
+    const row = document.createElement("li");
+    const metadata = element("span", `${new Date(entry.occurred_at).toLocaleString()} · ${LOG_SOURCE_LABELS[entry.source] ?? entry.source}${entry.severity ? ` · ${entry.severity}` : ""}`);
+    metadata.className = "device-log-entry__meta";
+    const message = element("p", entry.message);
+    message.className = "device-log-entry__message";
+    row.append(metadata, message);
+    results.append(row);
+  }
+  document.getElementById("incident-diagnostics-result-status").textContent = results.childElementCount
+    ? `${results.childElementCount} nearby diagnostics shown.${payload.truncated ? " Preview limited to 50 entries; open Log Watch for more." : ""}`
+    : "No stored diagnostics were captured around this incident.";
+  document.getElementById("incident-open-log-watch").hidden = false;
+}
+
+async function loadIncidentDiagnostics(incidentId, point) {
+  incidentDiagnosticsState.controller?.abort();
+  const generation = ++incidentDiagnosticsState.generation;
+  const controller = new AbortController();
+  incidentDiagnosticsState.controller = controller;
+  incidentDiagnosticsState.payload = null;
+  document.getElementById("incident-diagnostics-preview").hidden = false;
+  document.getElementById("incident-diagnostics-context").textContent = "";
+  document.getElementById("incident-diagnostics-results").replaceChildren();
+  document.getElementById("incident-open-log-watch").hidden = true;
+  const status = document.getElementById("incident-diagnostics-result-status");
+  status.textContent = "Loading nearby diagnostics…";
+  try {
+    const payload = await requestIncidentDiagnostics(deviceDetailPage.dataset.deviceId, incidentId, point, controller.signal);
+    if (generation !== incidentDiagnosticsState.generation) return;
+    renderIncidentDiagnostics(payload);
+  } catch (error) {
+    if (generation !== incidentDiagnosticsState.generation || error.name === "AbortError") return;
+    status.textContent = error.status === 404
+      ? "Incident or device was not found."
+      : error.status === 401 || error.status === 403
+        ? "You are not authorized to view these diagnostics."
+        : error.status === 422
+          ? "This incident has no recovery time."
+          : "Nearby diagnostics are temporarily unavailable. Try the incident again.";
+  } finally {
+    if (generation === incidentDiagnosticsState.generation) incidentDiagnosticsState.controller = null;
+  }
+}
+
+function openIncidentInLogWatch() {
+  const payload = incidentDiagnosticsState.payload;
+  if (!payload) return;
+  const range = document.getElementById("log-watch-range");
+  if (!range.querySelector('option[value="incident"]')) range.append(new Option("Incident window", "incident"));
+  range.value = "incident";
+  document.getElementById("log-watch-source").value = "";
+  document.getElementById("log-watch-search").value = "";
+  logWatchState.source = "";
+  logWatchState.q = "";
+  logWatchState.range = "incident";
+  logWatchState.contextWindow = { from: payload.window_start, until: payload.window_end };
+  document.getElementById("device-tab-log-watch").click();
+  void loadDeviceLogs();
+}
+
+function initializeIncidentCorrelation() {
+  document.getElementById("incident-diagnostics-refresh").addEventListener("click", () => void loadDevicePageIncidents());
+  document.getElementById("incident-open-log-watch").addEventListener("click", openIncidentInLogWatch);
+  void loadDevicePageIncidents();
+  const query = new URLSearchParams(window.location.search);
+  const incidentId = query.get("incident");
+  if (incidentId && CANONICAL_UUID.test(incidentId)) {
+    document.getElementById("device-tab-analyze").click();
+    void loadIncidentDiagnostics(incidentId, query.get("point") === "recovered" ? "recovered" : "opened");
   }
 }
 
@@ -2512,6 +2662,10 @@ function renderIncidents(items) {
       element("span", `Closed: ${displayValue(incident.closed_at)}`),
       element("span", `Resolution: ${displayValue(incident.resolution)}`)
     );
+    const point = incident.status === "CLOSED" ? "recovered" : "opened";
+    const preview = element("a", "Nearby diagnostics");
+    preview.href = `/dashboard/devices/${encodeURIComponent(incident.device_id)}?incident=${encodeURIComponent(incident.incident_id)}&point=${point}`;
+    item.append(preview);
     list.append(item);
   }
   detailIncidents.replaceChildren(list);
@@ -3307,6 +3461,7 @@ refreshActiveView();
   else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);
   initializeDeviceDetailTabs();
   initializeLogWatch();
+  initializeIncidentCorrelation();
   document.addEventListener("visibilitychange", () => {
     window.clearTimeout(refreshTimer);
     if (!document.hidden) void refreshActiveView();

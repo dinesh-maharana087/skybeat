@@ -1,10 +1,18 @@
 # SkyBeat V1 Implementation Status
 
-Last updated: 2026-10-12
-Current stage: Stage 12H - Log Watch + Diagnostics Filters/Search
-Current UI stage: Stage 12H - Device Detail Log Watch
-Current milestone: Bounded source/time/message filtering and older-page browsing in the existing Log Watch.
-Status: Stage 12H implementation and local automated verification complete; uncommitted for acceptance review. Isolated-MySQL diagnostics and final Linux-device acceptance remain pending. Stop before Stage 12I.
+Last updated: 2026-10-13
+Current stage: Stage 12I - Incident → Relevant Diagnostics Correlation
+Current UI stage: Stage 12I - Device Detail Analyze incident preview
+Current milestone: Deterministic, bounded diagnostics preview near incident opening or recovery.
+Status: Stage 12I implementation and local automated verification complete; uncommitted for acceptance review. Isolated-MySQL diagnostics, browser visual review, and final Linux-device acceptance remain pending. Stop before Stage 12J.
+
+## Stage 12I Checkpoint
+
+- Stage 12H was committed at `fc56e07`. The new dashboard-session read route resolves an incident only under its requested device UUID. A small correlation service anchors the preview at `opened_at` or, for a closed incident, `closed_at`. The fixed UTC window is five minutes before through ten minutes after that timestamp. The existing diagnostics service queries original occurrence times for that device/window, excludes entries without an occurrence timestamp, orders by distance then occurrence time and row ID, returns at most 50, and reports truncation. Receipt time remains ingestion metadata. The response omits internal row IDs and hashes. No migration, agent, upload, heartbeat, credential, or incident lifecycle changes.
+- Device Detail → Analyze lists the existing device incidents, offers opening and recovery previews, distinguishes empty/missing/unauthorized/unavailable states, safely renders messages as text, and opens the exact incident window in the existing Log Watch with occurrence-time filtering. Ordinary Log Watch keeps receipt-time filtering. The existing query service handles both fixed bases and binds the basis to its cursor; source/search filters, bounded paging, and reset remain available in incident context. Overview and device-drawer incident links preserve incident and opening/recovery context. Preview requests abort/supersede stale selections.
+- Verification: after the linked Log Watch correction, focused log/correlation/dashboard tests 116 passed, 8 skipped (isolated MySQL without `SKYBEAT_TEST_DATABASE_URL`); JavaScript syntax and `git diff --check` passed. Unit SQL compilation verifies the selected timestamp column; the isolated-MySQL correlation test now also checks that delayed entries in the preview appear across occurrence-time Log Watch pages while entries outside the occurrence window stay excluded. Before this correction, the full server suite passed 550 with 59 skipped, and Ruff check, Ruff format check, and strict mypy passed. Those earlier broad results do not verify the latest change.
+- Security/limitations: the route uses the same dashboard authorization as Device Detail and requires incident/device identity to match server-side. It runs a bounded read only; diagnostic text is never interpreted as HTML and correlation is not labeled causal analysis. The Log Watch time basis is a two-value allowlist, defaults to receipt time, and is cursor-bound. Real browser visual acceptance and final Linux acceptance for agent 1.0.3 remain deferred. The Linux gate includes in-place upgrade without re-enrollment, preserved UUID/credential/server URL/project, active service, heartbeat, CPU/memory/GPU telemetry, three diagnostic sources, bounded batching/retry, and no persistent unexpected 429/503 responses.
+- Files changed: `server/app/api/logs.py`, `server/app/logs/service.py`, new `server/app/logs/correlation.py`, `server/app/templates/dashboard.html`, `server/app/static/dashboard.js`, `server/app/static/dashboard-shell.css`, `server/tests/test_dashboard_page.py`, new `server/tests/test_incident_diagnostics.py` and `server/tests/test_incident_diagnostics_mysql.py`, `docs/API_SPEC.md`, and this checkpoint. Next action: review Stage 12I; do not start 12J or commit, push, or merge in this operation.
 
 ## Stage 12H Checkpoint
 

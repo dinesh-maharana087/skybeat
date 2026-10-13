@@ -8,7 +8,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import delete, select, tuple_
+from sqlalchemy import delete, func, select, text, tuple_
 
 from app.dashboard.read import DashboardNotFound
 from app.db import Database, database_utc
@@ -62,6 +62,19 @@ def log_search_pattern(value: str) -> str:
     return f"%{escaped}%"
 
 
+def log_entry_view(item: DeviceLogEntry, *, include_id: bool = True) -> dict[str, object]:
+    view: dict[str, object] = {
+        "source": item.source,
+        "occurred_at": wire_time(item.occurred_at) if item.occurred_at else None,
+        "received_at": wire_time(item.received_at),
+        "severity": item.severity,
+        "message": item.message,
+    }
+    if include_id:
+        view["id"] = item.id
+    return view
+
+
 def _cursor_time(value: datetime | None) -> str | None:
     return value.isoformat(timespec="microseconds") if value is not None else None
 
@@ -74,9 +87,12 @@ def encode_log_cursor(
     until: datetime | None,
     direction: str,
     q: str | None = None,
+    time_basis: str = "received",
 ) -> str:
+    if time_basis not in {"received", "occurred"}:
+        raise ValueError("Log time basis is invalid.")
     payload = {
-        "v": 2 if q is not None else 1,
+        "v": 3 if time_basis == "occurred" else (2 if q is not None else 1),
         "id": last_id,
         "device": device_uuid,
         "source": source,
@@ -86,6 +102,8 @@ def encode_log_cursor(
     }
     if q is not None:
         payload["q"] = q
+    if time_basis == "occurred":
+        payload["time_basis"] = time_basis
     raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode(
         "utf-8"
     )
@@ -100,8 +118,9 @@ def decode_log_cursor(
     until: datetime | None,
     direction: str,
     q: str | None = None,
+    time_basis: str = "received",
 ) -> int:
-    if not value or len(value) > 2048:
+    if time_basis not in {"received", "occurred"} or not value or len(value) > 2048:
         raise ValueError("Log cursor is invalid.")
     try:
         raw = value.encode("ascii")
@@ -113,10 +132,12 @@ def decode_log_cursor(
     expected = {"v", "id", "device", "source", "from", "until", "direction"}
     if q is not None:
         expected.add("q")
+    if time_basis == "occurred":
+        expected.add("time_basis")
     if (
         not isinstance(payload, dict)
         or set(payload) != expected
-        or payload["v"] != (2 if q is not None else 1)
+        or payload["v"] != (3 if time_basis == "occurred" else (2 if q is not None else 1))
         or not isinstance(payload["id"], int)
         or isinstance(payload["id"], bool)
         or not 1 <= payload["id"] <= 2**64 - 1
@@ -126,6 +147,7 @@ def decode_log_cursor(
         or payload["until"] != _cursor_time(until)
         or payload["direction"] != direction
         or (q is not None and payload["q"] != q)
+        or (time_basis == "occurred" and payload["time_basis"] != time_basis)
     ):
         raise ValueError("Log cursor is invalid.")
     return payload["id"]
@@ -276,6 +298,7 @@ class LogWatchService:
         cursor: str | None = None,
         direction: str = "newest",
         q: str | None = None,
+        time_basis: str = "received",
     ) -> dict[str, object]:
         if source is not None and source not in LOG_SOURCES:
             raise ValueError("Invalid log source.")
@@ -283,6 +306,8 @@ class LogWatchService:
             raise ValueError("Invalid log limit.")
         if direction not in {"newest", "oldest"}:
             raise ValueError("Invalid log direction.")
+        if time_basis not in {"received", "occurred"}:
+            raise ValueError("Invalid log time basis.")
         start, end = parse_log_window(from_time, until)
         search = normalize_log_search(q)
         try:
@@ -292,7 +317,7 @@ class LogWatchService:
         if canonical != device_uuid:
             raise DashboardNotFound("Device not found.")
         last_id = (
-            decode_log_cursor(cursor, canonical, source, start, end, direction, search)
+            decode_log_cursor(cursor, canonical, source, start, end, direction, search, time_basis)
             if cursor is not None
             else None
         )
@@ -307,12 +332,19 @@ class LogWatchService:
                 )
             }
             query = select(DeviceLogEntry).where(DeviceLogEntry.device_id == device_id)
+            if time_basis == "occurred":
+                query = query.where(DeviceLogEntry.occurred_at.is_not(None))
+            time_column = (
+                DeviceLogEntry.occurred_at
+                if time_basis == "occurred"
+                else DeviceLogEntry.received_at
+            )
             if source is not None:
                 query = query.where(DeviceLogEntry.source == source)
             if start is not None:
-                query = query.where(DeviceLogEntry.received_at >= start)
+                query = query.where(time_column >= start)
             if end is not None:
-                query = query.where(DeviceLogEntry.received_at <= end)
+                query = query.where(time_column <= end)
             if search is not None:
                 query = query.where(
                     DeviceLogEntry.message.ilike(log_search_pattern(search), escape="/")
@@ -327,7 +359,9 @@ class LogWatchService:
             rows = session.scalars(query.order_by(order).limit(limit + 1)).all()
             entries = rows[:limit]
             next_cursor = (
-                encode_log_cursor(entries[-1].id, canonical, source, start, end, direction, search)
+                encode_log_cursor(
+                    entries[-1].id, canonical, source, start, end, direction, search, time_basis
+                )
                 if len(rows) > limit
                 else None
             )
@@ -343,15 +377,45 @@ class LogWatchService:
                     }
                     for name in LOG_SOURCES
                 ],
-                "items": [
-                    {
-                        "id": item.id,
-                        "source": item.source,
-                        "occurred_at": wire_time(item.occurred_at) if item.occurred_at else None,
-                        "received_at": wire_time(item.received_at),
-                        "severity": item.severity,
-                        "message": item.message,
-                    }
-                    for item in entries
-                ],
+                "items": [log_entry_view(item) for item in entries],
+            }
+
+    def near(
+        self,
+        device_uuid: str,
+        *,
+        anchor: datetime,
+        start: datetime,
+        end: datetime,
+        limit: int = 50,
+    ) -> dict[str, object]:
+        """Return diagnostics closest by original event time inside a fixed UTC window."""
+        if not 1 <= limit <= 50 or not start <= anchor <= end:
+            raise ValueError("Incident diagnostics window is invalid.")
+        try:
+            canonical = str(UUID(device_uuid))
+        except (TypeError, ValueError):
+            raise DashboardNotFound("Device not found.") from None
+        if canonical != device_uuid:
+            raise DashboardNotFound("Device not found.")
+        with self.database.transaction() as session:
+            device_id = session.scalar(select(Device.id).where(Device.device_uuid == canonical))
+            if device_id is None:
+                raise DashboardNotFound("Device not found.")
+            distance = func.abs(
+                func.timestampdiff(text("MICROSECOND"), anchor, DeviceLogEntry.occurred_at)
+            )
+            rows = session.scalars(
+                select(DeviceLogEntry)
+                .where(
+                    DeviceLogEntry.device_id == device_id,
+                    DeviceLogEntry.occurred_at >= start,
+                    DeviceLogEntry.occurred_at <= end,
+                )
+                .order_by(distance, DeviceLogEntry.occurred_at, DeviceLogEntry.id)
+                .limit(limit + 1)
+            ).all()
+            return {
+                "items": [log_entry_view(item, include_id=False) for item in rows[:limit]],
+                "truncated": len(rows) > limit,
             }

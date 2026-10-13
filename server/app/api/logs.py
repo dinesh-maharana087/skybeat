@@ -13,6 +13,7 @@ from app.api.heartbeats import RequestBodyTooLarge, error
 from app.dashboard.read import DashboardNotFound
 from app.devices.credentials import InvalidCredential, parse_credential
 from app.devices.service import AuthenticationFailed
+from app.logs.correlation import IncidentDiagnosticService
 from app.logs.service import LogRateLimited, LogTimestampInvalid, LogWatchService
 from app.schemas.logs import MAX_LOG_BODY_BYTES, LogUploadInvalid, parse_log_upload
 
@@ -109,6 +110,7 @@ async def recent_logs(
     cursor: str | None = Query(default=None, max_length=2048),
     direction: Literal["newest", "oldest"] = "newest",
     q: str | None = Query(default=None, max_length=128),
+    time_basis: Literal["received", "occurred"] = "received",
 ) -> JSONResponse:
     service = LogWatchService(request.app.state.database)
     try:
@@ -122,6 +124,7 @@ async def recent_logs(
             cursor=cursor,
             direction=direction,
             q=q,
+            time_basis=time_basis,
         )
     except DashboardNotFound as exc:
         raise HTTPException(
@@ -131,4 +134,37 @@ async def recent_logs(
         raise HTTPException(
             status_code=422, detail="Log query is invalid.", headers={"Cache-Control": "no-store"}
         ) from exc
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/api/v1/devices/{device_uuid}/incidents/{incident_uuid}/diagnostics")
+async def incident_diagnostics(
+    request: Request,
+    device_uuid: str,
+    incident_uuid: str,
+    _: DashboardUserDependency,
+    point: Literal["opened", "recovered"] = "opened",
+) -> JSONResponse:
+    service = IncidentDiagnosticService(request.app.state.database)
+    try:
+        result = await asyncio.to_thread(service.get, device_uuid, incident_uuid, point=point)
+    except DashboardNotFound as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Incident or device not found.",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Incident correlation point is invalid.",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
+    except SQLAlchemyError:
+        return error(
+            request,
+            503,
+            "database_unavailable",
+            "Incident diagnostics are temporarily unavailable.",
+        )
     return JSONResponse(result, headers={"Cache-Control": "no-store"})

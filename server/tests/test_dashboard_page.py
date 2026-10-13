@@ -384,8 +384,16 @@ def test_log_watch_query_uses_utc_window_literal_search_and_bounded_cursor_in_no
         const query = logQueryParams({ source: "kernel", q: "GPU 50%_", window }, "opaque");
         if (query.get("source") !== "kernel" || query.get("q") !== "GPU 50%_" ||
             query.get("cursor") !== "opaque" || query.get("limit") !== "60" ||
-            query.get("from") !== window.from || query.get("until") !== window.until) {
+            query.get("from") !== window.from || query.get("until") !== window.until ||
+            query.has("time_basis")) {
           throw new Error("filter or cursor was lost");
+        }
+        const incident = logQueryParams({ source: "kernel", q: "GPU 50%_", window,
+          timeBasis: "occurred" }, "incident-cursor");
+        if (incident.get("time_basis") !== "occurred" ||
+            incident.get("cursor") !== "incident-cursor" ||
+            incident.get("from") !== window.from || incident.get("until") !== window.until) {
+          throw new Error("incident occurrence basis or cursor was lost");
         }
         if (normalizeLogSearch("  GPU   50%_  ") !== "GPU 50%_") {
           throw new Error("search was not trimmed");
@@ -473,6 +481,29 @@ def test_log_watch_discards_stale_filter_response_and_keeps_fixed_cursor_window_
             !nodes.get("log-watch-status").textContent.includes("retained")) {
           throw new Error("failed refresh cleared successful logs");
         }
+        logWatchState.contextWindow = { from: "incident-from", until: "incident-until" };
+        const incident = loadDeviceLogs();
+        if (calls[4].filters.timeBasis !== "occurred" ||
+            calls[4].filters.window !== logWatchState.contextWindow) {
+          throw new Error("incident window was not queried by occurrence time");
+        }
+        calls[4].resolve({ name: "incident", next_cursor: "incident-next" });
+        await incident;
+        const incidentOlder = loadDeviceLogs({ older: true });
+        if (calls[5].filters.timeBasis !== "occurred" ||
+            calls[5].filters.window !== calls[4].filters.window ||
+            calls[5].cursor !== "incident-next") {
+          throw new Error("incident paging lost its time basis or window");
+        }
+        calls[5].resolve({ name: "incident-older", next_cursor: null });
+        await incidentOlder;
+        logWatchState.contextWindow = null;
+        const ordinary = loadDeviceLogs();
+        if (calls[6].filters.timeBasis !== "received") {
+          throw new Error("normal Log Watch did not restore receipt time");
+        }
+        calls[6].resolve({ name: "ordinary", next_cursor: null });
+        await ordinary;
         """
     )
     result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
@@ -506,6 +537,7 @@ def test_log_watch_controls_query_selected_filters_and_reset_in_node():
           "log-watch-search-form", "log-watch-reset", "log-watch-refresh", "log-watch-older"]
           .map((id) => [id, { value: "", options: [], handlers: {},
             append(option) { this.options.push(option); },
+            querySelector() { return null; },
             addEventListener(name, callback) { this.handlers[name] = callback; } }]));
         globalThis.document = { getElementById: (id) => nodes.get(id) };
         globalThis.Option = function(label, value) { this.label = label; this.value = value; };
@@ -545,6 +577,241 @@ def test_log_watch_controls_query_selected_filters_and_reset_in_node():
         if (!requests[4].options.older) throw new Error("Load older was not wired");
         nodes.get("log-watch-refresh").handlers.click();
         if (requests.length !== 6) throw new Error("manual refresh was not wired");
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=controller,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_incident_diagnostics_preview_is_text_only_and_distinguishes_empty_results_in_node():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is unavailable on this host")
+    script = dashboard_script()
+    controller = (
+        "function renderIncidentDiagnostics(payload) {"
+        + script.split("function renderIncidentDiagnostics(payload) {", 1)[1].split(
+            "\nasync function loadIncidentDiagnostics(", 1
+        )[0]
+    )
+    harness = textwrap.dedent(
+        """
+        import { readFileSync } from "node:fs";
+        import vm from "node:vm";
+        function node(tag, value = "") {
+          return { tag, textContent: value, children: [], hidden: true,
+            get childElementCount() { return this.children.length; },
+            append(...children) { this.children.push(...children); },
+            replaceChildren(...children) { this.children = children; } };
+        }
+        const nodes = new Map(["incident-diagnostics-context", "incident-diagnostics-results",
+          "incident-diagnostics-result-status", "incident-open-log-watch"]
+          .map((id) => [id, node("div")]));
+        globalThis.document = { getElementById: (id) => nodes.get(id), createElement: node };
+        globalThis.element = node;
+        globalThis.LOG_SOURCE_LABELS = { kernel: "Kernel" };
+        globalThis.incidentDiagnosticsState = { payload: null };
+        vm.runInThisContext(readFileSync(0, "utf8"));
+        const payload = { incident: { type: "GPU", point: "opened",
+          anchor_at: "2026-10-12T12:00:00Z" }, truncated: true,
+          diagnostics: [{ source: "kernel", severity: "warning",
+            occurred_at: "2026-10-12T11:59:00Z",
+            received_at: "2026-10-12T12:20:00Z", message: "<img src=x onerror=alert(1)>" }] };
+        renderIncidentDiagnostics(payload);
+        const metadata = nodes.get("incident-diagnostics-results").children[0].children[0];
+        if (!metadata.textContent.includes(new Date("2026-10-12T11:59:00Z").toLocaleString()) ||
+            metadata.textContent.includes(new Date("2026-10-12T12:20:00Z").toLocaleString()) ||
+            !nodes.get("incident-diagnostics-context").textContent.includes("event time")) {
+          throw new Error("preview did not display occurrence time");
+        }
+        const message = nodes.get("incident-diagnostics-results").children[0].children[1];
+        if (message.textContent !== "<img src=x onerror=alert(1)>" || message.children.length) {
+          throw new Error("diagnostic message was interpreted as HTML");
+        }
+        if (!nodes.get("incident-diagnostics-result-status").textContent.includes(
+            "limited to 50") ||
+            nodes.get("incident-open-log-watch").hidden) {
+          throw new Error("bounded preview or full Log Watch action is missing");
+        }
+        renderIncidentDiagnostics({ ...payload, diagnostics: [], truncated: false });
+        if (!nodes.get("incident-diagnostics-result-status").textContent.includes(
+            "No stored diagnostics were captured around this incident.")) {
+          throw new Error("empty correlation state is unclear");
+        }
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=controller,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_incident_open_in_log_watch_preserves_server_utc_window_in_node():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is unavailable on this host")
+    script = dashboard_script()
+    controller = (
+        "function openIncidentInLogWatch() {"
+        + script.split("function openIncidentInLogWatch() {", 1)[1].split(
+            "\nfunction initializeIncidentCorrelation()", 1
+        )[0]
+    )
+    harness = textwrap.dedent(
+        """
+        import { readFileSync } from "node:fs";
+        import vm from "node:vm";
+        const range = { value: "24h", options: [],
+          querySelector() { return this.options[0] ?? null; },
+          append(option) { this.options.push(option); } };
+        const nodes = new Map(["log-watch-range", "log-watch-source", "log-watch-search",
+          "device-tab-log-watch"].map((id) => [id, { value: "old", click() {} }]));
+        nodes.set("log-watch-range", range);
+        let selected = false;
+        nodes.get("device-tab-log-watch").click = () => { selected = true; };
+        globalThis.document = { getElementById: (id) => nodes.get(id) };
+        globalThis.Option = function(label, value) { this.label = label; this.value = value; };
+        globalThis.logWatchState = { source: "kernel", range: "24h", q: "old",
+          contextWindow: null };
+        globalThis.incidentDiagnosticsState = { payload: {
+          window_start: "2026-10-12T11:55:00Z", window_end: "2026-10-12T12:10:00Z" } };
+        let loaded = false;
+        globalThis.loadDeviceLogs = () => { loaded = true; };
+        vm.runInThisContext(readFileSync(0, "utf8"));
+        openIncidentInLogWatch();
+        if (!selected || !loaded || range.value !== "incident" ||
+            logWatchState.contextWindow.from !== "2026-10-12T11:55:00Z" ||
+            logWatchState.contextWindow.until !== "2026-10-12T12:10:00Z" ||
+            logWatchState.source !== "" || logWatchState.q !== "") {
+          throw new Error("incident context was not preserved in Log Watch");
+        }
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=controller,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_incident_preview_discards_stale_response_and_distinguishes_fetch_errors_in_node():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is unavailable on this host")
+    script = dashboard_script()
+    controller = (
+        "async function loadIncidentDiagnostics("
+        + script.split("async function loadIncidentDiagnostics(", 1)[1].split(
+            "\nfunction openIncidentInLogWatch()", 1
+        )[0]
+    )
+    harness = textwrap.dedent(
+        """
+        import { readFileSync } from "node:fs";
+        import vm from "node:vm";
+        const nodes = new Map(["incident-diagnostics-preview", "incident-diagnostics-context",
+          "incident-diagnostics-results", "incident-diagnostics-result-status",
+          "incident-open-log-watch"]
+          .map((id) => [id, { textContent: "", hidden: true, replaceChildren() {} }]));
+        globalThis.document = { getElementById: (id) => nodes.get(id) };
+        globalThis.deviceDetailPage = { dataset: { deviceId: "device-a" } };
+        globalThis.incidentDiagnosticsState = { generation: 0, controller: null, payload: null };
+        const calls = [];
+        const rendered = [];
+        globalThis.requestIncidentDiagnostics = (_device, incidentId, point, signal) =>
+          new Promise((resolve, reject) => calls.push({
+            incidentId, point, signal, resolve, reject,
+          }));
+        globalThis.renderIncidentDiagnostics = (payload) => rendered.push(payload.id);
+        vm.runInThisContext(readFileSync(0, "utf8"));
+        const stale = loadIncidentDiagnostics("old", "opened");
+        const current = loadIncidentDiagnostics("new", "recovered");
+        if (!calls[0].signal.aborted || calls[1].point !== "recovered") {
+          throw new Error("new selection did not supersede old request");
+        }
+        calls[1].resolve({ id: "new" });
+        await current;
+        calls[0].resolve({ id: "old" });
+        await stale;
+        if (rendered.join() !== "new") throw new Error("stale preview replaced new preview");
+        const failed = loadIncidentDiagnostics("failed", "opened");
+        calls[2].reject(Object.assign(new Error("unavailable"), { status: 503 }));
+        await failed;
+        if (!nodes.get("incident-diagnostics-result-status").textContent.includes(
+            "temporarily unavailable")) throw new Error("fetch failure looked like no results");
+        const missing = loadIncidentDiagnostics("missing", "opened");
+        calls[3].reject(Object.assign(new Error("missing"), { status: 404 }));
+        await missing;
+        if (!nodes.get("incident-diagnostics-result-status").textContent.includes("not found")) {
+          throw new Error("missing incident looked like fetch failure");
+        }
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=controller,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_incident_context_link_opens_analyze_with_recovery_point_in_node():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is unavailable on this host")
+    script = dashboard_script()
+    controller = (
+        "function initializeIncidentCorrelation() {"
+        + script.split("function initializeIncidentCorrelation() {", 1)[1].split(
+            "\nfunction initializeDeviceDetailTabs()", 1
+        )[0]
+    )
+    harness = textwrap.dedent(
+        """
+        import { readFileSync } from "node:fs";
+        import vm from "node:vm";
+        const incidentId = "65f5cbda-529a-4f75-8ef1-aef3c57a5ff0";
+        const nodes = new Map(["incident-diagnostics-refresh", "incident-open-log-watch",
+          "device-tab-analyze"].map((id) => [id, { handlers: {},
+            addEventListener(name, callback) { this.handlers[name] = callback; },
+            click() { this.clicked = true; } }]));
+        globalThis.document = { getElementById: (id) => nodes.get(id) };
+        globalThis.window = { location: { search: `?incident=${incidentId}&point=recovered` } };
+        globalThis.CANONICAL_UUID = /^[0-9a-f-]{36}$/i;
+        let listLoaded = false;
+        let selected = null;
+        globalThis.loadDevicePageIncidents = () => { listLoaded = true; };
+        globalThis.loadIncidentDiagnostics = (id, point) => { selected = [id, point]; };
+        globalThis.openIncidentInLogWatch = () => {};
+        vm.runInThisContext(readFileSync(0, "utf8"));
+        initializeIncidentCorrelation();
+        if (!listLoaded || !nodes.get("device-tab-analyze").clicked ||
+            selected[0] !== incidentId || selected[1] !== "recovered") {
+          throw new Error("incident link lost recovery context");
+        }
         """
     )
     result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
@@ -1040,7 +1307,7 @@ def test_ux6_fleet_strip_precedes_filters_and_incidents_use_existing_times():
     assert template.index('id="filters"') < template.index('class="device-table-region"')
     assert 'id="devices-summary-heading">Fleet state' in template
     assert 'className = "overview-incident-list"' in script
-    assert "device.href = `/dashboard/devices/${encodeURIComponent(item.device_id)}`" in script
+    assert "?incident=${encodeURIComponent(item.incident_id)}&point=${incidentPoint}" in script
     assert 'item.status === "CLOSED" ? item.closed_at : item.opened_at' in script
     assert "No recent incidents." in script
 

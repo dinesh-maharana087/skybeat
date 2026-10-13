@@ -134,6 +134,16 @@
             </section>
             <section id="device-panel-analyze" role="tabpanel" aria-labelledby="device-tab-analyze" tabindex="0" class="device-page-panel" hidden>
               <h3>Inspect device</h3><p>Current reported state and known attention conditions.</p><dl id="device-page-inspection"><dt>Communication</dt><dd>{{ selected_device.state }}</dd><dt>GPU</dt><dd>{{ gpu_state }}</dd><dt>Operating system</dt><dd>{{ os_label }}</dd><dt>Last contact</dt><dd>{{ selected_device.last_seen_at or 'Awaiting first heartbeat' }}</dd></dl>
+              <section class="incident-diagnostics" aria-labelledby="incident-diagnostics-heading">
+                <div class="incident-diagnostics__heading"><div><h4 id="incident-diagnostics-heading">Incidents and nearby diagnostics</h4><p id="incident-diagnostics-status" role="status" aria-live="polite">Loading incidents…</p></div><button id="incident-diagnostics-refresh" type="button" class="sb-button--secondary">Refresh incidents</button></div>
+                <div id="incident-diagnostics-list"></div>
+                <section id="incident-diagnostics-preview" aria-labelledby="incident-diagnostics-preview-heading" hidden>
+                  <h5 id="incident-diagnostics-preview-heading">Diagnostics around this incident</h5>
+                  <p id="incident-diagnostics-context"></p><p id="incident-diagnostics-result-status" role="status" aria-live="polite"></p>
+                  <ol id="incident-diagnostics-results" class="device-log-entries"></ol>
+                  <button id="incident-open-log-watch" type="button" class="sb-button--secondary" hidden>Open in Log Watch</button>
+                </section>
+              </section>
             </section>
           </article>
           {% endif %}

@@ -371,6 +371,18 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 #log-watch-results li { padding: var(--sb-space-2) var(--sb-space-3); }
 #log-watch-results li:first-child { border-top: 0; }
 #log-watch-older { margin-top: var(--sb-space-3); }
+.incident-diagnostics { border-top: 1px solid var(--sb-border); margin-top: var(--sb-space-5); padding-top: var(--sb-space-4); }
+.incident-diagnostics__heading { align-items: flex-start; display: flex; flex-wrap: wrap; gap: var(--sb-space-2); justify-content: space-between; }
+.incident-diagnostics__heading h4 { margin: 0; }
+#incident-diagnostics-status, #incident-diagnostics-context, #incident-diagnostics-result-status { color: var(--sb-text-secondary); font-size: var(--sb-font-size-sm); }
+#incident-diagnostics-list { display: grid; gap: var(--sb-space-2); margin-top: var(--sb-space-3); }
+.incident-diagnostics__incident { align-items: center; background: var(--sb-bg-surface); border: 1px solid var(--sb-border); border-radius: var(--sb-radius-sm); display: flex; flex-wrap: wrap; gap: var(--sb-space-2); justify-content: space-between; min-width: 0; padding: var(--sb-space-2) var(--sb-space-3); }
+.incident-diagnostics__incident p { margin: 0; overflow-wrap: anywhere; }
+.incident-diagnostics__actions { display: flex; flex-wrap: wrap; gap: var(--sb-space-2); }
+#incident-diagnostics-preview { background: var(--sb-bg-surface-secondary); border: 1px solid var(--sb-border); border-radius: var(--sb-radius-sm); margin-top: var(--sb-space-4); padding: var(--sb-space-3); }
+#incident-diagnostics-preview h5 { margin: 0 0 var(--sb-space-2); }
+#incident-diagnostics-results li { border-top: 1px solid var(--sb-border); min-width: 0; }
+#incident-open-log-watch { margin-top: var(--sb-space-3); }
 
 /* Deployment, project, routing, user, and form surfaces share one product rhythm. */
 .deployment-card, .alert-routing-card, #project-summary, .users-table-region { border-radius: var(--sb-section-radius); }
