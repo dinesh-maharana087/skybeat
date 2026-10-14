@@ -62,7 +62,10 @@ def _deployment_bundle(tmp_path: Path) -> Path:
         "lib/skybeat_agent_install.sh": b"#!/usr/bin/env bash\n",
         "verify-agent-release.py": b"#!/usr/bin/env python3\n",
         "validate-agent-server-url.py": b"#!/usr/bin/env python3\n",
+        "agent-updater.py": b"#!/usr/bin/env python3\n",
         "deployment/systemd/skybeat-agent.service": b"[Service]\n",
+        "deployment/systemd/skybeat-updater.service": b"[Service]\n",
+        "deployment/systemd/skybeat-updater.timer": b"[Timer]\n",
         "README.txt": b"SkyBeat agent deployment release.\n",
     }
     for filename, content in artifacts.items():

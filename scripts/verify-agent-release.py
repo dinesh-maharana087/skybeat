@@ -27,7 +27,10 @@ INSTALLER_ARTIFACTS = frozenset(
         "lib/skybeat_agent_install.sh",
         "verify-agent-release.py",
         "validate-agent-server-url.py",
+        "agent-updater.py",
         "deployment/systemd/skybeat-agent.service",
+        "deployment/systemd/skybeat-updater.service",
+        "deployment/systemd/skybeat-updater.timer",
         "README.txt",
     }
 )

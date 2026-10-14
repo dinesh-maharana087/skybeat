@@ -2740,3 +2740,36 @@ Use a one-device canary before wider upgrades. Verify heartbeat, GPU telemetry, 
 After deployment, verify from the intended network: valid Caddy TLS certificate, HTTP-to-HTTPS redirect, Google login and allowlist denial, first agent heartbeat, current dashboard telemetry, controlled OFFLINE/RECOVERED flow, GPU confirmation flow, SMTP behavior, and no-network SMS fallback. Do not deliberately damage production GPUs or send unapproved notifications.
 
 The Windows development environment does not establish real Docker/Compose, Caddy/TLS/DNS, Linux systemd, NVIDIA, SMTP, SMS provider, firewall, backup restore, load, or soak evidence. The retained isolated MySQL data directory is unwritable and must not be repaired, reinitialized, reset, or have its ACLs changed merely for verification. Record those checks as environment-pending until exercised safely.
+
+## Stage 12J agent lifecycle bootstrap and recovery
+
+Agent 1.0.3 has no updater and cannot act on a lifecycle request. On the retained
+Linux device, verify a complete 1.0.4 release bundle and its archive on the
+trusted local path, then run that bundle's reviewed `install-agent.sh` once with
+the existing server URL, wheel, SHA-256, wheelhouse and lockfile. Do not pass an
+enrollment token or `--re-enroll`. Record the UUID and hashes of the protected
+credential/configuration before and after without displaying their contents.
+The installer retains `/opt/skybeat/venv.previous`,
+`/opt/skybeat/VERSION.previous`, and the prior service unit after local health
+acceptance. It installs `skybeat-updater.timer` and a root-owned one-shot
+service. The normal `skybeat-agent` service continues as the `skybeat` user.
+
+The one-shot reads only the protected device configuration, polls its fixed
+device-scoped lifecycle endpoint, retrieves the exact pinned release through
+the existing device credential, verifies the archive digest and complete
+release manifest/wheelhouse/lock, then invokes the reviewed installer. It keeps
+a root-owned marker under `/var/lib/skybeat` for interrupted-switch recovery.
+Only local package/configuration/service/process health determines acceptance
+or rollback. A server outage leaves a healthy installed release in place and
+defers final status reporting. An operator rollback can select only the one
+retained previous release; no version/path/URL is entered in the dashboard.
+The authenticated server and operator-approved release repository are the V1
+software authority; independent signing remains a future hardening option.
+
+Before any real Linux mutation, review the 1.0.4 bundle and the exact local
+rollback path on that host. After bootstrap, confirm preserved identity,
+credential, URL, project, active service, heartbeat, CPU/memory/GPU telemetry,
+and agent/system/kernel diagnostics. Then test one lifecycle-capable to
+lifecycle-capable upgrade and one controlled rollback/failure case if safe.
+Observe bounded batching/retry and the absence of persistent unexpected
+429/503 responses. This Linux acceptance is distinct from Windows unit tests.

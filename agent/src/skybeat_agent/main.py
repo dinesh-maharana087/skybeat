@@ -5,7 +5,7 @@ import asyncio
 import signal
 from functools import partial
 
-from skybeat_agent import __version__
+from skybeat_agent import agent_version
 from skybeat_agent.collectors.gpu import GPUCollector
 from skybeat_agent.collectors.logs import JournalCollector
 from skybeat_agent.collectors.system import collect_system, prime_cpu_sample
@@ -22,7 +22,7 @@ def main() -> None:
     parser.add_argument("--version", action="store_true", help="print the installed agent version")
     arguments = parser.parse_args()
     if arguments.version:
-        print(f"skybeat-agent {__version__}")
+        print(f"skybeat-agent {agent_version()}")
         return
     config = Config.from_env()
     configure_logging(config.log_level, secrets=(config.token,))

@@ -103,7 +103,8 @@ def test_required_configuration(key):
 
 def test_console_version_does_not_require_agent_configuration(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["skybeat-agent", "--version"])
+    monkeypatch.setattr("skybeat_agent.main.agent_version", lambda: "1.0.4")
 
     main()
 
-    assert capsys.readouterr().out == "skybeat-agent 1.0.3\n"
+    assert capsys.readouterr().out == "skybeat-agent 1.0.4\n"

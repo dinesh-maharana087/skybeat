@@ -2341,6 +2341,31 @@ archive filename/root, validated server origin, and whether the explicitly
 permitted local-test HTTP installer flag is required. It never contains an
 enrollment token, credential, OAuth secret, or server wheel.
 
+Stage 12J adds `GET /api/v1/devices/{device_uuid}/agent-lifecycle` to the
+dashboard session. It projects the latest heartbeat's reported agent version,
+latest configured approved release, compatibility, and one current/last
+operation. Same-origin OWNER/ADMIN `POST .../upgrade` requests only that
+configured approved release; `POST .../rollback` has no body-selected version
+and requests only the recorded previous known-good release. A device-row lock
+serializes requests and a single per-device lifecycle row stores the intent.
+The overview also returns server-derived `actions.upgrade` and
+`actions.rollback` eligibility booleans; clients must disable intents when the
+read fails or eligibility is absent.
+Terminal requests and outcomes are recorded in the audit trail. A pre-1.0.4
+agent is `BOOTSTRAP_REQUIRED`, not eligible for managed upgrade.
+
+The fixed device-credential endpoints are `GET /api/v1/agent-lifecycle/operation`,
+`GET /api/v1/agent-lifecycle/operation/{operation_id}/download`, and
+`POST /api/v1/agent-lifecycle/report`. The operation read returns only the
+authenticated device's active structured action, identifier, version, and
+digests. Download requires that same device and operation and serves only the
+pinned configured archive after current-release and SHA-256 revalidation. The
+bounded report accepts only fixed lifecycle states and matched failure
+category/detail codes;
+there are no remote command, path, script, URL, or service-control fields.
+Responses are `no-store`. The updater treats server reachability and local
+service health separately; a reporting outage cannot trigger rollback.
+
 `GET /api/v1/agent-enrollments/{enrollment_id}` is OWNER/ADMIN-only and returns
 only safe lifecycle projection data: `PENDING` for a valid unused authorization,
 `EXPIRED` for a naturally expired unused authorization, `REVOKED` for a

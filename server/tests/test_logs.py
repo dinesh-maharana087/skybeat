@@ -195,7 +195,9 @@ def test_log_read_route_forwards_bounded_time_and_cursor_filters(monkeypatch):
         def recent(
             self, requested, *, source, limit, from_time, until, cursor, direction, q, time_basis
         ):
-            seen.append((requested, source, limit, from_time, until, cursor, direction, q, time_basis))
+            seen.append(
+                (requested, source, limit, from_time, until, cursor, direction, q, time_basis)
+            )
             return {"sources": [], "items": [], "next_cursor": None}
 
     class Authenticated:
@@ -356,8 +358,7 @@ def test_occurrence_cursor_is_bound_to_time_basis_and_existing_cursors_remain_va
         )
     received = service.encode_log_cursor(43, "device-a", "kernel", start, end, "newest", "GPU")
     assert (
-        service.decode_log_cursor(received, "device-a", "kernel", start, end, "newest", "GPU")
-        == 43
+        service.decode_log_cursor(received, "device-a", "kernel", start, end, "newest", "GPU") == 43
     )
     with pytest.raises(ValueError):
         service.decode_log_cursor(

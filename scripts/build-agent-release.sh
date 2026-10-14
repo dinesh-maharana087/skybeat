@@ -51,9 +51,12 @@ cp "$script_dir/install-agent.sh" "$bundle/install-agent.sh"
 cp "$script_dir/lib/skybeat_agent_install.sh" "$bundle/lib/skybeat_agent_install.sh"
 cp "$script_dir/verify-agent-release.py" "$bundle/verify-agent-release.py"
 cp "$script_dir/validate-agent-server-url.py" "$bundle/validate-agent-server-url.py"
+cp "$script_dir/agent-updater.py" "$bundle/agent-updater.py"
 cp "$repository_root/deployment/systemd/skybeat-agent.service" "$bundle/deployment/systemd/skybeat-agent.service"
+cp "$repository_root/deployment/systemd/skybeat-updater.service" "$bundle/deployment/systemd/skybeat-updater.service"
+cp "$repository_root/deployment/systemd/skybeat-updater.timer" "$bundle/deployment/systemd/skybeat-updater.timer"
 printf '%s\n' 'SkyBeat agent deployment release. Use the dashboard-provided installation instructions.' >"$bundle/README.txt"
-chmod 0755 "$bundle/install-agent.sh" "$bundle/verify-agent-release.py" "$bundle/validate-agent-server-url.py"
+chmod 0755 "$bundle/install-agent.sh" "$bundle/verify-agent-release.py" "$bundle/validate-agent-server-url.py" "$bundle/agent-updater.py"
 
 uv build --wheel --out-dir "$bundle" "$agent_dir"
 rm -f "$bundle/.gitignore"
@@ -89,7 +92,10 @@ installer_artifacts = [
     "lib/skybeat_agent_install.sh",
     "verify-agent-release.py",
     "validate-agent-server-url.py",
+    "agent-updater.py",
     "deployment/systemd/skybeat-agent.service",
+    "deployment/systemd/skybeat-updater.service",
+    "deployment/systemd/skybeat-updater.timer",
     "README.txt",
 ]
 manifest = {

@@ -233,7 +233,7 @@ class Heartbeat(WireModel):
     schema_version: Literal[1]
     heartbeat_id: str
     device_id: str
-    agent_version: str
+    agent_version: str = "unknown"
     collected_at: datetime
     hostname: str
     ip_addresses: list[str] = Field(max_length=16)

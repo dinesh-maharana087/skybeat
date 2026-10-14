@@ -1811,12 +1811,15 @@ with each heartbeat, persisted in current/historical telemetry, and shown in
 Device Detail. A separate capabilities negotiation or upgrade mechanism is not
 required for Stage 12D.
 
-Stage 12J will define controlled in-place agent updates and rollback using the
-existing packaged-release architecture. A compatible update must preserve device
-UUID, credential, server URL, project assignment, configuration, and service
-identity unless credential rotation is explicitly requested. Release metadata,
-hash verification, health checks, audit history, and rollback policy belong to
-that later stage.
+Stage 12J adds a fixed lifecycle path to the packaged-release architecture.
+Agent 1.0.3 cannot self-update. The first lifecycle-capable release, 1.0.4,
+must be installed once with the reviewed installer and no enrollment flags.
+This preserves the UUID, permanent credential, server URL, server-controlled
+project, protected configuration, and service identity. Later compatible
+versions can use the root-owned `skybeat-updater.timer` and one-shot service.
+The monitoring service remains unprivileged. A local health failure restores
+the previous known-good environment; server unavailability leaves a locally
+healthy new environment installed while status reporting waits for connectivity.
 
 ---
 

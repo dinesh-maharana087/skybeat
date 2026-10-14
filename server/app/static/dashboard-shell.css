@@ -176,6 +176,12 @@
 .device-detail-page { display: grid; gap: var(--sb-space-4); min-width: 0; }
 .device-breadcrumb { align-items: center; color: var(--sb-text-secondary); display: flex; flex-wrap: wrap; gap: var(--sb-space-2); overflow-wrap: anywhere; }
 .device-page-hero, .device-page-summary > article, .device-page-attention, .device-page-panel { background: var(--sb-bg-surface); border: 1px solid var(--sb-border); border-radius: var(--sb-radius-md); box-shadow: var(--sb-shadow-sm); padding: var(--sb-space-4); }
+.device-agent-lifecycle { background: var(--sb-bg-surface); border: 1px solid var(--sb-border); border-radius: var(--sb-radius-md); box-shadow: var(--sb-shadow-sm); padding: var(--sb-space-4); }
+.device-agent-lifecycle h3 { margin: 0; }
+.device-agent-lifecycle dl { display: grid; gap: var(--sb-space-2); grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr); margin-block: var(--sb-space-3); }
+.device-agent-lifecycle dt, #agent-lifecycle-status { color: var(--sb-text-secondary); }
+.device-agent-lifecycle dd { margin: 0; overflow-wrap: anywhere; }
+.device-agent-lifecycle__actions { display: flex; flex-wrap: wrap; gap: var(--sb-space-2); }
 .device-page-hero h2 { font-size: clamp(1.7rem, 3vw, 2.5rem); margin: var(--sb-space-1) 0; overflow-wrap: anywhere; }
 .device-page-hero p { margin-block: var(--sb-space-2); }
 .device-page-pills { display: flex; flex-wrap: wrap; gap: var(--sb-space-2); margin-block: var(--sb-space-3); }

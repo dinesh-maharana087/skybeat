@@ -22,6 +22,7 @@ from app.api.enrollment import router as enrollment_router
 from app.api.health import router as health_router
 from app.api.heartbeats import PerDeviceRateLimiter
 from app.api.heartbeats import router as heartbeats_router
+from app.api.lifecycle import router as lifecycle_router
 from app.api.logs import router as logs_router
 from app.api.releases import router as release_router
 from app.config import Settings
@@ -149,6 +150,7 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(heartbeats_router)
     app.include_router(logs_router)
+    app.include_router(lifecycle_router)
     app.include_router(dashboard_router)
     app.include_router(enrollment_router)
     app.include_router(release_router)

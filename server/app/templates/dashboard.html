@@ -113,6 +113,11 @@
               <article><h3>GPU</h3><dl id="device-page-gpu-summary"><dt>Current GPU state</dt><dd>{{ gpu_state }}</dd><dt>Reported GPU state</dt><dd>{{ selected_device.gpu_health.reported or 'Not reported' }}</dd></dl></article>
               <article><h3>Project</h3><dl id="device-page-project"><dt>Assigned project</dt><dd>{{ selected_device.project.name }}</dd></dl></article>
             </section>
+            <section class="device-agent-lifecycle" aria-labelledby="device-agent-lifecycle-heading">
+              <div><h3 id="device-agent-lifecycle-heading">Agent lifecycle</h3><p id="agent-lifecycle-status" role="status" aria-live="polite">Loading agent release state…</p></div>
+              <dl id="agent-lifecycle-facts"><dt>Reported version</dt><dd>Loading…</dd></dl>
+              {% if can_manage %}<div class="device-agent-lifecycle__actions"><button id="agent-lifecycle-upgrade" type="button" class="sb-button--primary" hidden disabled>Upgrade agent</button><button id="agent-lifecycle-rollback" type="button" class="sb-button--secondary" hidden disabled>Roll back agent</button></div>{% endif %}
+            </section>
             <section class="device-page-attention" aria-labelledby="device-page-attention-heading"><h3 id="device-page-attention-heading">Current attention</h3><div id="device-page-attention"><div class="detail-fact"><span>Communication</span><strong>{{ selected_device.state if selected_device.state in ('OFFLINE', 'SUSPECT') else 'No current attention' }}</strong></div><div class="detail-fact"><span>GPU</span><strong>{% if not selected_device.latest_received_at %}Awaiting telemetry{% elif gpu_state in ('GPU_MISSING', 'NVIDIA_SMI_FAILED', 'DRIVER_ERROR', 'UNKNOWN') %}{{ gpu_state|replace('_', ' ') }}{% else %}No current attention{% endif %}</strong></div></div></section>
             <div class="device-page-tabs" role="tablist" aria-label="Device detail sections">
               <button id="device-tab-log-watch" type="button" role="tab" aria-selected="true" aria-controls="device-panel-log-watch" tabindex="0">Log Watch</button>

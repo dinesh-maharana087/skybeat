@@ -28,9 +28,7 @@ def validate(root: Path) -> list[str]:
     dockerfile = (root / "deployment/docker/Dockerfile.server").read_text(encoding="utf-8")
     unit = (root / "deployment/systemd/skybeat-agent.service").read_text(encoding="utf-8")
     installer = (root / "scripts/install-agent.sh").read_text(encoding="utf-8")
-    installer_library = (root / "scripts/lib/skybeat_agent_install.sh").read_text(
-        encoding="utf-8"
-    )
+    installer_library = (root / "scripts/lib/skybeat_agent_install.sh").read_text(encoding="utf-8")
     installer_tooling = f"{installer}\n{installer_library}"
     required_compose = ("mysql:", "migrate:", "api:", "worker:", "caddy:", "profiles:")
     errors.extend(f"compose missing: {item}" for item in required_compose if item not in compose)
@@ -64,13 +62,19 @@ def validate(root: Path) -> list[str]:
         "/etc/skybeat/agent.env",
         "install -m 0600",
         "systemctl daemon-reload",
-        "systemctl enable --now skybeat-agent.service",
+        "systemctl enable skybeat-agent.service",
+        "systemctl restart skybeat-agent.service",
+        'verify_local_health "$package_version"',
     )
     errors.extend(
         f"agent installer missing: {item}"
         for item in required_installer
         if item not in installer_tooling
     )
+    lifecycle_steps = ("switch_package", "install_service", "verify_installation", "accept_switch")
+    positions = [installer.rfind(f"    {step}\n") for step in lifecycle_steps]
+    if any(position < 0 for position in positions) or positions != sorted(positions):
+        errors.append("agent installer does not switch, restart, verify, and accept in order")
     if "--credential" in installer:
         errors.append("agent installer accepts the deprecated credential option")
     if "set -x" in installer_tooling or "verify=False" in installer_tooling:

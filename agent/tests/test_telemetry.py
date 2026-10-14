@@ -11,7 +11,8 @@ def _slow_system() -> dict[str, object]:
     return {}
 
 
-def test_snapshot_preserves_zero_and_is_immutable():
+def test_snapshot_preserves_zero_and_reports_installed_version(monkeypatch):
+    monkeypatch.setattr("skybeat_agent.telemetry.agent_version", lambda: "1.0.4")
     config = Config.from_env(
         {
             "SKYBEAT_SERVER_URL": "https://monitor.example.test",
@@ -57,6 +58,7 @@ def test_snapshot_preserves_zero_and_is_immutable():
     assert snapshot["device_id"] == config.device_id
     assert snapshot["cpu"]["utilization_percent"] == 0
     assert snapshot["heartbeat_id"]
+    assert snapshot["agent_version"] == "1.0.4"
 
 
 def test_snapshot_continues_with_null_host_metrics_after_system_collection_deadline():

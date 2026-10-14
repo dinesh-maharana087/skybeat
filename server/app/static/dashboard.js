@@ -60,6 +60,14 @@ const clearDeviceFiltersButton = document.getElementById("clear-device-filters")
 const detailPanel = document.getElementById("detail-panel");
 const detailOpenPage = document.getElementById("detail-open-page");
 const deviceDetailPage = document.getElementById("device-detail-page");
+const lifecycleStatus = document.getElementById("agent-lifecycle-status");
+const lifecycleFacts = document.getElementById("agent-lifecycle-facts");
+const lifecycleUpgrade = document.getElementById("agent-lifecycle-upgrade");
+const lifecycleRollback = document.getElementById("agent-lifecycle-rollback");
+let lifecycleGeneration = 0;
+let lifecycleState = null;
+let lifecycleAvailable = false;
+let lifecycleSubmitting = false;
 let lastLogAttemptAt = 0;
 const logWatchState = {
   source: "", range: "24h", q: "", window: null, items: [], sources: [], nextCursor: null,
@@ -2031,6 +2039,102 @@ function renderDeviceDetailPage(device) {
   ]);
 }
 
+function lifecycleActionEligible(action) {
+  if (!canManage || !lifecycleAvailable || lifecycleSubmitting || !lifecycleState) return false;
+  if (action === "upgrade") {
+    return lifecycleState.actions?.upgrade === true && lifecycleState.compatibility === "UPGRADE_AVAILABLE"
+      && Boolean(lifecycleState.latest_approved_version);
+  }
+  if (action === "rollback") {
+    const operation = lifecycleState.operation;
+    return lifecycleState.actions?.rollback === true && operation?.state === "SUCCEEDED"
+      && operation.rollback_available === true && Boolean(operation.previous_version);
+  }
+  return false;
+}
+
+function updateLifecycleActions() {
+  if (lifecycleUpgrade) {
+    lifecycleUpgrade.hidden = !lifecycleActionEligible("upgrade");
+    lifecycleUpgrade.disabled = lifecycleUpgrade.hidden;
+  }
+  if (lifecycleRollback) {
+    lifecycleRollback.hidden = !lifecycleActionEligible("rollback");
+    lifecycleRollback.disabled = lifecycleRollback.hidden;
+  }
+}
+
+async function refreshAgentLifecycle() {
+  const generation = ++lifecycleGeneration;
+  const deviceId = deviceDetailPage.dataset.deviceId;
+  lifecycleAvailable = false;
+  updateLifecycleActions();
+  if (lifecycleState) lifecycleStatus.textContent = "Refreshing agent lifecycle state. Last verified state is retained.";
+  try {
+    const response = await fetch(`/api/v1/devices/${encodeURIComponent(deviceId)}/agent-lifecycle`, {
+      credentials: "same-origin", signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new Error("lifecycle read failed");
+    const payload = await response.json();
+    if (generation !== lifecycleGeneration) return;
+    if (!payload || typeof payload !== "object") throw new Error("invalid lifecycle state");
+    lifecycleState = payload;
+    lifecycleAvailable = true;
+    const operation = payload.operation;
+    const failure = operation?.failure_category
+      ? [operation.failure_category, operation.failure_detail].filter(Boolean).map((value) => value.replaceAll("_", " ")).join(" · ")
+      : "None";
+    detailPairs(lifecycleFacts, [
+      ["Reported version", payload.compatibility === "BOOTSTRAP_REQUIRED" || !payload.installed_version
+        ? "Unknown (legacy agent)" : payload.installed_version],
+      ["Latest approved release", payload.latest_approved_version ?? "Unavailable"],
+      ["Compatibility", (payload.compatibility ?? "UNKNOWN").replaceAll("_", " ")],
+      ["Operation", operation ? `${operation.action} · ${operation.state.replaceAll("_", " ")}` : "None"],
+      ["Last failure", failure],
+    ]);
+    if (payload.compatibility === "BOOTSTRAP_REQUIRED") {
+      lifecycleStatus.textContent = "Managed lifecycle is unsupported by this legacy agent. Install the first capable release with the reviewed installer while preserving identity and configuration.";
+    } else if (payload.compatibility === "UNKNOWN") {
+      lifecycleStatus.textContent = "Reported agent version is unknown; lifecycle actions are unavailable.";
+    } else if (payload.compatibility === "RELEASE_UNAVAILABLE") {
+      lifecycleStatus.textContent = "Approved agent release is unavailable. Reported version follows the latest heartbeat.";
+    } else if (payload.compatibility === "IN_PROGRESS") {
+      lifecycleStatus.textContent = "An agent lifecycle operation is in progress.";
+    } else {
+      lifecycleStatus.textContent = "Agent lifecycle state loaded. Reported version follows the latest heartbeat.";
+    }
+    updateLifecycleActions();
+  } catch (_) {
+    if (generation !== lifecycleGeneration) return;
+    lifecycleAvailable = false;
+    lifecycleStatus.textContent = "Agent lifecycle state is unavailable. Last successful state is retained.";
+    if (!lifecycleState) detailPairs(lifecycleFacts, [["Reported version", "Unavailable"]]);
+    updateLifecycleActions();
+  }
+}
+
+async function submitAgentLifecycle(action) {
+  if (!lifecycleActionEligible(action)) return;
+  const approved = action === "upgrade" ? lifecycleState.latest_approved_version : lifecycleState.operation?.previous_version;
+  const intent = action === "upgrade" ? "upgrade" : "roll back";
+  if (!window.confirm(`Request ${intent} for this device to agent ${approved}? The local updater will verify the approved release and check service health.`)) return;
+  ++lifecycleGeneration;
+  lifecycleSubmitting = true;
+  lifecycleAvailable = false;
+  updateLifecycleActions();
+  try {
+    await requestDashboardMutation(`/api/v1/devices/${encodeURIComponent(deviceDetailPage.dataset.deviceId)}/agent-lifecycle/${action}`, "POST", {});
+    lifecycleStatus.textContent = `${action === "upgrade" ? "Upgrade" : "Rollback"} requested for this device.`;
+    await refreshAgentLifecycle();
+  } catch (_) {
+    lifecycleAvailable = false;
+    lifecycleStatus.textContent = "Lifecycle request was not accepted. Refresh the release state and try again.";
+  } finally {
+    lifecycleSubmitting = false;
+    updateLifecycleActions();
+  }
+}
+
 function logWindowForRange(range, now = Date.now()) {
   const duration = LOG_RANGE_MS[range] ?? LOG_RANGE_MS["24h"];
   return { from: new Date(now - duration).toISOString(), until: new Date(now).toISOString() };
@@ -2215,6 +2319,7 @@ async function refreshDeviceDetailPage() {
   if (refreshing) return;
   refreshing = true;
   const deviceId = deviceDetailPage.dataset.deviceId;
+  void refreshAgentLifecycle();
   const now = Date.now();
   if (now - lastLogAttemptAt >= (document.hidden ? 60000 : 30000)) void loadDeviceLogs({ auto: true });
   try {
@@ -3462,6 +3567,8 @@ refreshActiveView();
   initializeDeviceDetailTabs();
   initializeLogWatch();
   initializeIncidentCorrelation();
+  lifecycleUpgrade?.addEventListener("click", () => void submitAgentLifecycle("upgrade"));
+  lifecycleRollback?.addEventListener("click", () => void submitAgentLifecycle("rollback"));
   document.addEventListener("visibilitychange", () => {
     window.clearTimeout(refreshTimer);
     if (!document.hidden) void refreshActiveView();

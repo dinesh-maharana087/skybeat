@@ -14,9 +14,7 @@ from app.models import DeviceLogEntry, Incident
 pytestmark = pytest.mark.mysql
 
 
-def test_incident_diagnostics_uses_occurrence_time_despite_delayed_upload(
-    identity, mysql_database
-):
+def test_incident_diagnostics_uses_occurrence_time_despite_delayed_upload(identity, mysql_database):
     first = identity.enroll(identity.create_project(f"Correlation A {uuid4()}").public_id, "A")
     second = identity.enroll(identity.create_project(f"Correlation B {uuid4()}").public_id, "B")
     anchor = datetime(2026, 10, 12, 12, 0)

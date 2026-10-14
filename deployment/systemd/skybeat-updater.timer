@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically check this device for a SkyBeat agent lifecycle operation
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=skybeat-updater.service
+
+[Install]
+WantedBy=timers.target

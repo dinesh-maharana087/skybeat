@@ -122,6 +122,34 @@ class AuditEvent(Base):
     details: Mapped[dict[str, Any]] = mapped_column(JSON)
 
 
+class DeviceAgentLifecycle(Base):
+    """One replaceable operation slot per device; AuditEvent retains history."""
+
+    __tablename__ = "device_agent_lifecycle"
+    __table_args__ = (TABLE_OPTIONS,)
+
+    device_id: Mapped[int] = mapped_column(
+        ForeignKey("devices.id", ondelete="RESTRICT"), primary_key=True
+    )
+    operation_uuid: Mapped[str] = mapped_column(
+        CHAR(36, charset="ascii", collation="ascii_bin"), unique=True
+    )
+    action: Mapped[str] = mapped_column(String(16))
+    state: Mapped[str] = mapped_column(String(32))
+    target_version: Mapped[str] = mapped_column(String(64))
+    target_wheel_sha256: Mapped[str] = mapped_column(String(64))
+    archive_sha256: Mapped[str | None] = mapped_column(String(64))
+    previous_version: Mapped[str | None] = mapped_column(String(64))
+    previous_wheel_sha256: Mapped[str | None] = mapped_column(String(64))
+    rollback_available: Mapped[bool] = mapped_column(Boolean, default=False)
+    requester: Mapped[str] = mapped_column(String(128))
+    failure_category: Mapped[str | None] = mapped_column(String(32))
+    failure_detail: Mapped[str | None] = mapped_column(String(64))
+    requested_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    completed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+
+
 class HeartbeatReceipt(Base):
     __tablename__ = "heartbeat_receipts"
     __table_args__ = (

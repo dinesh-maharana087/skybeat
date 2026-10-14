@@ -84,6 +84,21 @@ def test_device_detail_page_requires_auth_and_resolves_canonical_device(role_nam
     assert "Device &lt;alpha&gt;" in page.text
     assert "Ops &amp; Dev" in page.text
     assert "Log Watch" in page.text and "Analyze" in page.text
+    assert page.text.count('class="device-agent-lifecycle"') == 1
+    assert page.text.count('id="device-agent-lifecycle-heading"') == 1
+    assert page.text.count('id="agent-lifecycle-status"') == 1
+    assert page.text.count('id="agent-lifecycle-facts"') == 1
+    assert page.text.count('id="agent-lifecycle-upgrade"') == (role_name != "USER")
+    assert page.text.count('id="agent-lifecycle-rollback"') == (role_name != "USER")
+    if role_name != "USER":
+        assert (
+            'id="agent-lifecycle-upgrade" type="button" class="sb-button--primary" hidden disabled'
+            in page.text
+        )
+        assert (
+            'id="agent-lifecycle-rollback" type="button" '
+            'class="sb-button--secondary" hidden disabled' in page.text
+        )
     assert 'href="/dashboard/devices"' in page.text
     assert missing.status_code == malformed.status_code == 404
 
@@ -209,6 +224,7 @@ def test_device_detail_tabs_and_refresh_interaction_in_node():
         globalThis.scheduleRefresh = () => { scheduleCount += 1; };
         globalThis.markDashboardStale = () => { staleCount += 1; };
         globalThis.markDashboardFresh = () => { freshCount += 1; };
+        globalThis.refreshAgentLifecycle = () => Promise.resolve();
         vm.runInThisContext(readFileSync(0, "utf8"));
 
         const log = nodes.get("device-tab-log-watch");
@@ -238,6 +254,124 @@ def test_device_detail_tabs_and_refresh_interaction_in_node():
             !nodes.get("device-page-status").textContent.includes("retained")) {
           throw new Error("failed refresh did not retain last successful state");
         }
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable
+        [node, "--input-type=module", "--eval", harness],
+        check=False,
+        input=controller,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_agent_lifecycle_rendering_and_failed_refresh_in_node():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is unavailable on this host")
+    script = dashboard_script()
+    controller = script.split("function lifecycleActionEligible(action) {", 1)[1].split(
+        "\nfunction logWindowForRange(", 1
+    )[0]
+    controller = "function lifecycleActionEligible(action) {" + controller
+    harness = textwrap.dedent(
+        """
+        import { readFileSync } from "node:fs";
+        import vm from "node:vm";
+        globalThis.lifecycleGeneration = 0;
+        globalThis.lifecycleState = null;
+        globalThis.lifecycleAvailable = false;
+        globalThis.lifecycleSubmitting = false;
+        globalThis.deviceDetailPage = { dataset: { deviceId: "device-1" } };
+        globalThis.lifecycleStatus = { textContent: "Loading agent release state…" };
+        globalThis.lifecycleFacts = { facts: [["Reported version", "Loading…"]] };
+        globalThis.lifecycleUpgrade = { hidden: true, disabled: true };
+        globalThis.lifecycleRollback = { hidden: true, disabled: true };
+        globalThis.canManage = true;
+        globalThis.detailPairs = (element, facts) => { element.facts = facts; };
+        globalThis.window = { confirm: () => true };
+        let mutations = 0;
+        let rejectMutation;
+        globalThis.requestDashboardMutation = async () => {
+          mutations += 1;
+          return new Promise((_, reject) => { rejectMutation = reject; });
+        };
+        const responses = [];
+        globalThis.fetch = async () => {
+          const next = responses.shift();
+          if (next instanceof Error) throw next;
+          if (next === 503) return { ok: false, status: 503 };
+          return { ok: true, json: async () => next };
+        };
+        vm.runInThisContext(readFileSync(0, "utf8"));
+        const version = () => lifecycleFacts.facts.find(([name]) => name === "Reported version")[1];
+        const denied = () => lifecycleUpgrade.hidden && lifecycleUpgrade.disabled &&
+          lifecycleRollback.hidden && lifecycleRollback.disabled;
+        responses.push(503);
+        await refreshAgentLifecycle();
+        if (!lifecycleStatus.textContent.includes("unavailable") ||
+            version() !== "Unavailable" || !denied()) {
+          throw new Error("first failed read left loading facts or enabled controls");
+        }
+        responses.push({ installed_version: null, latest_approved_version: "1.0.5",
+          compatibility: "UNKNOWN", operation: null,
+          actions: { upgrade: false, rollback: false } });
+        await refreshAgentLifecycle();
+        if (version() !== "Unknown (legacy agent)" ||
+            !lifecycleStatus.textContent.includes("unknown") || !denied()) {
+          throw new Error("unknown legacy version was not rendered separately");
+        }
+        responses.push({ installed_version: "1.0.0", latest_approved_version: "1.0.5",
+          compatibility: "BOOTSTRAP_REQUIRED", operation: null,
+          actions: { upgrade: false, rollback: false } });
+        await refreshAgentLifecycle();
+        if (version() !== "Unknown (legacy agent)" ||
+            !lifecycleStatus.textContent.includes("unsupported") || !denied()) {
+          throw new Error("unreliable legacy report was presented as an installed version");
+        }
+        responses.push({ installed_version: "1.0.4", latest_approved_version: "1.0.5",
+          compatibility: "UPGRADE_AVAILABLE", operation: null,
+          actions: { upgrade: true, rollback: false } });
+        await refreshAgentLifecycle();
+        if (version() !== "1.0.4" || lifecycleUpgrade.hidden ||
+            lifecycleUpgrade.disabled || !lifecycleRollback.disabled) {
+          throw new Error("eligible upgrade was not rendered");
+        }
+        responses.push(new Error("network"));
+        await refreshAgentLifecycle();
+        if (version() !== "1.0.4" ||
+            !lifecycleStatus.textContent.includes("retained") || !denied()) {
+          throw new Error("failed refresh erased verified facts or retained action eligibility");
+        }
+        await submitAgentLifecycle("upgrade");
+        if (mutations !== 0) throw new Error("stale action was submitted");
+        responses.push({ installed_version: "1.0.5", latest_approved_version: "1.0.5",
+          compatibility: "CURRENT", operation: { action: "UPGRADE", state: "SUCCEEDED",
+            previous_version: "1.0.4", rollback_available: true },
+          actions: { upgrade: false, rollback: true } });
+        await refreshAgentLifecycle();
+        if (lifecycleRollback.hidden || lifecycleRollback.disabled || !lifecycleUpgrade.disabled) {
+          throw new Error("eligible rollback was not rendered");
+        }
+        const submitted = submitAgentLifecycle("rollback");
+        responses.push({ installed_version: "1.0.5", latest_approved_version: "1.0.5",
+          compatibility: "CURRENT", operation: { action: "UPGRADE", state: "SUCCEEDED",
+            previous_version: "1.0.4", rollback_available: true },
+          actions: { upgrade: false, rollback: true } });
+        await refreshAgentLifecycle();
+        if (!denied()) throw new Error("poll enabled controls during a pending request");
+        rejectMutation(new Error("request rejected"));
+        await submitted;
+        if (mutations !== 1 || !denied()) {
+          throw new Error("rejected lifecycle request re-enabled stale controls");
+        }
+        responses.push({ installed_version: "1.0.4", latest_approved_version: "1.0.5",
+          compatibility: "UPGRADE_AVAILABLE", operation: null });
+        await refreshAgentLifecycle();
+        if (!denied()) throw new Error("missing server eligibility enabled an action");
         """
     )
     result = subprocess.run(  # noqa: S603 - runs the locally discovered Node executable

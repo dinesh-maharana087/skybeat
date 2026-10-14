@@ -1,0 +1,15 @@
+[Unit]
+Description=Check this device for a pinned SkyBeat agent lifecycle operation
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3.12 /usr/local/libexec/skybeat/agent-updater.py
+TimeoutStartSec=12min
+NoNewPrivileges=true
+ProtectHome=true
+UMask=0077
+

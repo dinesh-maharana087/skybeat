@@ -52,7 +52,12 @@ def test_installer_has_ordered_fail_closed_lifecycle_helpers_and_secret_guards()
     assert "set -x" not in source
     assert "/etc/skybeat/agent.env" in source
     assert "install -m 0600 -o root -g root" in source
-    assert "systemctl disable --now skybeat-agent.service" in INSTALLER.read_text(encoding="utf-8")
+    assert "rollback_switch" in INSTALLER.read_text(encoding="utf-8")
+    assert "systemctl disable --now skybeat-agent.service" not in INSTALLER.read_text(
+        encoding="utf-8"
+    )
+    assert "venv.candidate" in source
+    assert source.index("verify_local_health()") < source.index("accept_switch()")
     assert "--re-enroll" in INSTALLER.read_text(encoding="utf-8")
 
 

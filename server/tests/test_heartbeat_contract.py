@@ -45,6 +45,15 @@ def test_older_heartbeat_without_os_identity_is_accepted():
     assert normalized_payload(heartbeat)["os"] is None
 
 
+def test_older_heartbeat_without_agent_version_is_accepted_without_rewriting_history():
+    old = heartbeat_payload()
+    del old["agent_version"]
+    assert parse_heartbeat(encode(old)).agent_version == "unknown"
+    historical = heartbeat_payload()
+    historical["agent_version"] = "1.0.0"
+    assert parse_heartbeat(encode(historical)).agent_version == "1.0.0"
+
+
 def test_minimum_payload_preserves_null_as_distinct_from_zero():
     payload = heartbeat_payload()
     payload["ip_addresses"] = []
@@ -206,7 +215,9 @@ def test_invalid_contract_fields_are_rejected(path, value):
     assert result.value.code == "validation_error"
 
 
-@pytest.mark.parametrize("field", [key for key in heartbeat_payload() if key != "os"])
+@pytest.mark.parametrize(
+    "field", [key for key in heartbeat_payload() if key not in {"os", "agent_version"}]
+)
 def test_required_top_level_fields_are_present(field):
     payload = heartbeat_payload()
     del payload[field]

@@ -51,23 +51,24 @@ Separate monitoring from remote control
 Record security-relevant administrative actions
 ```
 
-Most importantly:
+SkyBeat observes devices and does not provide general remote administration.
+The sole Stage 12J exception is a fixed, root-owned agent lifecycle mechanism
+that installs or rolls back an operator-approved SkyBeat release artifact. The
+authenticated SkyBeat server and operator-approved release repository are the
+software-release authority. Device requests are bound to one approved release
+and checked with HTTPS/TLS, an exact archive digest, and the existing manifest,
+wheelhouse, lockfile, and SHA-256 verifier before a local switch. A temporary
+server outage does not decide whether a locally healthy agent is rolled back.
 
-```text
-SkyBeat observes devices.
-
-SkyBeat does not control devices.
-```
-
-V1 contains no:
+This exception does not permit:
 
 * remote shell
 * arbitrary command execution
 * device reboot
 * driver restart
 * service restart
-* package installation
-* OS modification
+* arbitrary file execution or arbitrary package installation
+* arbitrary service control or remote host administration
 * repair workflow
 * self-healing
 
@@ -1962,7 +1963,8 @@ systemd hardening to recover from a failure.
 
 The generic release archive is built before it is served and is immutable at
 request time. It contains the selected `skybeat_agent` wheel, locked offline
-wheelhouse, release verifier, URL validator, installer helper, systemd unit,
+wheelhouse, release verifier, URL validator, installer helper, updater script,
+monitoring unit, updater one-shot unit and timer,
 and checksums; it never contains enrollment tokens, device credentials, API
 secrets, or a `skybeat_server` wheel. The server validates the configured
 directory and exact sibling archive against the manifest before every metadata
