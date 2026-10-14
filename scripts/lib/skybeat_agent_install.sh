@@ -168,5 +168,5 @@ install_updater() {
     install -m 0644 -o root -g root "$release_dir/deployment/systemd/skybeat-updater.service" /etc/systemd/system/skybeat-updater.service
     install -m 0644 -o root -g root "$release_dir/deployment/systemd/skybeat-updater.timer" /etc/systemd/system/skybeat-updater.timer
     systemctl daemon-reload
-    systemctl enable --now skybeat-updater.timer
+    # Timer activation requires a separate operator action; preserve its existing state.
 }

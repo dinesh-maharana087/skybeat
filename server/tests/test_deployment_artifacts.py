@@ -113,7 +113,7 @@ def test_installer_rejects_the_legacy_credential_option_before_host_changes():
 
 
 @pytest.mark.skipif(which("bash") is None, reason="Bash is unavailable on this host")
-def test_installer_rejects_missing_source_and_environment_without_host_changes(tmp_path):
+def test_installer_rejects_legacy_positional_inputs_before_host_changes(tmp_path):
     bash = which("bash")
     missing_source = subprocess.run(  # noqa: S603 -- invokes the installer only with invalid paths.
         [bash, str(INSTALLER), str(tmp_path / "missing-agent"), str(tmp_path / "missing.env")],
@@ -129,9 +129,9 @@ def test_installer_rejects_missing_source_and_environment_without_host_changes(t
     )
 
     assert missing_source.returncode != 0
-    assert "agent source directory is invalid" in missing_source.stderr
+    assert "usage: sudo ./install-agent.sh" in missing_source.stderr
     assert missing_environment.returncode != 0
-    assert "protected environment file is missing" in missing_environment.stderr
+    assert "usage: sudo ./install-agent.sh" in missing_environment.stderr
 
 
 def test_status_records_operator_supplied_stage06_evidence_without_secrets():
