@@ -210,7 +210,7 @@ def test_release_selection_migration_creates_enforced_singleton_on_mysql(mysql_d
 
     with mysql_database.engine.connect() as connection:
         assert connection.scalar(text("SELECT VERSION()")).startswith("8.")
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "93f20b4c17d6"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "d8a71f2c4e30"
         assert (
             connection.scalar(
                 text(

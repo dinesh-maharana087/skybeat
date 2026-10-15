@@ -1,8 +1,13 @@
 from unittest.mock import Mock
 
 import pytest
+from sqlalchemy import String
 
-from app.local_schema_guard import SchemaMismatch, require_current_schema
+from app.local_schema_guard import (
+    SchemaMismatch,
+    require_current_schema,
+    require_lifecycle_schema,
+)
 
 
 def test_current_schema_is_accepted():
@@ -22,6 +27,16 @@ def test_missing_schema_and_multiple_code_heads_fail_closed():
         require_current_schema(set(), {"c1436a7392a9"})
     with pytest.raises(SchemaMismatch, match="exactly one Alembic head"):
         require_current_schema({"c1436a7392a9"}, {"a", "b"})
+
+
+def test_lifecycle_schema_rejects_missing_failure_detail_even_at_current_revision():
+    with pytest.raises(SchemaMismatch, match="failure_detail"):
+        require_lifecycle_schema(
+            [
+                {"name": "device_id", "type": String(64), "nullable": False},
+                {"name": "failure_category", "type": String(32), "nullable": True},
+            ]
+        )
 
 
 def test_production_startup_does_not_run_schema_guard(monkeypatch):

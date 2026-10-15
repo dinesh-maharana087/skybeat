@@ -137,4 +137,4 @@ def test_programmatic_alembic_settings_override_cli_discovery(
 
     command.current(config)
 
-    assert "93f20b4c17d6" in output.getvalue()
+    assert "d8a71f2c4e30" in output.getvalue()
