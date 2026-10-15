@@ -3,7 +3,16 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, LargeBinary, MetaData, String
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    LargeBinary,
+    MetaData,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.mysql import BIGINT, BINARY, CHAR, DATETIME, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -122,6 +131,37 @@ class AuditEvent(Base):
     details: Mapped[dict[str, Any]] = mapped_column(JSON)
 
 
+class RegisteredAgentRelease(Base):
+    """Verified archive identity and its first explicit approval."""
+
+    __tablename__ = "agent_releases"
+    __table_args__ = (UniqueConstraint("version", name="uq_agent_releases_version"), TABLE_OPTIONS)
+
+    archive_sha256: Mapped[str] = mapped_column(String(64), primary_key=True)
+    version: Mapped[str] = mapped_column(String(64))
+    wheel_sha256: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16))
+    registered_by: Mapped[str] = mapped_column(String(128))
+    registered_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    verified_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+    approved_by: Mapped[str | None] = mapped_column(String(128))
+    approved_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+
+
+class AgentReleaseSelection(Base):
+    """A singleton row serializes active installation-release changes."""
+
+    __tablename__ = "agent_release_selection"
+    __table_args__ = (CheckConstraint("id = 1", name="singleton"), TABLE_OPTIONS)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    archive_sha256: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_releases.archive_sha256", ondelete="RESTRICT")
+    )
+    activated_by: Mapped[str | None] = mapped_column(String(128))
+    activated_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+
+
 class DeviceAgentLifecycle(Base):
     """One replaceable operation slot per device; AuditEvent retains history."""
 
@@ -227,6 +267,7 @@ from app.models.auth import (  # noqa: E402
 from app.models.logs import DeviceLogEntry, DeviceLogSource  # noqa: E402
 
 __all__ = [
+    "AgentReleaseSelection",
     "AlertEvent",
     "AdminSession",
     "AgentEnrollment",
@@ -249,4 +290,5 @@ __all__ = [
     "ProjectNotificationSettings",
     "OAuthTransaction",
     "Project",
+    "RegisteredAgentRelease",
 ]

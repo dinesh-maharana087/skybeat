@@ -1966,9 +1966,14 @@ request time. It contains the selected `skybeat_agent` wheel, locked offline
 wheelhouse, release verifier, URL validator, installer helper, updater script,
 monitoring unit, updater one-shot unit and timer,
 and checksums; it never contains enrollment tokens, device credentials, API
-secrets, or a `skybeat_server` wheel. The server validates the configured
-directory and exact sibling archive against the manifest before every metadata
-or download response and cannot accept an HTTP-supplied filesystem path.
+secrets, or a `skybeat_server` wheel. The server registers only a verified
+bundle and matching ZIP from a protected incoming directory, then stores
+immutable bytes by archive digest. The singleton active-installation selection
+changes only through an authenticated, same-origin OWNER/ADMIN activation with
+an audit record. Stored content is revalidated before metadata or download
+responses, and no HTTP-supplied filesystem path is accepted. A deployment card
+may pin an approved archive digest in the existing download route; copied
+instructions check that ZIP digest before unpacking.
 
 An `sbe1` enrollment token remains short-lived, single-use, and is disclosed
 only once to an authenticated OWNER/ADMIN dashboard session. The dashboard can

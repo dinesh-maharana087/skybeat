@@ -2329,12 +2329,27 @@ no-store`.
 
 `GET /api/v1/agent-releases/current` and
 `GET /api/v1/agent-releases/current/download` require an authenticated
-`OWNER` or `ADMIN`. The server reads only the configured prebuilt release
-directory and its exact sibling archive after validating the manifest, every
-declared hash, `wheel.sha256`, `SHA256SUMS`, archive membership, and archive
-content hashes. The download is a fixed attachment with `Cache-Control:
-no-store`; it accepts no path or filename parameter. A release unavailable or
-invalid at request time yields a safe `503` response.
+`OWNER` or `ADMIN`. A protected, durable release registry records verified
+archive digests and one explicitly activated installation release. Release
+Management uses same-origin `POST /api/v1/agent-releases` to register a staged
+`skybeat-agent-X.Y.Z` bundle and matching ZIP, and same-origin
+`POST /api/v1/agent-releases/{archive_sha256}/verify` and `/activate` to verify
+or explicitly approve it. `GET /api/v1/agent-releases` lists registered
+artifacts and a safe store/staging availability message. The server copies
+validated bytes into the protected content-addressed store and rechecks the
+manifest, hashes, archive membership, and stored content before serving.
+The store message contains no filesystem path. `/readyz` reports core database
+readiness independently of an empty release registry or unavailable artifact;
+the local operator preflight reports release-management readiness separately.
+
+`current` returns metadata for the active verified artifact, including its
+immutable `archive_sha256`. The existing download route serves the active
+archive by default; an optional validated `archive_sha256` query pins a
+previously approved artifact so a deployment card and copied instruction
+cannot silently switch ZIPs after a later activation. The ZIP is a fixed
+attachment with `Cache-Control: no-store`; no browser filesystem path or
+filename parameter is accepted. An unavailable or invalid artifact yields a
+safe `503` response.
 
 The metadata response contains the exact manifest wheel filename and SHA-256,
 archive filename/root, validated server origin, and whether the explicitly

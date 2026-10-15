@@ -1146,6 +1146,38 @@ def test_admin_deployments_page_is_management_only_and_has_to_install_workspace(
     assert denied.status_code == 403
 
 
+def test_release_management_is_separate_and_management_only():
+    from app.users.service import UserRole
+
+    class Authenticated:
+        def __init__(self, role):
+            self.role = role
+
+        def authenticate_session(self, token):
+            return DashboardUser("google", "ops@example.test", None, 1, self.role)
+
+    settings = Settings(
+        env="test", database_url="mysql+pymysql://test:example@127.0.0.1:1/skybeat_test"
+    )
+    app = create_app(settings)
+    app.state.dashboard_auth_service = Authenticated(UserRole.ADMIN)
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        deployments = client.get("/dashboard/deployments")
+        releases = client.get("/dashboard/releases")
+    app.state.dashboard_auth_service = Authenticated(UserRole.USER)
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("__Host-skybeat_session", "valid-browser-session")
+        denied = client.get("/dashboard/releases")
+
+    assert deployments.status_code == releases.status_code == 200
+    assert 'id="release-register-form"' not in deployments.text
+    assert 'href="/dashboard/releases"' in deployments.text
+    assert 'id="release-register-form"' in releases.text
+    assert 'data-dashboard-view="releases"' in releases.text
+    assert denied.status_code == 403
+
+
 def test_deployment_cards_are_minimal_and_use_the_authoritative_pending_state():
     source = dashboard_script()
     styles = dashboard_styles()
@@ -1288,7 +1320,12 @@ def test_user_role_cannot_open_users_page_and_does_not_receive_management_contro
     assert 'id="add-device"' not in devices.text
 
 
-def test_development_dashboard_bypass_renders_a_fixed_local_identity_without_a_session():
+def test_development_dashboard_bypass_renders_a_fixed_local_identity_without_a_session(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+
     class StartupWarningCapture(logging.Handler):
         def __init__(self):
             super().__init__()
@@ -2368,7 +2405,10 @@ def test_dashboard_deployment_flow_keeps_release_metadata_and_local_token_file_c
 
     assert 'id="deployments-list" class="deployment-grid"' in template
     assert 'fetch("/api/v1/agent-releases/current", { credentials: "same-origin" })' in script
-    assert '"/api/v1/agent-releases/current/download"' in script
+    assert (
+        "`/api/v1/agent-releases/current/download?archive_sha256=${selectedRelease.archive_sha256}`"
+        in script
+    )
     assert "release.wheel_filename" in script
     assert "release.wheel_sha256" in script
     assert "cd ${release.archive_root}" in script

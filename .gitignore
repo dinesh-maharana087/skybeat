@@ -28,6 +28,7 @@ htmlcov/
 .tmp
 .tmp/
 .skybeat-local-runtime/
+/release-store/
 .tmp-pytest-deployment-ui
 .tmp-pytest-cache/
 /.tmp

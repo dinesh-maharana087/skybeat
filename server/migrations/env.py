@@ -4,13 +4,13 @@ from alembic import context
 
 from app.config import DatabaseSettings
 from app.db import Database
+from app.migration_config import load_migration_database_settings
 from app.models import Base
 
 config = context.config
 
 
 def run_migrations() -> None:
-    settings = config.attributes.get("settings") or DatabaseSettings()
     if context.is_offline_mode():
         context.configure(
             dialect_name="mysql",
@@ -21,6 +21,10 @@ def run_migrations() -> None:
         with context.begin_transaction():
             context.run_migrations()
         return
+    supplied_settings = config.attributes.get("settings")
+    settings: DatabaseSettings = (
+        supplied_settings if supplied_settings is not None else load_migration_database_settings()
+    )
     database = Database(settings)
     try:
         with database.engine.connect() as connection:

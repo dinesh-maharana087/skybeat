@@ -13,6 +13,9 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
+from app.releases.service import ReleaseUnavailable
+from app.releases.storage import resolve_storage_root
+
 
 class DatabaseSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -79,6 +82,7 @@ class Settings(DatabaseSettings):
     agent_enrollment_ttl_seconds: int = Field(default=86_400, ge=86_400, le=86_400)
     agent_enrollment_verification_ttl_seconds: int = Field(default=600, ge=60, le=1800)
     agent_release_dir: Path | None = None
+    agent_release_store: Path | None = None
     agent_server_url: str | None = None
     allow_insecure_local_agent_server: bool = False
     smtp_host: str | None = Field(default=None, min_length=1, max_length=253)
@@ -183,6 +187,14 @@ class Settings(DatabaseSettings):
     @property
     def dashboard_authorization_configured(self) -> bool:
         return bool(self.allowed_emails or self.allowed_domains)
+
+    @property
+    def release_store_root(self) -> Path | None:
+        return resolve_storage_root(self.agent_release_store, self.env)
+
+    @property
+    def release_store_is_default(self) -> bool:
+        return self.env == "development" and self.agent_release_store is None
 
     @field_validator("smtp_host", "smtp_username", "smtp_from_address", mode="before")
     @classmethod
@@ -290,6 +302,10 @@ class Settings(DatabaseSettings):
         elif self.allow_insecure_local_agent_server and self.env != "development":
             raise ValueError("Insecure local agent server mode requires development mode.")
         self.agent_server_url = agent_server_url
+        try:
+            _ = self.release_store_root
+        except ReleaseUnavailable as exc:
+            raise ValueError(str(exc)) from None
         return self
 
 

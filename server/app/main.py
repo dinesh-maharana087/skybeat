@@ -34,7 +34,8 @@ from app.db import Database
 from app.enrollment.service import AgentEnrollmentService
 from app.logging import configure_logging
 from app.notifications.management import NotificationManagementService
-from app.releases.service import AgentReleaseService
+from app.releases.registry import ManagedReleaseService
+from app.releases.storage import prepare_storage
 from app.users.service import UserService
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,8 @@ def create_app(
     url = config.database_url.get_secret_value()
     configure_logging(config.log_level, [url, make_url(url).password or ""])
     db = database if database is not None else Database(config)
+    release_root = config.release_store_root
+    prepare_storage(release_root, development_default=config.release_store_is_default)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -98,8 +101,8 @@ def create_app(
         offline_after_seconds=config.offline_after_seconds,
     )
     app.state.enrollment_rate_limiter = EnrollmentRateLimiter()
-    app.state.agent_release_service = AgentReleaseService(
-        config.agent_release_dir, config.agent_server_url or config.public_base_url
+    app.state.agent_release_service = ManagedReleaseService(
+        db, release_root, config.agent_server_url or config.public_base_url
     )
     app.state.user_service_factory = UserService
     app.state.notification_management_service_factory = NotificationManagementService

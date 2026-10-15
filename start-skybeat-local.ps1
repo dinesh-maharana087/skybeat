@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$PreflightOnly
+    [switch]$PreflightOnly,
+    [switch]$VerifyRunning
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,6 +10,10 @@ function Import-SkyBeatEnvironment {
     param([Parameter(Mandatory)][string]$Path)
 
     $loaded = @{}
+    $rootEndpointSettings = @(
+        "SKYBEAT_AGENT_SERVER_URL",
+        "SKYBEAT_LOCAL_ENDPOINT_MODE"
+    )
     $lineNumber = 0
     foreach ($rawLine in Get-Content -LiteralPath $Path) {
         $lineNumber++
@@ -28,8 +33,18 @@ function Import-SkyBeatEnvironment {
             )) {
             $value = $value.Substring(1, $value.Length - 2)
         }
-        [Environment]::SetEnvironmentVariable($name, $value, "Process")
-        $loaded[$name] = $value
+        $explicit = [Environment]::GetEnvironmentVariable($name, "Process")
+        if ($name -in $rootEndpointSettings) {
+            [Environment]::SetEnvironmentVariable($name, $value, "Process")
+            $loaded[$name] = $value
+        }
+        elseif ($null -ne $explicit) {
+            $loaded[$name] = $explicit
+        }
+        else {
+            [Environment]::SetEnvironmentVariable($name, $value, "Process")
+            $loaded[$name] = $value
+        }
     }
     return $loaded
 }
@@ -83,7 +98,8 @@ function Get-ListeningProcess {
         [Parameter(Mandatory)][int]$Port
     )
 
-    $listener = Get-NetTCPConnection -State Listen -LocalAddress $Address -LocalPort $Port -ErrorAction SilentlyContinue |
+    $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue |
+        Where-Object { $_.LocalAddress -in @($Address, "0.0.0.0") } |
         Select-Object -First 1
     if ($null -eq $listener) {
         return $null
@@ -91,11 +107,37 @@ function Get-ListeningProcess {
     return Get-Process -Id $listener.OwningProcess -ErrorAction Stop
 }
 
+function Get-CaddyStartupFailureHint {
+    param([Parameter(Mandatory)][string[]]$DiagnosticPaths)
+
+    $output = @()
+    foreach ($path in $DiagnosticPaths) {
+        try {
+            $output += @(Get-Content -LiteralPath $path -Tail 100 -ErrorAction Stop)
+        }
+        catch {
+            continue
+        }
+    }
+    $text = $output -join "`n"
+    if ($text -match "(?i)requested address is not valid|cannot assign requested address") {
+        return "Caddy reported an invalid bind address. Confirm the resolved LAN endpoint is assigned to this computer."
+    }
+    if ($text -match "(?i)address already in use") {
+        return "Caddy reported a port conflict. Inspect the process already listening on the resolved address and port."
+    }
+    if ($text -match "(?i)tls|certificate|x509") {
+        return "Caddy reported a TLS/certificate startup failure. Inspect the retained local Caddy CA and the local diagnostics."
+    }
+    return "Caddy exited before opening its listener. Inspect the local startup diagnostics."
+}
+
 function Start-LocalCaddy {
     param(
         [Parameter(Mandatory)][string]$CaddyLauncher,
         [Parameter(Mandatory)][string]$Address,
-        [Parameter(Mandatory)][int]$Port
+        [Parameter(Mandatory)][int]$Port,
+        [Parameter(Mandatory)][string]$AgentServerUrl
     )
 
     $existing = Get-ListeningProcess -Address $Address -Port $Port
@@ -106,9 +148,19 @@ function Start-LocalCaddy {
         return
     }
 
+    $runtimeDirectory = Get-LocalRuntimeDirectory -Root $PSScriptRoot
+    New-Item -ItemType Directory -Path $runtimeDirectory -Force | Out-Null
+    $startupId = [DateTime]::UtcNow.ToString("yyyyMMddHHmmssfff")
+    $stdoutPath = Join-Path $runtimeDirectory "caddy-startup-$startupId.stdout.log"
+    $stderrPath = Join-Path $runtimeDirectory "caddy-startup-$startupId.stderr.log"
     $powershell = Join-Path $PSHOME "powershell.exe"
     $caddyProcess = Start-Process -FilePath $powershell `
-        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $CaddyLauncher) `
+        -ArgumentList @(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $CaddyLauncher,
+            "-AgentServerUrl", $AgentServerUrl
+        ) `
+        -RedirectStandardOutput $stdoutPath `
+        -RedirectStandardError $stderrPath `
         -WindowStyle Hidden -PassThru
     foreach ($attempt in 1..20) {
         Start-Sleep -Milliseconds 250
@@ -123,7 +175,11 @@ function Start-LocalCaddy {
             break
         }
     }
-    throw "Caddy did not start an HTTPS listener on TCP port $Port. Run .\\start-caddy-local.ps1 directly for its safe diagnostic output."
+    if ($caddyProcess.HasExited) {
+        $hint = Get-CaddyStartupFailureHint -DiagnosticPaths @($stdoutPath, $stderrPath)
+        throw "Caddy exited before opening an HTTPS listener on TCP port $Port. $hint Diagnostics: $stderrPath"
+    }
+    throw "Caddy did not start an HTTPS listener on TCP port $Port. The process is still running; inspect the resolved address and local Caddy diagnostics before retrying. Diagnostics: $stderrPath"
 }
 
 function Get-LocalRuntimeDirectory {
@@ -406,10 +462,30 @@ function Format-UntrackedWorkerConflict {
 
     $details = @(
         $Workers | ForEach-Object {
-            "PID $($_.ProcessId): $($_.CommandLine)"
+            "PID $($_.ProcessId)"
         }
     ) -join "; "
     return "Untracked SkyBeat notification worker conflict: $details. It was not stopped. Stop or investigate that worker manually before rerunning the launcher."
+}
+
+function Test-LocalWorkerRunning {
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$Python,
+        [Parameter(Mandatory)][string]$ServerDirectory
+    )
+
+    $state = Read-LocalWorkerState -StatePath (Get-LocalWorkerStatePath -Root $Root)
+    $ownedWorker = Test-LocalWorkerState `
+        -State $state -Root $Root -Python $Python -ServerDirectory $ServerDirectory
+    if ($null -eq $ownedWorker) {
+        throw "SkyBeat notification worker ownership state is missing or stale. Run the normal launcher after reviewing any existing worker process."
+    }
+    $untracked = @(Find-UntrackedLocalSkyBeatWorkers -OwnedWorker $ownedWorker)
+    if ($untracked.Count -gt 0) {
+        throw (Format-UntrackedWorkerConflict -Workers $untracked)
+    }
+    Write-Host "Notification worker: running (PID $($ownedWorker.ProcessId))"
 }
 
 function Start-LocalNotificationWorker {
@@ -498,17 +574,57 @@ function Start-LocalNotificationWorker {
 }
 
 function Test-LocalUvicornHealth {
+    foreach ($path in @("livez", "readyz")) {
+        try {
+            $response = Invoke-WebRequest `
+                -UseBasicParsing `
+                -Uri "http://127.0.0.1:8000/$path" `
+                -TimeoutSec 3 `
+                -ErrorAction Stop
+        }
+        catch {
+            return $false
+        }
+        if ($response.StatusCode -ne 200) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Test-CaddyProxyHealth {
+    param([Parameter(Mandatory)][string]$Origin)
+
     try {
-        $response = Invoke-WebRequest `
-            -UseBasicParsing `
-            -Uri "http://127.0.0.1:8000/livez" `
-            -TimeoutSec 3 `
-            -ErrorAction Stop
+        $response = Invoke-WebRequest -UseBasicParsing `
+            -Uri "$($Origin.TrimEnd('/'))/livez" -TimeoutSec 3 -ErrorAction Stop
     }
     catch {
-        return $false
+        $failure = $_.Exception
+        while ($null -ne $failure) {
+            if (
+                $null -ne $failure.Response -and
+                $failure.Response.StatusCode -eq [System.Net.HttpStatusCode]::BadGateway
+            ) {
+                throw "Caddy HTTPS returned 502: the API upstream is unavailable. Check http://127.0.0.1:8000/readyz and the Uvicorn process."
+            }
+            if (
+                $failure -is [System.Net.WebException] -and
+                $failure.Status -in @(
+                    [System.Net.WebExceptionStatus]::TrustFailure,
+                    [System.Net.WebExceptionStatus]::SecureChannelFailure
+                )
+            ) {
+                throw "Caddy TLS trust validation failed. Inspect the local Caddy CA trust and certificate for this HTTPS origin."
+            }
+            $failure = $failure.InnerException
+        }
+        throw "Caddy HTTPS endpoint is unavailable. Check its listener and configuration; TLS verification remains enabled."
     }
-    return $response.StatusCode -eq 200
+    if ($response.StatusCode -ne 200) {
+        throw "Caddy HTTPS endpoint returned an unexpected status. Inspect its local proxy configuration."
+    }
+    Write-Host "Caddy HTTPS proxy: healthy"
 }
 
 function Test-ProcessHasExpectedLauncherAncestor {
@@ -568,7 +684,7 @@ function Test-LocalUvicornReuse {
         throw "TCP port 8000 is already owned by $($existing.ProcessName) (PID $($existing.Id)) and is not a SkyBeat Uvicorn process for this checkout. Stop the conflicting process manually before rerunning the launcher."
     }
     if (-not (Test-LocalUvicornHealth)) {
-        throw "Existing SkyBeat Uvicorn on TCP port 8000 failed /livez. Stop the unhealthy local process manually before rerunning the launcher."
+        throw "Existing SkyBeat Uvicorn on TCP port 8000 failed /livez or /readyz. Inspect the local process and schema before rerunning the launcher."
     }
     return $true
 }
@@ -579,6 +695,7 @@ $python = Join-Path $root ".venv\Scripts\python.exe"
 $serverDirectory = Join-Path $root "server"
 $agentOriginValidator = Join-Path $root "scripts\validate-agent-server-url.py"
 $caddyLauncher = Join-Path $root "start-caddy-local.ps1"
+$endpointResolver = Join-Path $root "scripts\local-lan-endpoint.ps1"
 
 if (-not (Test-Path -LiteralPath $envFile -PathType Leaf)) {
     throw "SkyBeat .env file not found at the repository root. Copy .env.example to .env and configure local development values."
@@ -589,10 +706,13 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $agentOriginValidator -PathType Leaf)) {
     throw "Agent origin validator is missing from the repository. Restore scripts\\validate-agent-server-url.py before starting SkyBeat."
 }
+if (-not (Test-Path -LiteralPath $endpointResolver -PathType Leaf)) {
+    throw "Local LAN endpoint resolver is missing. Restore scripts\\local-lan-endpoint.ps1 before starting SkyBeat."
+}
 
 $loaded = Import-SkyBeatEnvironment -Path $envFile
 if (-not $loaded.ContainsKey("SKYBEAT_ENV") -or $loaded["SKYBEAT_ENV"] -ne "development") {
-    throw "start-skybeat-local.ps1 requires SKYBEAT_ENV=development in the repository .env. Do not use this local launcher with production configuration."
+    throw "start-skybeat-local.ps1 requires SKYBEAT_ENV=development in the process environment or repository .env. Do not use this local launcher with production configuration."
 }
 
 if ((Get-CommandExitCode -Command $python -Arguments @("--version")) -ne 0) {
@@ -630,6 +750,23 @@ if ($insecureLocalAgentHttp) {
     }
 }
 
+if ($httpsAgentEndpoint) {
+    . $endpointResolver
+    $endpointMode = if ($loaded.ContainsKey("SKYBEAT_LOCAL_ENDPOINT_MODE")) {
+        $loaded["SKYBEAT_LOCAL_ENDPOINT_MODE"].ToLowerInvariant()
+    }
+    else {
+        "configured"
+    }
+    if ($endpointMode -notin @("configured", "auto")) {
+        throw "SKYBEAT_LOCAL_ENDPOINT_MODE must be configured or auto for the Windows development launcher."
+    }
+    $resolvedEndpoint = Resolve-SkyBeatLocalEndpoint -ConfiguredOrigin $agentServerUrl -Mode $endpointMode
+    $agentServerUrl = $resolvedEndpoint.EffectiveOrigin
+    $agentUri = [Uri]$agentServerUrl
+    [Environment]::SetEnvironmentVariable("SKYBEAT_AGENT_SERVER_URL", $agentServerUrl, "Process")
+}
+
 $validatorArguments = @($agentOriginValidator, "--server", $agentServerUrl)
 if ($insecureLocalAgentHttp) {
     $validatorArguments += "--allow-insecure-local-server"
@@ -656,35 +793,49 @@ finally {
     Pop-Location
 }
 
-if (-not $PreflightOnly) {
-    Push-Location $serverDirectory
-    try {
-        & $python -m app.local_schema_guard
-        if ($LASTEXITCODE -ne 0) {
-            throw "SkyBeat local schema check failed. Apply the migration guidance above before starting services."
-        }
+Push-Location $serverDirectory
+try {
+    & $python -m app.local_schema_guard
+    if ($LASTEXITCODE -ne 0) {
+        throw "SkyBeat local database/schema check failed. Review the schema guidance above; no services were started."
     }
-    finally {
-        Pop-Location
+}
+finally {
+    Pop-Location
+}
+
+Push-Location $serverDirectory
+try {
+    & $python -m app.local_release_status
+    if ($LASTEXITCODE -ne 0) {
+        throw "SkyBeat release registry diagnostic failed. Review the non-secret error before starting services."
     }
+}
+finally {
+    Pop-Location
 }
 
 if ($httpsAgentEndpoint) {
     if (-not (Test-Path -LiteralPath $caddyLauncher -PathType Leaf)) {
         throw "Local Caddy launcher is missing. Restore start-caddy-local.ps1 before using an HTTPS agent endpoint."
     }
-    & $caddyLauncher -PreflightOnly
+    & $caddyLauncher -PreflightOnly -AgentServerUrl $agentServerUrl
     $agentPort = $agentUri.Port
-    if (-not $PreflightOnly) {
-        Start-LocalCaddy -CaddyLauncher $caddyLauncher -Address $agentUri.Host -Port $agentPort
+    if (-not $PreflightOnly -and -not $VerifyRunning) {
+        Start-LocalCaddy -CaddyLauncher $caddyLauncher `
+            -Address $agentUri.Host `
+            -Port $agentPort `
+            -AgentServerUrl $agentServerUrl
     }
 
     Write-Host "Environment: development"
     Write-Host "Uvicorn internal: http://127.0.0.1:8000"
     Write-Host "Agent HTTPS endpoint: $agentServerUrl"
+    Write-Host "LAN endpoint resolution: $($resolvedEndpoint.Resolution)"
     Write-Host "TLS termination: Caddy"
     Write-Host "Local browser/OIDC: http://127.0.0.1:8000"
     Write-Host "Browser HTTPS endpoint: $agentServerUrl"
+    Write-Host "HTTPS readiness: if Caddy returns 502, verify http://127.0.0.1:8000/readyz after Uvicorn starts."
     Write-Host "Configuration: OK"
 }
 else {
@@ -698,6 +849,18 @@ else {
 }
 
 if ($PreflightOnly) {
+    return
+}
+
+if ($VerifyRunning) {
+    if (-not (Test-LocalUvicornReuse -Python $python)) {
+        throw "SkyBeat API is not listening on 127.0.0.1:8000. Start the normal launcher in another PowerShell window."
+    }
+    Write-Host "FastAPI /livez and /readyz: healthy"
+    Test-LocalWorkerRunning -Root $root -Python $python -ServerDirectory $serverDirectory
+    if ($httpsAgentEndpoint) {
+        Test-CaddyProxyHealth -Origin $agentServerUrl
+    }
     return
 }
 
@@ -715,7 +878,7 @@ if ($reuseExistingUvicorn) {
 }
 
 Set-Location $serverDirectory
-Write-Host "Uvicorn: running"
+Write-Host "Uvicorn: starting. In another PowerShell window, run .\start-skybeat-local.ps1 -VerifyRunning to check /livez, /readyz, worker ownership, and Caddy."
 if ($httpsAgentEndpoint) {
     & $python -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
 }

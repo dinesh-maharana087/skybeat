@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$PreflightOnly
+    [switch]$PreflightOnly,
+    [string]$AgentServerUrl
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,6 +10,10 @@ function Import-SkyBeatEnvironment {
     param([Parameter(Mandatory)][string]$Path)
 
     $loaded = @{}
+    $rootEndpointSettings = @(
+        "SKYBEAT_AGENT_SERVER_URL",
+        "SKYBEAT_LOCAL_ENDPOINT_MODE"
+    )
     $lineNumber = 0
     foreach ($rawLine in Get-Content -LiteralPath $Path) {
         $lineNumber++
@@ -27,7 +32,14 @@ function Import-SkyBeatEnvironment {
             )) {
             $value = $value.Substring(1, $value.Length - 2)
         }
-        $loaded[$name] = $value
+        $explicit = [Environment]::GetEnvironmentVariable($name, "Process")
+        if ($name -in $rootEndpointSettings) {
+            [Environment]::SetEnvironmentVariable($name, $value, "Process")
+            $loaded[$name] = $value
+        }
+        else {
+            $loaded[$name] = if ($null -ne $explicit) { $explicit } else { $value }
+        }
     }
     return $loaded
 }
@@ -65,6 +77,7 @@ function Get-TlsListener {
 $root = (Resolve-Path -LiteralPath $PSScriptRoot).Path
 $caddyfile = Join-Path $root "Caddyfile.test"
 $envFile = Join-Path $root ".env"
+$endpointResolver = Join-Path $root "scripts\local-lan-endpoint.ps1"
 # Preserve the historic repository-sibling Caddy state location so a locally
 # trusted Caddy internal CA is not silently replaced by a new root.
 $stateParent = Split-Path -Parent $root
@@ -76,6 +89,9 @@ if (-not (Test-Path -LiteralPath $caddyfile -PathType Leaf)) {
 }
 if (-not (Test-Path -LiteralPath $envFile -PathType Leaf)) {
     throw "SkyBeat .env file not found at the repository root."
+}
+if (-not (Test-Path -LiteralPath $endpointResolver -PathType Leaf)) {
+    throw "Local LAN endpoint resolver is missing. Restore scripts\\local-lan-endpoint.ps1 before starting Caddy."
 }
 if (-not (Get-Command caddy -ErrorAction SilentlyContinue)) {
     throw "Caddy is not available on PATH. Install the approved local Caddy binary before starting the local HTTPS proxy."
@@ -89,7 +105,21 @@ if (-not $loaded.ContainsKey("SKYBEAT_AGENT_SERVER_URL") -or -not $loaded["SKYBE
     throw "SKYBEAT_AGENT_SERVER_URL is required to start the local HTTPS proxy."
 }
 
-$tlsListener = Get-TlsListener -AgentServerUrl $loaded["SKYBEAT_AGENT_SERVER_URL"]
+. $endpointResolver
+$endpointMode = if ($loaded.ContainsKey("SKYBEAT_LOCAL_ENDPOINT_MODE")) {
+    $loaded["SKYBEAT_LOCAL_ENDPOINT_MODE"].ToLowerInvariant()
+}
+else {
+    "configured"
+}
+if ($endpointMode -notin @("configured", "auto")) {
+    throw "SKYBEAT_LOCAL_ENDPOINT_MODE must be configured or auto for the Windows development launcher."
+}
+$configuredAgentServerUrl = if ($AgentServerUrl) { $AgentServerUrl } else { $loaded["SKYBEAT_AGENT_SERVER_URL"] }
+$resolvedEndpoint = Resolve-SkyBeatLocalEndpoint `
+    -ConfiguredOrigin $configuredAgentServerUrl -Mode $endpointMode
+$effectiveAgentServerUrl = $resolvedEndpoint.EffectiveOrigin
+$tlsListener = Get-TlsListener -AgentServerUrl $effectiveAgentServerUrl
 $env:SKYBEAT_LOCAL_TLS_ADDRESS = $tlsListener.ListenAddress
 $env:SKYBEAT_LOCAL_TLS_BIND_ADDRESS = $tlsListener.BindAddress
 $env:XDG_DATA_HOME = $caddyDataRoot
@@ -101,6 +131,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Local Caddy configuration validation failed."
 }
 if ($PreflightOnly) {
+    Write-Host "LAN endpoint: $effectiveAgentServerUrl ($($resolvedEndpoint.Resolution))"
     return
 }
 

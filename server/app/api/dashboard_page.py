@@ -24,7 +24,14 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / 
 
 
 DashboardView = Literal[
-    "overview", "devices", "device_detail", "projects", "deployments", "notifications", "users"
+    "overview",
+    "devices",
+    "device_detail",
+    "projects",
+    "deployments",
+    "releases",
+    "notifications",
+    "users",
 ]
 
 
@@ -171,6 +178,18 @@ async def dashboard_deployments(request: Request) -> Response:
     if user.role not in {UserRole.OWNER, UserRole.ADMIN}:
         raise HTTPException(status_code=403, detail="Dashboard permission is denied.")
     return await render_dashboard_view(request, "deployments")
+
+
+@router.get("/dashboard/releases")
+async def dashboard_releases(request: Request) -> Response:
+    user = await _dashboard_user(request, return_path="/dashboard/releases")
+    if user is None:
+        return _login_redirect("/dashboard/releases")
+    if isinstance(user, Response):
+        return user
+    if user.role not in {UserRole.OWNER, UserRole.ADMIN}:
+        raise HTTPException(status_code=403, detail="Dashboard permission is denied.")
+    return await render_dashboard_view(request, "releases")
 
 
 @router.get("/dashboard/notifications")

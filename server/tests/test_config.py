@@ -128,7 +128,7 @@ def test_database_url_must_be_explicit_safe_mysql(url):
         Settings(env="test", database_url=url)
 
 
-def test_production_requires_https_and_explicit_host_allowlist():
+def test_production_requires_https_and_explicit_host_allowlist(tmp_path):
     base = dict(
         env="production",
         database_url="mysql+pymysql://runtime:example@mysql/skybeat",
@@ -136,6 +136,7 @@ def test_production_requires_https_and_explicit_host_allowlist():
         google_client_secret="not-a-real-secret",
         session_encryption_key="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         allowed_emails=["ops@example.test"],
+        agent_release_store=tmp_path / "agent-releases",
     )
     with pytest.raises(ValidationError):
         Settings(

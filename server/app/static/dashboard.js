@@ -147,6 +147,12 @@ const notificationsStatus = document.getElementById("notifications-status");
 const deploymentsList = document.getElementById("deployments-list");
 const deploymentsStatus = document.getElementById("deployments-status");
 const deploymentsEmpty = document.getElementById("deployments-empty");
+const releaseRegisterForm = document.getElementById("release-register-form");
+const releaseRegisterName = document.getElementById("release-register-name");
+const releaseRegisterSubmit = document.getElementById("release-register-submit");
+const releaseManagementStatus = document.getElementById("release-management-status");
+const releaseActiveStatus = document.getElementById("release-active-status");
+const releaseList = document.getElementById("release-list");
 const deploymentDeleteDialog = document.getElementById("deployment-delete-dialog");
 const deploymentDeleteStatus = document.getElementById("deployment-delete-status");
 const deploymentDeleteConfirm = document.getElementById("deployment-delete-confirm");
@@ -1867,6 +1873,9 @@ function renderDeployments() {
     remove.addEventListener("click", () => openDeploymentDeleteDialog(deployment));
     cardHeaderActions.append(statusPill(deploymentStateLabel(deployment.state)), remove);
     heading.append(identity, cardHeaderActions);
+    const selectedRelease = deploymentRelease;
+    const version = element("p", `Agent version: ${selectedRelease === null ? "Not available" : `v${selectedRelease.version}`}`);
+    version.className = "deployment-card__version";
     const actions = document.createElement("div");
     actions.className = "deployment-card__actions";
     const isReady = deployment.state === "PENDING";
@@ -1874,15 +1883,108 @@ function renderDeployments() {
     download.type = "button";
     download.className = "sb-button--primary";
     download.disabled = !isReady || deploymentRelease === null;
-    download.addEventListener("click", () => window.location.assign("/api/v1/agent-releases/current/download"));
+    download.title = !isReady ? "Enrollment token is not ready." : selectedRelease === null ? "Open Release Management to activate a verified release." : "Download the approved archive shown on this card.";
+    download.addEventListener("click", () => window.location.assign(`/api/v1/agent-releases/current/download?archive_sha256=${selectedRelease.archive_sha256}`));
     const copyInstructions = element("button", "Copy Instruction");
     copyInstructions.type = "button";
     copyInstructions.className = "sb-button--secondary";
     copyInstructions.disabled = !isReady || deploymentRelease === null;
-    copyInstructions.addEventListener("click", () => navigator.clipboard.writeText(installationInstructions(deploymentRelease)).catch(() => { deploymentsStatus.textContent = "Installation instructions could not be copied."; }));
+    copyInstructions.title = download.title;
+    copyInstructions.addEventListener("click", () => navigator.clipboard.writeText(installationInstructions(selectedRelease)).catch(() => { deploymentsStatus.textContent = "Installation instructions could not be copied."; }));
     actions.append(download, copyInstructions);
-    card.append(heading, actions);
+    card.append(heading, version, actions);
     deploymentsList.append(card);
+  }
+}
+
+async function requestRegisteredReleases() {
+  const response = await fetch("/api/v1/agent-releases", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("release registry unavailable");
+  const payload = await response.json();
+  if (!Array.isArray(payload?.releases) || typeof payload?.storage_status !== "string") throw new Error("release registry response invalid");
+  return payload;
+}
+
+function renderRegisteredReleases(releases) {
+  releaseList.replaceChildren();
+  for (const release of releases) {
+    if (typeof release.archive_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(release.archive_sha256)) continue;
+    const card = document.createElement("article");
+    card.append(element("h3", release.version ?? "Unknown version"));
+    card.append(element("p", `Archive SHA-256: ${release.archive_sha256}`));
+    card.append(element("p", `Wheel SHA-256: ${release.wheel_sha256 ?? "Unavailable"}`));
+    card.append(element("p", `Status: ${release.status ?? "Unknown"}${release.active ? " · Active for new installations" : ""} · ${release.available ? "Artifact available" : release.availability_error ?? "Artifact missing or invalid"}`));
+    card.append(element("p", `Registered: ${release.registered_at ?? "Unknown"} by ${release.registered_by ?? "Unknown"}`));
+    card.append(element("p", `Verified: ${release.verified_at ?? "Unknown"}`));
+    if (release.approved_at) card.append(element("p", `Approved: ${release.approved_at} by ${release.approved_by ?? "Unknown"}`));
+    if (release.active) card.append(element("p", `Activated: ${release.activated_at ?? "Unknown"} by ${release.activated_by ?? "Unknown"}`));
+    const verify = element("button", "Verify integrity");
+    verify.type = "button";
+    verify.className = "sb-button--secondary";
+    verify.addEventListener("click", () => void changeRegisteredRelease(release.archive_sha256, "verify"));
+    const activate = element("button", release.active ? "Active" : "Activate");
+    activate.type = "button";
+    activate.className = "sb-button--primary";
+    activate.disabled = release.active || !release.available;
+    activate.addEventListener("click", () => void changeRegisteredRelease(release.archive_sha256, "activate"));
+    card.append(verify, activate);
+    releaseList.append(card);
+  }
+  if (!releaseList.children.length) releaseList.append(element("p", "No releases registered."));
+}
+
+async function refreshRegisteredReleases() {
+  try {
+    const { releases, storage_status } = await requestRegisteredReleases();
+    renderRegisteredReleases(releases);
+    const active = releases.find((release) => release.active);
+    releaseActiveStatus.textContent = active?.available
+      ? `Active installation version: v${active.version}`
+      : active
+        ? `Active installation version: v${active.version} (artifact unavailable)`
+        : "Active installation version: Not available";
+    releaseManagementStatus.textContent = storage_status === "Release store and staging directory: available."
+      ? `${releases.length} registered release${releases.length === 1 ? "" : "s"}.`
+      : storage_status;
+    markDashboardFresh(new Date().toISOString());
+  } catch (_) {
+    releaseActiveStatus.textContent = "Active installation version: Not available";
+    releaseManagementStatus.textContent = "Release registry unavailable. Check server configuration and database readiness.";
+    markDashboardStale();
+  }
+}
+
+async function changeRegisteredRelease(digest, action) {
+  if (action === "activate" && !window.confirm("Activate this verified artifact for future installations? Existing agents will not be upgraded.")) return;
+  releaseManagementStatus.textContent = action === "activate" ? "Activating release…" : "Verifying release…";
+  try {
+    await requestDashboardMutation(`/api/v1/agent-releases/${digest}/${action}`, "POST", {});
+    await refreshRegisteredReleases();
+  } catch (_) {
+    releaseManagementStatus.textContent = "Release change failed. Check artifact integrity and server logs.";
+  }
+}
+
+async function registerRelease(event) {
+  event.preventDefault();
+  const name = releaseRegisterName.value.trim();
+  if (!/^skybeat-agent-[0-9]+\.[0-9]+\.[0-9]+$/.test(name)) {
+    releaseManagementStatus.textContent = "Enter a staged release name in skybeat-agent-MAJOR.MINOR.PATCH format.";
+    return;
+  }
+  releaseRegisterSubmit.disabled = true;
+  releaseManagementStatus.textContent = "Registering and verifying release…";
+  try {
+    await requestDashboardMutation("/api/v1/agent-releases", "POST", { name });
+    releaseRegisterName.value = "";
+    await refreshRegisteredReleases();
+  } catch (_) {
+    await refreshRegisteredReleases();
+    if (!/^(Release store:|Release staging:|Release registry unavailable)/.test(releaseManagementStatus.textContent)) {
+      releaseManagementStatus.textContent = "Registration failed. Confirm the staged bundle and ZIP are complete and valid.";
+    }
+  } finally {
+    releaseRegisterSubmit.disabled = false;
   }
 }
 
@@ -1924,7 +2026,7 @@ async function refreshDeploymentsView() {
     renderDeployments();
     if (deploymentRelease === null) {
       deploymentsStatus.className = "deployment-release-status deployment-release-status--warning";
-      deploymentsStatus.textContent = "Approved agent package unavailable.";
+      deploymentsStatus.textContent = "Approved agent package unavailable. Review the active artifact in Release Management below.";
     } else {
       deploymentsStatus.className = "deployment-release-status";
       deploymentsStatus.textContent = `${toInstallDeployments.length} device${toInstallDeployments.length === 1 ? "" : "s"} waiting for installation.`;
@@ -1990,6 +2092,7 @@ async function refreshActiveView() {
   if (dashboardView === "projects") return refreshProjectsView();
   if (dashboardView === "users") return refreshUsersView();
   if (dashboardView === "deployments") return refreshDeploymentsView();
+  if (dashboardView === "releases") return refreshRegisteredReleases();
   if (dashboardView === "notifications") return refreshNotificationsView();
   return refreshOverviewView();
 }
@@ -3293,10 +3396,15 @@ async function requestReleaseMetadata() {
   if (!response.ok) throw new Error("agent release request failed");
   const release = (await response.json())?.release;
   if (
+    typeof release?.version !== "string" || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(release.version) ||
+    typeof release?.archive_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(release.archive_sha256) ||
     typeof release?.wheel_filename !== "string" ||
-    typeof release?.wheel_sha256 !== "string" ||
+    !/^skybeat_agent-[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9_.-]+\.whl$/.test(release.wheel_filename) ||
+    typeof release?.wheel_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(release.wheel_sha256) ||
     typeof release?.archive_filename !== "string" ||
+    release.archive_filename !== `skybeat-agent-${release.version}-linux.zip` ||
     typeof release?.archive_root !== "string" ||
+    release.archive_root !== `skybeat-agent-${release.version}` ||
     typeof release?.server_url !== "string"
   ) throw new Error("agent release response was invalid");
   return release;
@@ -3304,7 +3412,8 @@ async function requestReleaseMetadata() {
 
 function installationInstructions(release) {
   const insecureFlag = release.allow_insecure_local_server === true ? " --allow-insecure-local-server" : "";
-  return `unzip ${release.archive_filename}\ncd ${release.archive_root}\nchmod +x ./install-agent.sh\nsudo ./install-agent.sh --server ${release.server_url} --package ./${release.wheel_filename} --sha256 ${release.wheel_sha256} --wheelhouse ./wheelhouse --lockfile ./requirements.lock --token-file ./enrollment.token${insecureFlag}`;
+  const server = `'${release.server_url.replaceAll("'", "'\\''")}'`;
+  return `# Download the approved archive using Agent Package on this card.\necho '${release.archive_sha256}  ${release.archive_filename}' | sha256sum -c -\nunzip ${release.archive_filename}\ncd ${release.archive_root}\nchmod +x ./install-agent.sh\nsudo ./install-agent.sh --server ${server} --package ./${release.wheel_filename} --sha256 ${release.wheel_sha256} --wheelhouse ./wheelhouse --lockfile ./requirements.lock --token-file ./enrollment.token${insecureFlag}`;
 }
 
 function downloadEnrollmentToken() {
@@ -3619,6 +3728,20 @@ refreshActiveView();
     window.clearTimeout(refreshTimer);
     if (!document.hidden) void refreshActiveView();
     else scheduleRefresh();
+  });
+  refreshActiveView();
+} else if (dashboardView === "releases") {
+  sidebarToggle.addEventListener("click", () => toggleSidebar());
+  logout.addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+    window.location.assign("/login");
+  });
+  const preference = localStorage.getItem(SIDEBAR_PREFERENCE_KEY);
+  if (preference === "collapsed") setSidebarCollapsed(true);
+  else setSidebarTogglePresentation(window.matchMedia("(max-width: 900px)").matches);
+  releaseRegisterForm.addEventListener("submit", (event) => void registerRelease(event));
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void refreshActiveView();
   });
   refreshActiveView();
 } else {

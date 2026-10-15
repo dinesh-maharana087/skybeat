@@ -13,6 +13,7 @@ from app.db import Database, database_utc
 from app.devices.service import IdentityService, NotFound, lock_device
 from app.heartbeats.service import wire_time
 from app.models import AuditEvent, Device, DeviceAgentLifecycle, DeviceLatest
+from app.releases.registry import ManagedReleaseService
 from app.releases.service import AgentReleaseService, ReleaseUnavailable
 
 ACTIVE = frozenset(
@@ -85,7 +86,9 @@ def _view(operation: DeviceAgentLifecycle | None) -> dict[str, object] | None:
 
 
 class AgentLifecycleService:
-    def __init__(self, database: Database, releases: AgentReleaseService) -> None:
+    def __init__(
+        self, database: Database, releases: AgentReleaseService | ManagedReleaseService
+    ) -> None:
         self.database = database
         self.releases = releases
 
@@ -141,8 +144,13 @@ class AgentLifecycleService:
         }
 
     def request_upgrade(self, device_uuid: str, actor: str) -> dict[str, object]:
-        metadata = self.releases.current()
-        archive_digest = _digest_file(self.releases.archive())
+        if isinstance(self.releases, ManagedReleaseService):
+            artifact = self.releases.active_artifact()
+            metadata = artifact.metadata
+            archive_digest = artifact.archive_sha256
+        else:
+            metadata = self.releases.current()
+            archive_digest = _digest_file(self.releases.archive())
         target = _version(metadata.version)
         if target is None:
             raise ReleaseUnavailable("Agent release is unavailable.")
@@ -254,6 +262,8 @@ class AgentLifecycleService:
             version = operation.target_version
             wheel_sha = operation.target_wheel_sha256
             archive_sha = operation.archive_sha256
+        if isinstance(self.releases, ManagedReleaseService):
+            return self.releases.archive_for(version, wheel_sha, archive_sha)
         metadata = self.releases.current()
         archive = self.releases.archive()
         if (

@@ -31,7 +31,12 @@ def test_dashboard_api_rejects_missing_browser_session_without_database_access()
     assert response.headers["cache-control"] == "no-store"
 
 
-def test_development_dashboard_bypass_authenticates_dashboard_api_without_a_browser_session():
+def test_development_dashboard_bypass_authenticates_dashboard_api_without_a_browser_session(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+
     class SessionMustNotRun:
         def authenticate_session(self, token):
             raise AssertionError(f"unexpected dashboard session lookup for {token!r}")
@@ -367,8 +372,8 @@ def test_deployment_release_routes_require_management_role_and_serve_only_valida
             return DashboardUser("google-user", "ops@example.test", None, 7, UserRole(role))
 
     class Release:
-        def current(self):
-            return type(
+        def active_artifact(self):
+            metadata = type(
                 "Metadata",
                 (),
                 {
@@ -381,6 +386,7 @@ def test_deployment_release_routes_require_management_role_and_serve_only_valida
                     "allow_insecure_local_server": False,
                 },
             )()
+            return type("Artifact", (), {"metadata": metadata, "archive_sha256": "b" * 64})()
 
         def archive(self):
             return archive
@@ -400,6 +406,7 @@ def test_deployment_release_routes_require_management_role_and_serve_only_valida
 
     assert metadata.status_code == 200
     assert metadata.json()["release"]["wheel_filename"] == "skybeat_agent-1.0.0-cp312-none-any.whl"
+    assert metadata.json()["release"]["archive_sha256"] == "b" * 64
     assert "server" not in metadata.json()["release"]
     assert download.status_code == 200
     assert download.content == b"approved archive"
@@ -838,7 +845,11 @@ def test_dashboard_management_invalid_payloads_and_identity_errors_are_safe_no_s
     assert "project missing" not in missing.text
 
 
-def test_development_bypass_uses_the_same_dashboard_management_identity_boundary():
+def test_development_bypass_uses_the_same_dashboard_management_identity_boundary(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     actors: list[str] = []
 
     class Management:

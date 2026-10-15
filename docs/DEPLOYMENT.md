@@ -2504,14 +2504,47 @@ PyPI, a source tree, or a downloaded installer as an agent package source.
 
 ### Dashboard-driven package installation
 
+The server resolves one release root for staging (`incoming/`) and immutable
+objects (`objects/`). An explicit absolute `SKYBEAT_AGENT_RELEASE_STORE` takes
+precedence. When unset in development, Windows uses
+`%LOCALAPPDATA%\SkyBeat\agent-releases` and Linux uses
+`${XDG_DATA_HOME:-~/.local/share}/skybeat/agent-releases`; these are persistent
+per-user data directories independent of the checkout. Development may create
+only this dedicated default root and its `incoming/` directory. Production
+requires an explicit durable root and does not create it. Docker Compose mounts
+an operator-selected absolute `RELEASE_STORE_HOST_DIR` at the configured
+container path `/var/lib/skybeat/agent-releases`; prepare and protect that host
+directory and its `incoming/` child before startup. The API's core `/readyz`
+reflects database readiness, while operator preflight separately reports
+release storage, staging, registry/schema, and active artifact availability.
+An empty registry leaves core API readiness healthy.
+
+Changing the configured root does not relocate or activate releases. If an
+existing registered store must move, first record its active digest and back up
+the database and store. With the API stopped under an approved maintenance
+window, copy the complete `incoming/` and `objects/` trees to the new durable
+root without overwriting destination files. Compare source and destination
+file lists, sizes, and SHA-256 digests; then switch the explicit root, start
+the API, and verify every registered release and the previously active digest
+through Release Management. Retain the old root until that verification and
+rollback review are complete. A missing object remains unavailable; the server
+never searches another root or changes activation automatically.
+
 For normal deployment, use the authenticated Devices workflow instead of
-constructing a wheel path or SHA-256 manually: create the enrollment, select
-**Save enrollment token**, select **Download Agent Package**, and copy both
-files to the Ubuntu device using an approved protected channel. The generated
-instructions name the exact archive, archive root, manifest-selected wheel,
-wheel hash, wheelhouse, and lockfile. After transfer, run the displayed steps:
+constructing a wheel path or SHA-256 manually. An OWNER/ADMIN first stages a
+verified bundle and ZIP in the permanent release store, registers them in
+`/dashboard/releases`, reviews integrity, and explicitly activates the version
+for new installations. Then create the enrollment, select **Save enrollment
+token**, select **Agent Package** on a READY deployment card, and copy both
+files to the Ubuntu device using an approved protected channel. The card shows
+the active verified version, or `Not available` with installation actions
+disabled. Its download pins the selected archive digest; the copied
+instructions name and verify that exact ZIP before using its manifest-selected
+wheel, wheel hash, wheelhouse, and lockfile. After transfer, run the displayed
+steps:
 
 ```sh
+echo '<approved-archive-sha256>  skybeat-agent-<version>-linux.zip' | sha256sum -c -
 unzip skybeat-agent-<version>-linux.zip
 cd skybeat-agent-<version>
 chmod +x ./install-agent.sh
